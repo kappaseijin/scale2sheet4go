@@ -23,13 +23,25 @@ type AppleHealthIdentifier = keyof typeof appleHealthTypeToKind;
 export async function readAppleHealthLatestMeasurements(
   config: AppleHealthConfig,
 ): Promise<MeasurementReading[]> {
-  return parseAppleHealthLatestMeasurements(config.exportXmlPath);
+  return latestByKind(await parseAppleHealthMeasurements(config.exportXmlPath));
+}
+
+export async function readAppleHealthMeasurements(
+  config: AppleHealthConfig,
+): Promise<MeasurementReading[]> {
+  return parseAppleHealthMeasurements(config.exportXmlPath);
 }
 
 export async function parseAppleHealthLatestMeasurements(
   exportXmlPath: string,
 ): Promise<MeasurementReading[]> {
-  const latestByKind = new Map<MeasurementKind, MeasurementReading>();
+  return latestByKind(await parseAppleHealthMeasurements(exportXmlPath));
+}
+
+export async function parseAppleHealthMeasurements(
+  exportXmlPath: string,
+): Promise<MeasurementReading[]> {
+  const readings: MeasurementReading[] = [];
   const parser = new SaxesParser({ xmlns: false });
 
   parser.on("opentag", (tag: SaxesTagPlain) => {
@@ -38,16 +50,8 @@ export async function parseAppleHealthLatestMeasurements(
     }
 
     const reading = recordToReading(tag.attributes);
-    if (!reading) {
-      return;
-    }
-
-    const current = latestByKind.get(reading.kind);
-    if (
-      !current ||
-      Date.parse(reading.measuredAt) > Date.parse(current.measuredAt)
-    ) {
-      latestByKind.set(reading.kind, reading);
+    if (reading) {
+      readings.push(reading);
     }
   });
 
@@ -66,6 +70,24 @@ export async function parseAppleHealthLatestMeasurements(
     });
     parser.on("error", reject);
   });
+
+  return readings;
+}
+
+function latestByKind(
+  readings: readonly MeasurementReading[],
+): MeasurementReading[] {
+  const latestByKind = new Map<MeasurementKind, MeasurementReading>();
+
+  for (const reading of readings) {
+    const current = latestByKind.get(reading.kind);
+    if (
+      !current ||
+      Date.parse(reading.measuredAt) > Date.parse(current.measuredAt)
+    ) {
+      latestByKind.set(reading.kind, reading);
+    }
+  }
 
   return [...latestByKind.values()];
 }

@@ -61,11 +61,28 @@ export async function readGoogleFitLatestMeasurements(
   config: GoogleFitAuthConfig,
   referenceTime: Date = new Date(),
 ): Promise<MeasurementReading[]> {
+  return latestByKind(await readGoogleFitMeasurements(config, referenceTime));
+}
+
+export async function readGoogleFitMeasurements(
+  config: GoogleFitAuthConfig,
+  referenceTime: Date = new Date(),
+): Promise<MeasurementReading[]> {
   const auth = await loadGoogleFitOAuthClient(config);
-  return readGoogleFitLatestMeasurementsWithAuth(config, auth, referenceTime);
+  return readGoogleFitMeasurementsWithAuth(config, auth, referenceTime);
 }
 
 export async function readGoogleFitLatestMeasurementsWithAuth(
+  config: Pick<GoogleFitAuthConfig, "lookbackDays">,
+  auth: GoogleFitOAuthClient,
+  referenceTime: Date = new Date(),
+): Promise<MeasurementReading[]> {
+  return latestByKind(
+    await readGoogleFitMeasurementsWithAuth(config, auth, referenceTime),
+  );
+}
+
+export async function readGoogleFitMeasurementsWithAuth(
   config: Pick<GoogleFitAuthConfig, "lookbackDays">,
   auth: GoogleFitOAuthClient,
   referenceTime: Date = new Date(),
@@ -84,12 +101,12 @@ export async function readGoogleFitLatestMeasurementsWithAuth(
         startTimeMillis,
         endTimeMillis,
       );
-      const latestPoint = points
+      const sortedPoints = points
         .filter((point) => point.value?.length)
-        .sort((left, right) => toMillis(right) - toMillis(left))[0];
+        .sort((left, right) => toMillis(left) - toMillis(right));
 
-      if (latestPoint) {
-        readings.push(...query.extractReadings(latestPoint));
+      for (const point of sortedPoints) {
+        readings.push(...query.extractReadings(point));
       }
     } catch (error) {
       if (query.optional && isGoogleFitMissingDataTypeError(error)) {
@@ -101,6 +118,24 @@ export async function readGoogleFitLatestMeasurementsWithAuth(
   }
 
   return readings;
+}
+
+function latestByKind(
+  readings: readonly MeasurementReading[],
+): MeasurementReading[] {
+  const latestByKind = new Map<MeasurementKind, MeasurementReading>();
+
+  for (const reading of readings) {
+    const current = latestByKind.get(reading.kind);
+    if (
+      !current ||
+      Date.parse(reading.measuredAt) > Date.parse(current.measuredAt)
+    ) {
+      latestByKind.set(reading.kind, reading);
+    }
+  }
+
+  return [...latestByKind.values()];
 }
 
 async function readDataPointsForDataType(

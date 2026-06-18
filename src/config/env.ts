@@ -2,11 +2,24 @@ import "dotenv/config";
 
 import { z } from "zod";
 
+export const defaultGoogleSheetId =
+  "163Lc0YeN5ZnGeXdYqx6T_JGSMa91kpvfpoODjF7q8C0";
+export const defaultGoogleSheetName = "体温・血圧";
+
 const optionalString = z
   .string()
   .trim()
   .transform((value) => (value.length === 0 ? undefined : value))
   .optional();
+
+const defaultedString = (defaultValue: string) =>
+  z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length === 0
+        ? undefined
+        : value,
+    z.string().trim().min(1).default(defaultValue),
+  );
 
 const positiveIntegerFromString = z
   .string()
@@ -17,8 +30,8 @@ const positiveIntegerFromString = z
 
 export const envSchema = z.object({
   TIME_ZONE: z.string().trim().min(1).default("Asia/Tokyo"),
-  GOOGLE_SHEET_ID: optionalString,
-  GOOGLE_SHEET_NAME: z.string().trim().min(1).default("Measurements"),
+  GOOGLE_SHEET_ID: defaultedString(defaultGoogleSheetId),
+  GOOGLE_SHEET_NAME: defaultedString(defaultGoogleSheetName),
   GOOGLE_APPLICATION_CREDENTIALS: optionalString,
   GOOGLE_FIT_CLIENT_ID: optionalString,
   GOOGLE_FIT_CLIENT_SECRET: optionalString,

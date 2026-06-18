@@ -63,15 +63,3 @@ export interface SpreadsheetRow {
   readonly pulseBpm: number | "";
   readonly source: MeasurementSource;
 }
-
-export const spreadsheetColumns = [
-  "日付",
-  "時刻",
-  "区分(朝/夜)",
-  "体重",
-  "体温",
-  "血圧上",
-  "血圧下",
-  "脈拍",
-  "ソース",
-] as const;

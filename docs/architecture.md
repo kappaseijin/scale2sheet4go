@@ -2,7 +2,7 @@
 
 ## 目的
 
-scale2sheet は、朝・夜の身体測定値を Google Fit REST API または Apple Health XML エクスポートから取得し、Google Spreadsheet へ追記する TypeScript サービスである。Node.js 上で完結し、OS 固有 API、ネイティブバインディング、LLM、外部推論サービスは使わない。
+scale2sheet は、朝・夜の身体測定値を Google Fit REST API または Apple Health XML エクスポートから取得し、Google Spreadsheet の既存当日行へ転記する TypeScript サービスである。Node.js 上で完結し、OS 固有 API、ネイティブバインディング、LLM、外部推論サービスは使わない。
 
 ## 対象データ
 
@@ -16,10 +16,10 @@ scale2sheet は、朝・夜の身体測定値を Google Fit REST API または A
 | 血圧下 | mmHg | 拡張期 |
 | 脈拍 | bpm | heart rate |
 
-Spreadsheet の行形式は次の固定順とする。
+Spreadsheet は `月日` 列で当日行を検索し、朝または夜の測定列だけを更新する。
 
 ```text
-日付 | 時刻 | 区分(朝/夜) | 体重 | 体温 | 血圧上 | 血圧下 | 脈拍 | ソース
+月日 | 朝体重 | 朝体温 | 朝血圧上 | 朝血圧下 | 朝脈拍 | 夜体重 | 夜体温 | 夜血圧上 | 夜血圧下 | 夜脈拍
 ```
 
 ## ディレクトリ構成案
@@ -58,10 +58,12 @@ scale2sheet/
   - Apple Health の `export.xml` を streaming parser で読み、必要な Record だけを抽出する。
   - 大きい XML を全量オブジェクト化しない。
 - `sheets`
-  - Google Sheets API への append のみを公開する。
+  - Google Sheets API の batchUpdate で既存行の対象セルだけを更新する。
+  - `月日` 列で当日行を検索し、行の自動作成はしない。
   - Spreadsheet ID、sheet name、認証情報は `config` から受け取る。
 - `service`
   - 朝・夜の対象時間帯を決め、各 source から最新値を集約し、Spreadsheet row を組み立てる。
+  - 朝は `05:00` から `12:00`、夜は `20:00` から `23:30` の測定値だけを採用する。
   - source が混在した場合は `sources` の内訳を保持し、行の `ソース` は `mixed` とする。
 - `scheduler`
   - `node-cron` で朝・夜の実行時刻を登録する。
@@ -118,8 +120,8 @@ scale2sheet/
 ```text
 TIME_ZONE=Asia/Tokyo
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-GOOGLE_SHEET_ID=...
-GOOGLE_SHEET_NAME=...
+GOOGLE_SHEET_ID=163Lc0YeN5ZnGeXdYqx6T_JGSMa91kpvfpoODjF7q8C0
+GOOGLE_SHEET_NAME=体温・血圧
 APPLE_HEALTH_EXPORT_XML=/path/to/export.xml
 MORNING_CRON=0 7 * * *
 EVENING_CRON=0 21 * * *

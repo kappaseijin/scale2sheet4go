@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildLatestMeasurementSet,
   determineMeasurementPeriod,
+  filterReadingsByPeriodWindow,
   toSpreadsheetRow,
 } from "../../src/service/index.js";
 import type { MeasurementReading } from "../../src/domain/index.js";
@@ -15,6 +16,48 @@ describe("measurement service", () => {
     expect(
       determineMeasurementPeriod(new Date("2026-06-18T12:00:00.000Z"), "Asia/Tokyo"),
     ).toBe("evening");
+  });
+
+  it("filters readings to the target date and period window", () => {
+    const readings: MeasurementReading[] = [
+      {
+        kind: "weight",
+        value: 69.9,
+        unit: "kg",
+        measuredAt: "2026-06-17T19:59:00.000Z",
+        source: "apple_health_export",
+      },
+      {
+        kind: "weight",
+        value: 70.1,
+        unit: "kg",
+        measuredAt: "2026-06-17T20:00:00.000Z",
+        source: "apple_health_export",
+      },
+      {
+        kind: "pulse",
+        value: 61,
+        unit: "bpm",
+        measuredAt: "2026-06-18T03:01:00.000Z",
+        source: "apple_health_export",
+      },
+      {
+        kind: "body_temperature",
+        value: 36.5,
+        unit: "celsius",
+        measuredAt: "2026-06-16T22:30:00.000Z",
+        source: "apple_health_export",
+      },
+    ];
+
+    const filtered = filterReadingsByPeriodWindow({
+      readings,
+      period: "morning",
+      referenceTime: new Date("2026-06-17T23:30:00.000Z"),
+      timeZone: "Asia/Tokyo",
+    });
+
+    expect(filtered.map((reading) => reading.value)).toEqual([70.1]);
   });
 
   it("builds latest sets and spreadsheet rows", () => {

@@ -19,8 +19,13 @@ export function startScheduler({
   const run = (period: MeasurementPeriod) => {
     void syncMeasurements({ config, source, period })
       .then((row) => {
+        if (!row) {
+          logger.log(`No ${period} spreadsheet row updated.`);
+          return;
+        }
+
         logger.log(
-          `Appended ${period} row: ${row.date} ${row.time} (${row.source})`,
+          `Updated ${period} row: ${row.date} ${row.time} (${row.source})`,
         );
       })
       .catch((error: unknown) => {

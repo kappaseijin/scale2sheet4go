@@ -48,7 +48,7 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
         source: options.source,
       });
 
-      console.log(JSON.stringify(row));
+      console.log(row ? JSON.stringify(row) : "No spreadsheet row updated.");
     });
 
   program

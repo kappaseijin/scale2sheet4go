@@ -16,11 +16,16 @@ import type {
 } from "../domain/index.js";
 import { measurementPeriodLabels } from "../domain/index.js";
 import {
-  readAppleHealthLatestMeasurements,
-  readGoogleFitLatestMeasurements,
+  readAppleHealthMeasurements,
+  readGoogleFitMeasurements,
 } from "../sources/index.js";
 import type { MeasurementSourceOption } from "../sources/index.js";
-import { appendSpreadsheetRow } from "../sheets/index.js";
+import { updateSpreadsheetMeasurements } from "../sheets/index.js";
+
+interface Logger {
+  log(message: string): void;
+  error(message: string): void;
+}
 
 export interface CollectMeasurementsOptions {
   readonly config: AppConfig;
@@ -31,6 +36,7 @@ export interface CollectMeasurementsOptions {
 
 export interface SyncMeasurementsOptions extends CollectMeasurementsOptions {
   readonly sheetsConfig?: GoogleSheetsAuthConfig;
+  readonly logger?: Logger;
 }
 
 export async function collectLatestMeasurementSet({
@@ -39,31 +45,125 @@ export async function collectLatestMeasurementSet({
   period,
   referenceTime = new Date(),
 }: CollectMeasurementsOptions): Promise<LatestMeasurementSet> {
+  const resolvedPeriod =
+    period ?? determineMeasurementPeriod(referenceTime, config.timeZone);
   const readings = await readLatestMeasurementsForSource(
     config,
     source,
     referenceTime,
   );
+  const windowedReadings = filterReadingsByPeriodWindow({
+    readings,
+    period: resolvedPeriod,
+    referenceTime,
+    timeZone: config.timeZone,
+  });
 
   return buildLatestMeasurementSet({
-    readings,
-    period: period ?? determineMeasurementPeriod(referenceTime, config.timeZone),
+    readings: windowedReadings,
+    period: resolvedPeriod,
     capturedAt: referenceTime.toISOString(),
   });
 }
 
 export async function syncMeasurements(
   options: SyncMeasurementsOptions,
-): Promise<SpreadsheetRow> {
+): Promise<SpreadsheetRow | undefined> {
+  const logger = options.logger ?? console;
   const latestSet = await collectLatestMeasurementSet(options);
+  if (!hasAnyMeasurementValue(latestSet)) {
+    logger.log(
+      `No ${latestSet.period} measurements found in the configured time window. Nothing was written.`,
+    );
+    return undefined;
+  }
+
   const row = toSpreadsheetRow(latestSet, options.config.timeZone);
 
-  await appendSpreadsheetRow(
-    options.sheetsConfig ?? requireGoogleSheetsConfig(options.config),
-    row,
-  );
+  const updated = await updateSpreadsheetMeasurements({
+    config:
+      options.sheetsConfig ?? requireGoogleSheetsConfig(options.config),
+    latestSet,
+    timeZone: options.config.timeZone,
+    logger,
+  });
 
-  return row;
+  return updated ? row : undefined;
+}
+
+export interface FilterReadingsByPeriodWindowOptions {
+  readonly readings: readonly MeasurementReading[];
+  readonly period: MeasurementPeriod;
+  readonly referenceTime: Date;
+  readonly timeZone: string;
+}
+
+export function filterReadingsByPeriodWindow({
+  readings,
+  period,
+  referenceTime,
+  timeZone,
+}: FilterReadingsByPeriodWindowOptions): MeasurementReading[] {
+  const targetDate = DateTime.fromJSDate(referenceTime, { zone: timeZone });
+  return readings.filter((reading) =>
+    isReadingInPeriodWindow(reading, period, targetDate, timeZone),
+  );
+}
+
+export function isReadingInPeriodWindow(
+  reading: MeasurementReading,
+  period: MeasurementPeriod,
+  targetDate: DateTime,
+  timeZone: string,
+): boolean {
+  const measuredAt = DateTime.fromISO(reading.measuredAt, {
+    zone: "utc",
+  }).setZone(timeZone);
+  if (!measuredAt.isValid || !measuredAt.hasSame(targetDate, "day")) {
+    return false;
+  }
+
+  const minutes = measuredAt.hour * 60 + measuredAt.minute;
+  const window = measurementPeriodWindowMinutes[period];
+  return minutes >= window.start && minutes <= window.end;
+}
+
+const measurementPeriodWindowMinutes = {
+  morning: {
+    start: 5 * 60,
+    end: 12 * 60,
+  },
+  evening: {
+    start: 20 * 60,
+    end: 23 * 60 + 30,
+  },
+} as const satisfies Record<
+  MeasurementPeriod,
+  { readonly start: number; readonly end: number }
+>;
+
+export function hasAnyMeasurementValue(latestSet: LatestMeasurementSet): boolean {
+  return (
+    latestSet.weightKg !== undefined ||
+    latestSet.bodyTemperatureCelsius !== undefined ||
+    latestSet.bloodPressureSystolicMmHg !== undefined ||
+    latestSet.bloodPressureDiastolicMmHg !== undefined ||
+    latestSet.pulseBpm !== undefined
+  );
+}
+
+export async function updateSpreadsheetMeasurementsForSet(
+  options: SyncMeasurementsOptions & {
+    readonly latestSet: LatestMeasurementSet;
+  },
+): Promise<boolean> {
+  return updateSpreadsheetMeasurements({
+    config:
+      options.sheetsConfig ?? requireGoogleSheetsConfig(options.config),
+    latestSet: options.latestSet,
+    timeZone: options.config.timeZone,
+    logger: options.logger ?? console,
+  });
 }
 
 export function buildLatestMeasurementSet({
@@ -159,13 +259,13 @@ export async function readLatestMeasurementsForSource(
   referenceTime: Date,
 ): Promise<MeasurementReading[]> {
   if (source === "google-fit") {
-    return readGoogleFitLatestMeasurements(
+    return readGoogleFitMeasurements(
       requireGoogleFitConfig(config),
       referenceTime,
     );
   }
 
-  return readAppleHealthLatestMeasurements(requireAppleHealthConfig(config));
+  return readAppleHealthMeasurements(requireAppleHealthConfig(config));
 }
 
 function numberField<Key extends keyof LatestMeasurementSet>(
