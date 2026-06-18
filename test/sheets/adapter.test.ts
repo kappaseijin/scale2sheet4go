@@ -42,6 +42,37 @@ describe("sheet adapter helpers", () => {
     });
   });
 
+  it("builds mappings from blood pressure headers with parentheses", () => {
+    const mapping = buildSheetColumnMapping([
+      "月日",
+      "朝体重",
+      "朝体温",
+      "朝血圧(上)",
+      "朝血圧(下)",
+      "朝脈拍",
+      "夜体重",
+      "夜体温",
+      "夜血圧(上)",
+      "夜血圧(下)",
+      "夜脈拍",
+    ]);
+
+    expect(mapping.periods.morning).toMatchObject({
+      weight: 1,
+      temperature: 2,
+      systolicBP: 3,
+      diastolicBP: 4,
+      heartRate: 5,
+    });
+    expect(mapping.periods.evening).toMatchObject({
+      weight: 6,
+      temperature: 7,
+      systolicBP: 8,
+      diastolicBP: 9,
+      heartRate: 10,
+    });
+  });
+
   it("finds today's row from supported date formats", () => {
     const targetDate = DateTime.fromISO("2026-06-18T07:00:00", {
       zone: "Asia/Tokyo",

@@ -288,11 +288,11 @@ function detectMeasurementField(
     return "temperature";
   }
 
-  if (header.includes("血圧上")) {
+  if (header.includes("血圧上") || header.includes("血圧(上)")) {
     return "systolicBP";
   }
 
-  if (header.includes("血圧下")) {
+  if (header.includes("血圧下") || header.includes("血圧(下)")) {
     return "diastolicBP";
   }
 
