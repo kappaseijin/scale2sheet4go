@@ -1,4 +1,5 @@
 import { Command, InvalidArgumentError } from "commander";
+import { DateTime } from "luxon";
 
 import {
   ConfigError,
@@ -40,12 +41,21 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
       "data source: google-fit or apple-health",
       parseSource,
     )
+    .option(
+      "--date <date>",
+      "target date in YYYY-MM-DD format, using TIME_ZONE",
+      parseDateOption,
+    )
     .action(async (options: RunCommandOptions) => {
       const config = loadConfig();
+      const referenceTime = options.date
+        ? referenceTimeForDate(options.date, config.timeZone)
+        : undefined;
       const row = await syncMeasurements({
         config,
         period: options.period,
         source: options.source,
+        ...(referenceTime ? { referenceTime } : {}),
       });
 
       console.log(row ? JSON.stringify(row) : "No spreadsheet row updated.");
@@ -81,6 +91,7 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
 interface RunCommandOptions {
   readonly period: MeasurementPeriod;
   readonly source: MeasurementSourceOption;
+  readonly date?: string;
 }
 
 interface ServeCommandOptions {
@@ -101,4 +112,29 @@ function parseSource(value: string): MeasurementSourceOption {
   }
 
   throw new InvalidArgumentError("source must be google-fit or apple-health");
+}
+
+export function parseDateOption(value: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new InvalidArgumentError("date must be YYYY-MM-DD");
+  }
+
+  const parsed = DateTime.fromFormat(value, "yyyy-MM-dd", { zone: "UTC" });
+  if (!parsed.isValid || parsed.toFormat("yyyy-MM-dd") !== value) {
+    throw new InvalidArgumentError("date must be a valid YYYY-MM-DD date");
+  }
+
+  return value;
+}
+
+export function referenceTimeForDate(value: string, timeZone: string): Date {
+  const referenceTime = DateTime.fromFormat(value, "yyyy-MM-dd", {
+    zone: timeZone,
+  }).endOf("day");
+
+  if (!referenceTime.isValid) {
+    throw new InvalidArgumentError("date must be a valid YYYY-MM-DD date");
+  }
+
+  return referenceTime.toJSDate();
 }
