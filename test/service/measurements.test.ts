@@ -1,14 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildLatestMeasurementSet,
+  collectLatestMeasurementSet,
   determineMeasurementPeriod,
   filterReadingsByPeriodWindow,
   toSpreadsheetRow,
 } from "../../src/service/index.js";
 import type { MeasurementReading } from "../../src/domain/index.js";
+import type { AppConfig } from "../../src/config/index.js";
+
+const tempDirs: string[] = [];
 
 describe("measurement service", () => {
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true })));
+  });
+
   it("determines morning and evening in the configured timezone", () => {
     expect(
       determineMeasurementPeriod(new Date("2026-06-17T23:00:00.000Z"), "Asia/Tokyo"),
@@ -103,5 +115,54 @@ describe("measurement service", () => {
       pulseBpm: 62,
       source: "apple_health_export",
     });
+  });
+
+  it("applies specified date and period windows to Apple Health readings", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scale2sheet-apple-health-"));
+    tempDirs.push(dir);
+    const exportPath = join(dir, "export.xml");
+
+    await writeFile(
+      exportPath,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<HealthData>
+  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" value="69.9" startDate="2026-06-17 07:00:00 +0900" endDate="2026-06-17 07:00:00 +0900" creationDate="2026-06-17 07:00:01 +0900"/>
+  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" value="70.1" startDate="2026-06-18 07:00:00 +0900" endDate="2026-06-18 07:00:00 +0900" creationDate="2026-06-18 07:00:01 +0900"/>
+  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" value="71.2" startDate="2026-06-18 21:00:00 +0900" endDate="2026-06-18 21:00:00 +0900" creationDate="2026-06-18 21:00:01 +0900"/>
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Watch" unit="count/min" value="62" startDate="2026-06-18 07:01:00 +0900" endDate="2026-06-18 07:01:00 +0900" creationDate="2026-06-18 07:01:01 +0900"/>
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Watch" unit="count/min" value="82" startDate="2026-06-18 21:01:00 +0900" endDate="2026-06-18 21:01:00 +0900" creationDate="2026-06-18 21:01:01 +0900"/>
+</HealthData>
+`,
+      "utf8",
+    );
+
+    const config: AppConfig = {
+      timeZone: "Asia/Tokyo",
+      appleHealth: {
+        exportXmlPath: exportPath,
+      },
+      scheduler: {
+        morningCron: "0 7 * * *",
+        eveningCron: "0 21 * * *",
+      },
+    };
+
+    const morning = await collectLatestMeasurementSet({
+      config,
+      source: "apple-health",
+      period: "morning",
+      referenceTime: new Date("2026-06-18T14:59:59.999Z"),
+    });
+    const evening = await collectLatestMeasurementSet({
+      config,
+      source: "apple-health",
+      period: "evening",
+      referenceTime: new Date("2026-06-18T14:59:59.999Z"),
+    });
+
+    expect(morning.weightKg).toBe(70.1);
+    expect(morning.pulseBpm).toBe(62);
+    expect(evening.weightKg).toBe(71.2);
+    expect(evening.pulseBpm).toBe(82);
   });
 });

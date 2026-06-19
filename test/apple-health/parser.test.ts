@@ -4,13 +4,42 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseAppleHealthLatestMeasurements } from "../../src/sources/apple-health/index.js";
+import {
+  parseAppleHealthLatestMeasurements,
+  parseAppleHealthMeasurements,
+} from "../../src/sources/apple-health/index.js";
 
 const tempDirs: string[] = [];
 
 describe("Apple Health parser", () => {
   afterEach(async () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true })));
+  });
+
+  it("extracts all supported measurements with timestamps from export.xml", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scale2sheet-apple-health-"));
+    tempDirs.push(dir);
+    const exportPath = join(dir, "export.xml");
+
+    await writeFile(
+      exportPath,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<HealthData>
+  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" value="70.1" startDate="2026-06-18 07:00:00 +0900" endDate="2026-06-18 07:00:00 +0900" creationDate="2026-06-18 07:00:01 +0900"/>
+  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Scale" unit="kg" value="70.3" startDate="2026-06-18 07:05:00 +0900" endDate="2026-06-18 07:05:00 +0900" creationDate="2026-06-18 07:05:01 +0900"/>
+</HealthData>
+`,
+      "utf8",
+    );
+
+    const readings = await parseAppleHealthMeasurements(exportPath);
+
+    expect(readings).toHaveLength(2);
+    expect(readings.map((reading) => reading.value)).toEqual([70.1, 70.3]);
+    expect(readings.map((reading) => reading.measuredAt)).toEqual([
+      "2026-06-17T22:00:00.000Z",
+      "2026-06-17T22:05:00.000Z",
+    ]);
   });
 
   it("extracts the latest supported measurements from export.xml", async () => {
