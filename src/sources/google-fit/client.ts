@@ -57,29 +57,12 @@ const googleFitQueries: readonly GoogleFitQuery[] = [
   },
 ];
 
-export async function readGoogleFitLatestMeasurements(
-  config: GoogleFitAuthConfig,
-  referenceTime: Date = new Date(),
-): Promise<MeasurementReading[]> {
-  return latestByKind(await readGoogleFitMeasurements(config, referenceTime));
-}
-
 export async function readGoogleFitMeasurements(
   config: GoogleFitAuthConfig,
   referenceTime: Date = new Date(),
 ): Promise<MeasurementReading[]> {
   const auth = await loadGoogleFitOAuthClient(config);
   return readGoogleFitMeasurementsWithAuth(config, auth, referenceTime);
-}
-
-export async function readGoogleFitLatestMeasurementsWithAuth(
-  config: Pick<GoogleFitAuthConfig, "lookbackDays">,
-  auth: GoogleFitOAuthClient,
-  referenceTime: Date = new Date(),
-): Promise<MeasurementReading[]> {
-  return latestByKind(
-    await readGoogleFitMeasurementsWithAuth(config, auth, referenceTime),
-  );
 }
 
 export async function readGoogleFitMeasurementsWithAuth(
@@ -118,24 +101,6 @@ export async function readGoogleFitMeasurementsWithAuth(
   }
 
   return readings;
-}
-
-function latestByKind(
-  readings: readonly MeasurementReading[],
-): MeasurementReading[] {
-  const latestByKind = new Map<MeasurementKind, MeasurementReading>();
-
-  for (const reading of readings) {
-    const current = latestByKind.get(reading.kind);
-    if (
-      !current ||
-      Date.parse(reading.measuredAt) > Date.parse(current.measuredAt)
-    ) {
-      latestByKind.set(reading.kind, reading);
-    }
-  }
-
-  return [...latestByKind.values()];
 }
 
 async function readDataPointsForDataType(

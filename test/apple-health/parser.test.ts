@@ -4,10 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  parseAppleHealthLatestMeasurements,
-  parseAppleHealthMeasurements,
-} from "../../src/sources/apple-health/index.js";
+import { latestByKind } from "../../src/domain/index.js";
+import { parseAppleHealthMeasurements } from "../../src/sources/apple-health/index.js";
 
 const tempDirs: string[] = [];
 
@@ -62,16 +60,14 @@ describe("Apple Health parser", () => {
       "utf8",
     );
 
-    const readings = await parseAppleHealthLatestMeasurements(exportPath);
-    const byKind = Object.fromEntries(
-      readings.map((reading) => [reading.kind, reading]),
-    );
+    const readings = await parseAppleHealthMeasurements(exportPath);
+    const byKind = latestByKind(readings);
 
-    expect(byKind.weight?.value).toBe(70.3);
-    expect(byKind.body_temperature?.value).toBeCloseTo(37);
-    expect(byKind.blood_pressure_systolic?.value).toBe(121);
-    expect(byKind.blood_pressure_diastolic?.value).toBe(78);
-    expect(byKind.pulse?.value).toBe(64);
-    expect(byKind.weight?.source).toBe("apple_health_export");
+    expect(byKind.get("weight")?.value).toBe(70.3);
+    expect(byKind.get("body_temperature")?.value).toBeCloseTo(37);
+    expect(byKind.get("blood_pressure_systolic")?.value).toBe(121);
+    expect(byKind.get("blood_pressure_diastolic")?.value).toBe(78);
+    expect(byKind.get("pulse")?.value).toBe(64);
+    expect(byKind.get("weight")?.source).toBe("apple_health_export");
   });
 });

@@ -63,3 +63,21 @@ export interface SpreadsheetRow {
   readonly pulseBpm: number | "";
   readonly source: MeasurementSource;
 }
+
+export function latestByKind(
+  readings: readonly MeasurementReading[],
+): Map<MeasurementKind, MeasurementReading> {
+  const latestMap = new Map<MeasurementKind, MeasurementReading>();
+
+  for (const reading of readings) {
+    const current = latestMap.get(reading.kind);
+    if (
+      !current ||
+      Date.parse(reading.measuredAt) > Date.parse(current.measuredAt)
+    ) {
+      latestMap.set(reading.kind, reading);
+    }
+  }
+
+  return latestMap;
+}

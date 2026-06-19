@@ -8,13 +8,12 @@ import {
 } from "../config/index.js";
 import type {
   LatestMeasurementSet,
-  MeasurementKind,
   MeasurementPeriod,
   MeasurementReading,
   MeasurementSource,
   SpreadsheetRow,
 } from "../domain/index.js";
-import { measurementPeriodLabels } from "../domain/index.js";
+import { latestByKind, measurementPeriodLabels } from "../domain/index.js";
 import {
   readAppleHealthMeasurements,
   readGoogleFitMeasurements,
@@ -152,20 +151,6 @@ export function hasAnyMeasurementValue(latestSet: LatestMeasurementSet): boolean
   );
 }
 
-export async function updateSpreadsheetMeasurementsForSet(
-  options: SyncMeasurementsOptions & {
-    readonly latestSet: LatestMeasurementSet;
-  },
-): Promise<boolean> {
-  return updateSpreadsheetMeasurements({
-    config:
-      options.sheetsConfig ?? requireGoogleSheetsConfig(options.config),
-    latestSet: options.latestSet,
-    timeZone: options.config.timeZone,
-    logger: options.logger ?? console,
-  });
-}
-
 export function buildLatestMeasurementSet({
   readings,
   period,
@@ -175,22 +160,12 @@ export function buildLatestMeasurementSet({
   readonly period: MeasurementPeriod;
   readonly capturedAt: string;
 }): LatestMeasurementSet {
-  const latestByKind = new Map<MeasurementKind, MeasurementReading>();
-
-  for (const reading of readings) {
-    const current = latestByKind.get(reading.kind);
-    if (
-      !current ||
-      Date.parse(reading.measuredAt) > Date.parse(current.measuredAt)
-    ) {
-      latestByKind.set(reading.kind, reading);
-    }
-  }
+  const latestReadings = latestByKind(readings);
 
   const sources = new Set<Exclude<MeasurementSource, "mixed">>();
   const sourcesByKind: LatestMeasurementSet["sourcesByKind"] = {};
 
-  for (const [kind, reading] of latestByKind) {
+  for (const [kind, reading] of latestReadings) {
     sources.add(reading.source);
     sourcesByKind[kind] = reading.source;
   }
@@ -207,20 +182,20 @@ export function buildLatestMeasurementSet({
     capturedAt,
     source,
     sourcesByKind,
-    ...numberField("weightKg", latestByKind.get("weight")),
+    ...numberField("weightKg", latestReadings.get("weight")),
     ...numberField(
       "bodyTemperatureCelsius",
-      latestByKind.get("body_temperature"),
+      latestReadings.get("body_temperature"),
     ),
     ...numberField(
       "bloodPressureSystolicMmHg",
-      latestByKind.get("blood_pressure_systolic"),
+      latestReadings.get("blood_pressure_systolic"),
     ),
     ...numberField(
       "bloodPressureDiastolicMmHg",
-      latestByKind.get("blood_pressure_diastolic"),
+      latestReadings.get("blood_pressure_diastolic"),
     ),
-    ...numberField("pulseBpm", latestByKind.get("pulse")),
+    ...numberField("pulseBpm", latestReadings.get("pulse")),
   };
 }
 

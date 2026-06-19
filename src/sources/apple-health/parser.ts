@@ -20,22 +20,10 @@ const appleHealthTypeToKind = {
 
 type AppleHealthIdentifier = keyof typeof appleHealthTypeToKind;
 
-export async function readAppleHealthLatestMeasurements(
-  config: AppleHealthConfig,
-): Promise<MeasurementReading[]> {
-  return latestByKind(await parseAppleHealthMeasurements(config.exportXmlPath));
-}
-
 export async function readAppleHealthMeasurements(
   config: AppleHealthConfig,
 ): Promise<MeasurementReading[]> {
   return parseAppleHealthMeasurements(config.exportXmlPath);
-}
-
-export async function parseAppleHealthLatestMeasurements(
-  exportXmlPath: string,
-): Promise<MeasurementReading[]> {
-  return latestByKind(await parseAppleHealthMeasurements(exportXmlPath));
 }
 
 export async function parseAppleHealthMeasurements(
@@ -72,24 +60,6 @@ export async function parseAppleHealthMeasurements(
   });
 
   return readings;
-}
-
-function latestByKind(
-  readings: readonly MeasurementReading[],
-): MeasurementReading[] {
-  const latestByKind = new Map<MeasurementKind, MeasurementReading>();
-
-  for (const reading of readings) {
-    const current = latestByKind.get(reading.kind);
-    if (
-      !current ||
-      Date.parse(reading.measuredAt) > Date.parse(current.measuredAt)
-    ) {
-      latestByKind.set(reading.kind, reading);
-    }
-  }
-
-  return [...latestByKind.values()];
 }
 
 function recordToReading(
