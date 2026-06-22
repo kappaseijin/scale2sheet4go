@@ -81,3 +81,94 @@ export function latestByKind(
 
   return latestMap;
 }
+
+export function selectWeightByPeriod(
+  readings: readonly MeasurementReading[],
+  period: MeasurementPeriod,
+): MeasurementReading | undefined {
+  let selected: MeasurementReading | undefined;
+
+  for (const reading of readings) {
+    if (reading.kind !== "weight") {
+      continue;
+    }
+
+    if (
+      !selected ||
+      shouldReplaceWeight(reading, selected, period)
+    ) {
+      selected = reading;
+    }
+  }
+
+  return selected;
+}
+
+export function selectReadingsByWeightAnchor(
+  readings: readonly MeasurementReading[],
+  period: MeasurementPeriod,
+): Map<MeasurementKind, MeasurementReading> {
+  const selectedWeight = selectWeightByPeriod(readings, period);
+  const selectedReadings = new Map<MeasurementKind, MeasurementReading>();
+
+  if (!selectedWeight) {
+    return selectedReadings;
+  }
+
+  selectedReadings.set("weight", selectedWeight);
+
+  for (const kind of measurementKinds) {
+    if (kind === "weight") {
+      continue;
+    }
+
+    const closest = selectClosestToReference(
+      readings,
+      kind,
+      selectedWeight.measuredAt,
+    );
+    if (closest) {
+      selectedReadings.set(kind, closest);
+    }
+  }
+
+  return selectedReadings;
+}
+
+function selectClosestToReference(
+  readings: readonly MeasurementReading[],
+  kind: MeasurementKind,
+  referenceTime: string,
+): MeasurementReading | undefined {
+  let selected: MeasurementReading | undefined;
+  const referenceMs = Date.parse(referenceTime);
+
+  for (const reading of readings) {
+    if (reading.kind !== kind) {
+      continue;
+    }
+
+    if (
+      !selected ||
+      Math.abs(Date.parse(reading.measuredAt) - referenceMs) <
+        Math.abs(Date.parse(selected.measuredAt) - referenceMs)
+    ) {
+      selected = reading;
+    }
+  }
+
+  return selected;
+}
+
+function shouldReplaceWeight(
+  candidate: MeasurementReading,
+  current: MeasurementReading,
+  period: MeasurementPeriod,
+): boolean {
+  const candidateMs = Date.parse(candidate.measuredAt);
+  const currentMs = Date.parse(current.measuredAt);
+
+  return period === "morning"
+    ? candidateMs < currentMs
+    : candidateMs > currentMs;
+}
