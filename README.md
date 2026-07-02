@@ -97,3 +97,26 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+## launchd による日次自動実行
+
+`scripts/run-pipeline.sh` が「scale_exporter でエクスポート → scale2sheet で転記」を1回分実行します。launchd で朝 07:00 と夜 21:00 に起動します。
+
+| ファイル | 役割 |
+| --- | --- |
+| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（exporter → run --period） |
+| `scripts/launchd/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 実行 |
+| `scripts/launchd/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 実行 |
+
+インストール:
+
+```sh
+npm run build
+cp scripts/launchd/*.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
+```
+
+ログは `~/Library/Logs/scale-pipeline/` に出力されます。Apple Health ソースは HealthKit 署名後に `run-pipeline.sh` のコメントアウトを外して有効化してください。停止は `launchctl bootout gui/$(id -u)/jp.seijin.kappa.scale-pipeline.morning`（evening も同様）。
+
+注意: 常駐モード（`serve`）と併用すると二重書き込みになるため、launchd 運用時は `serve` を起動しないでください。
