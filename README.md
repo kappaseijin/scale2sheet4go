@@ -1,6 +1,27 @@
+---
+type: Readme
+title: scale2sheet (cale2sheet)
+description: 朝・夜の身体測定値を Google スプレッドシートへ転記する TypeScript サービス
+tags:
+  - typescript
+  - google-sheets
+  - health
+timestamp: "2026-07-02"
+---
+
 # scale2sheet
 
-朝・夜の身体測定値を Google Fit または Apple Health XML エクスポートから取得し、Google Spreadsheet の当日行へ転記する TypeScript サービスです。Node.js/TypeScript のみで動作し、OS 固有 API、ネイティブバインディング、LLM、外部推論サービスは使いません。
+朝・夜の身体測定値を Google Spreadsheet の当日行へ転記する TypeScript サービスです。Node.js（>= 22）のみで動作し、OS 固有 API、ネイティブバインディング、LLM、外部推論サービスは使いません。
+
+パッケージ名 `cale2sheet` は既存の Google Cloud サービス名（変更不可）に合わせた意図的な表記です。
+
+## データフロー
+
+```text
+[scale_exporter] --JSONL出力--> ~/Documents/scale_exporter/ --読込--> [scale2sheet] --> Google スプレッドシート
+```
+
+デフォルトのデータソースは `scale-exporter`（[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した分割 JSONL ファイルの読み込み）です。Google Fit REST API 直接取得（`--source google-fit`）も残っていますが、同 API は 2026 年末で終了するため非推奨です。launchd による朝 07:00 / 夜 21:00 の自動実行に対応します（後述）。
 
 ## 対応データ
 
