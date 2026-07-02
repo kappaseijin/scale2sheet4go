@@ -34,6 +34,7 @@ GOOGLE_FIT_REDIRECT_URI=http://localhost:3000/oauth2callback
 GOOGLE_FIT_TOKEN_PATH=.scale2sheet/google-fit-token.json
 GOOGLE_FIT_LOOKBACK_DAYS=14
 APPLE_HEALTH_EXPORT_XML=/path/to/export.xml
+SCALE_EXPORTER_OUTPUT_DIR=~/Documents/scale_exporter
 MORNING_CRON=0 7 * * *
 EVENING_CRON=0 21 * * *
 ```
@@ -57,7 +58,13 @@ node dist/index.js auth
 
 ## 手動実行
 
-Google Fitから朝の列を更新します。
+既定のsourceは `scale-exporter`（scale_exporter の出力JSONLファイルを読み込み）です。朝の列を更新します。
+
+```sh
+node dist/index.js run --period morning
+```
+
+Google Fit REST APIから直接取得する場合（非推奨: 2026年末でAPI終了。docs/architecture.md 参照）:
 
 ```sh
 node dist/index.js run --period morning --source google-fit
@@ -71,13 +78,13 @@ node dist/index.js run --period evening --source apple-health
 
 ## 常駐実行
 
-既定ではGoogle Fitをsourceにして、`MORNING_CRON` と `EVENING_CRON` で実行します。
+既定では `scale-exporter` をsourceにして、`MORNING_CRON` と `EVENING_CRON` で実行します。
 
 ```sh
 node dist/index.js serve
 ```
 
-Apple Health XMLをsourceにする場合:
+別のsourceにする場合:
 
 ```sh
 node dist/index.js serve --source apple-health
@@ -90,3 +97,26 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+## launchd による日次自動実行
+
+`scripts/run-pipeline.sh` が「scale_exporter でエクスポート → scale2sheet で転記」を1回分実行します。launchd で朝 07:00 と夜 21:00 に起動します。
+
+| ファイル | 役割 |
+| --- | --- |
+| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（exporter → run --period） |
+| `scripts/launchd/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 実行 |
+| `scripts/launchd/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 実行 |
+
+インストール:
+
+```sh
+npm run build
+cp scripts/launchd/*.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
+```
+
+ログは `~/Library/Logs/scale-pipeline/` に出力されます。Apple Health ソースは HealthKit 署名後に `run-pipeline.sh` のコメントアウトを外して有効化してください。停止は `launchctl bootout gui/$(id -u)/jp.seijin.kappa.scale-pipeline.morning`（evening も同様）。
+
+注意: 常駐モード（`serve`）と併用すると二重書き込みになるため、launchd 運用時は `serve` を起動しないでください。

@@ -1,5 +1,8 @@
 import "dotenv/config";
 
+import os from "node:os";
+import path from "node:path";
+
 import { z } from "zod";
 
 export const defaultGoogleSheetId =
@@ -47,6 +50,7 @@ export const envSchema = z.object({
     .default(".scale2sheet/google-fit-token.json"),
   GOOGLE_FIT_LOOKBACK_DAYS: positiveIntegerFromString.default(14),
   APPLE_HEALTH_EXPORT_XML: optionalString,
+  SCALE_EXPORTER_OUTPUT_DIR: defaultedString("~/Documents/scale_exporter"),
   MORNING_CRON: z.string().trim().min(1).default("0 7 * * *"),
   EVENING_CRON: z.string().trim().min(1).default("0 21 * * *"),
 });
@@ -71,6 +75,10 @@ export interface AppleHealthConfig {
   readonly exportXmlPath: string;
 }
 
+export interface ScaleExporterConfig {
+  readonly outputDir: string;
+}
+
 export interface SchedulerConfig {
   readonly morningCron: string;
   readonly eveningCron: string;
@@ -81,12 +89,23 @@ export interface AppConfig {
   readonly googleFit?: GoogleFitAuthConfig;
   readonly googleSheets?: GoogleSheetsAuthConfig;
   readonly appleHealth?: AppleHealthConfig;
+  readonly scaleExporter: ScaleExporterConfig;
   readonly scheduler: SchedulerConfig;
 }
 
 type MutableAppConfig = {
   -readonly [Key in keyof AppConfig]: AppConfig[Key];
 };
+
+export function expandHomePath(value: string): string {
+  if (value === "~") {
+    return os.homedir();
+  }
+  if (value.startsWith("~/")) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return value;
+}
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -99,6 +118,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse(env);
   const config: MutableAppConfig = {
     timeZone: parsed.TIME_ZONE,
+    scaleExporter: {
+      outputDir: expandHomePath(parsed.SCALE_EXPORTER_OUTPUT_DIR),
+    },
     scheduler: {
       morningCron: parsed.MORNING_CRON,
       eveningCron: parsed.EVENING_CRON,

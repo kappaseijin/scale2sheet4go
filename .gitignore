@@ -11,3 +11,11 @@ logs/
 data/
 tmp/
 .scale2sheet/
+
+# dotfiles (tracked exceptions listed below)
+.*
+!.gitignore
+!.env.example
+
+# anything ending in .bak
+*.bak

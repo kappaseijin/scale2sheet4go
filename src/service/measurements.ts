@@ -13,10 +13,14 @@ import type {
   MeasurementSource,
   SpreadsheetRow,
 } from "../domain/index.js";
-import { latestByKind, measurementPeriodLabels } from "../domain/index.js";
+import {
+  measurementPeriodLabels,
+  selectReadingsByWeightAnchor,
+} from "../domain/index.js";
 import {
   readAppleHealthMeasurements,
   readGoogleFitMeasurements,
+  readScaleExporterMeasurements,
 } from "../sources/index.js";
 import type { MeasurementSourceOption } from "../sources/index.js";
 import { updateSpreadsheetMeasurements } from "../sheets/index.js";
@@ -72,7 +76,7 @@ export async function syncMeasurements(
   const latestSet = await collectLatestMeasurementSet(options);
   if (!hasAnyMeasurementValue(latestSet)) {
     logger.log(
-      `No ${latestSet.period} measurements found in the configured time window. Nothing was written.`,
+      `No ${latestSet.period} weight measurement found in the configured time window. Nothing was written.`,
     );
     return undefined;
   }
@@ -142,13 +146,7 @@ const measurementPeriodWindowMinutes = {
 >;
 
 export function hasAnyMeasurementValue(latestSet: LatestMeasurementSet): boolean {
-  return (
-    latestSet.weightKg !== undefined ||
-    latestSet.bodyTemperatureCelsius !== undefined ||
-    latestSet.bloodPressureSystolicMmHg !== undefined ||
-    latestSet.bloodPressureDiastolicMmHg !== undefined ||
-    latestSet.pulseBpm !== undefined
-  );
+  return latestSet.weightKg !== undefined;
 }
 
 export function buildLatestMeasurementSet({
@@ -160,7 +158,8 @@ export function buildLatestMeasurementSet({
   readonly period: MeasurementPeriod;
   readonly capturedAt: string;
 }): LatestMeasurementSet {
-  const latestReadings = latestByKind(readings);
+  const latestReadings = selectReadingsByWeightAnchor(readings, period);
+  const weightReading = latestReadings.get("weight");
 
   const sources = new Set<Exclude<MeasurementSource, "mixed">>();
   const sourcesByKind: LatestMeasurementSet["sourcesByKind"] = {};
@@ -179,7 +178,7 @@ export function buildLatestMeasurementSet({
 
   return {
     period,
-    capturedAt,
+    capturedAt: weightReading?.measuredAt ?? capturedAt,
     source,
     sourcesByKind,
     ...numberField("weightKg", latestReadings.get("weight")),
@@ -233,6 +232,14 @@ export async function readLatestMeasurementsForSource(
   source: MeasurementSourceOption,
   referenceTime: Date,
 ): Promise<MeasurementReading[]> {
+  if (source === "scale-exporter") {
+    return readScaleExporterMeasurements(
+      config.scaleExporter,
+      referenceTime,
+      config.timeZone,
+    );
+  }
+
   if (source === "google-fit") {
     return readGoogleFitMeasurements(
       requireGoogleFitConfig(config),

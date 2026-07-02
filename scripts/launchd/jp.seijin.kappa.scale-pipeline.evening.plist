@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>jp.seijin.kappa.scale-pipeline.evening</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/kappa/Dropbox/data/dev/scale2sheet/scripts/run-pipeline.sh</string>
+        <string>evening</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>21</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/kappa/Library/Logs/scale-pipeline/evening.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kappa/Library/Logs/scale-pipeline/evening.err.log</string>
+</dict>
+</plist>

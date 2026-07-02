@@ -2,7 +2,7 @@
 
 ## 目的
 
-scale2sheet は、朝・夜の身体測定値を Google Fit REST API または Apple Health XML エクスポートから取得し、Google Spreadsheet の既存当日行へ転記する TypeScript サービスである。Node.js 上で完結し、OS 固有 API、ネイティブバインディング、LLM、外部推論サービスは使わない。
+scale2sheet は、朝・夜の身体測定値を scale_exporter の出力 JSONL ファイル（推奨・デフォルト）、Google Fit REST API、または Apple Health XML エクスポートから取得し、Google Spreadsheet の既存当日行へ転記する TypeScript サービスである。Node.js 上で完結し、OS 固有 API、ネイティブバインディング、LLM、外部推論サービスは使わない。
 
 ## 対象データ
 
@@ -51,7 +51,10 @@ scale2sheet/
 - `domain`
   - 測定値、単位、ソース、Spreadsheet 行の型を定義する。
   - Google Fit と Apple Health の差分を吸収する正規化後モデルを持つ。
-- `sources/google-fit`
+- `sources/scale-exporter`（2026-07-02 追加・デフォルト）
+  - scale_exporter が出力した当日分の JSONL ファイル群を読み、domain model へ変換する。
+  - 詳細は「scale_exporter ファイル入力」を参照。
+- `sources/google-fit`（非推奨: Google Fit API は 2026 年末で終了。scale_exporter/GOOGLE_FIT_MIGRATION.md 参照）
   - OAuth 認可済みクライアントを使って Google Fit REST API から期間内の data point を取得する。
   - Google Fit 固有の data type name を domain model へ変換する。
 - `sources/apple-health`
@@ -64,6 +67,8 @@ scale2sheet/
 - `service`
   - 朝・夜の対象時間帯を決め、各 source から最新値を集約し、Spreadsheet row を組み立てる。
   - 朝は `05:00` から `12:00`、夜は `20:00` から `23:30` の測定値だけを採用する。
+  - 期間内の体重を必須アンカーとし、朝は最も早い体重、夜は最も遅い体重を採用する。体重がない場合は Spreadsheet へ転記しない。
+  - 体温、血圧上、血圧下、脈拍は、採用した体重の測定時刻に最も近い同種別レコードを採用する。Spreadsheet row の日時も採用体重の `measuredAt` を使う。
   - source が混在した場合は `sources` の内訳を保持し、行の `ソース` は `mixed` とする。
 - `scheduler`
   - `node-cron` で朝・夜の実行時刻を登録する。
@@ -138,3 +143,34 @@ OAuth の扱いは Ph.2 で確定する。Google Fit は個人 health data の�
 5. `sheets` で append を実装する。
 6. `cli` と `scheduler` を接続する。
 7. domain と source parser からテストを追加する。
+
+## scale_exporter ファイル入力（2026-07-02 追加）
+
+Google Fit REST API の廃止（2026 年末）に伴い、API 直接取得に代えて scale_exporter の出力ファイルを入力とする。`--source scale-exporter` がデフォルト。
+
+### 入力仕様
+
+- 読み込み先: `SCALE_EXPORTER_OUTPUT_DIR`（デフォルト `~/Documents/scale_exporter`、`~` は展開する）
+- 対象ファイル: `scale_exporter_{YYYY-MM-DD}_{apple-health|google-fit}_{seq}.jsonl`
+  - 対象日は referenceTime を `TIME_ZONE` で解釈した日付
+  - 両ソース・全連番（`_001` 以降すべて）を読む。1 ファイル最大 100 件で分割されている
+- 行形式: `{"measuredAt": ISO8601, "kind", "value", "unit", "source"}`
+
+### 変換規則
+
+| exporter kind | domain kind | exporter source | domain source |
+| --- | --- | --- | --- |
+| `weight` | `weight` | `apple_health` | `apple_health_export` |
+| `bodyTemperature` | `body_temperature` | `google_fit` | `google_fit` |
+| `bloodPressureSystolic` | `blood_pressure_systolic` | | |
+| `bloodPressureDiastolic` | `blood_pressure_diastolic` | | |
+| `heartRate` | `pulse` | | |
+
+単位（kg / celsius / mmHg / bpm）は同名のまま。
+
+### 動作規則
+
+- 連番ファイル境界の重複に備え、(measuredAt, kind, value, source) 完全一致で重複除去する
+- ディレクトリ不存在・対象日のファイルなし → 空配列を返す（service 側が「体重なし」として転記しない）
+- 不正な JSON 行・スキーマ違反 → ファイル名と行番号つきでエラーにする（黙って捨てない）
+- 朝・夜の時間帯フィルタと体重アンカー選択は従来の service ロジックをそのまま使う
