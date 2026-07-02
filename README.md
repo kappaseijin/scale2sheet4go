@@ -37,28 +37,35 @@ Spreadsheet は既存行を更新します。1行目の `月日` 列で当日行
 
 ## セットアップ
 
+設定は scale_exporter と同じ `~/.config/scale2sheet/` 構造が標準です（詳細: docs/architecture.md「設定ファイル構造」）。
+
 ```sh
 npm install
-cp .env.example .env
+npm run build
+node dist/index.js run --period morning   # 初回実行で settings.json が自動生成される
 ```
 
-`.env` を編集します。
+`~/.config/scale2sheet/settings.json`（非シークレット・自動生成後に編集）:
 
-```text
-TIME_ZONE=Asia/Tokyo
-GOOGLE_SHEET_ID=163Lc0YeN5ZnGeXdYqx6T_JGSMa91kpvfpoODjF7q8C0
-GOOGLE_SHEET_NAME=体温・血圧
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-GOOGLE_FIT_CLIENT_ID=...
-GOOGLE_FIT_CLIENT_SECRET=...
-GOOGLE_FIT_REDIRECT_URI=http://localhost:3000/oauth2callback
-GOOGLE_FIT_TOKEN_PATH=.scale2sheet/google-fit-token.json
-GOOGLE_FIT_LOOKBACK_DAYS=14
-APPLE_HEALTH_EXPORT_XML=/path/to/export.xml
-SCALE_EXPORTER_OUTPUT_DIR=~/Documents/scale_exporter
-MORNING_CRON=0 7 * * *
-EVENING_CRON=0 21 * * *
+```json
+{
+  "time-zone": "Asia/Tokyo",
+  "source": "scale-exporter",
+  "sheet-id": "<スプレッドシートID>",
+  "sheet-name": "体温・血圧",
+  "sheets-credentials": "~/.config/scale2sheet/google-sheets-service-account.json",
+  "scale-exporter-output-dir": "~/Documents/scale_exporter",
+  "morning-cron": "0 7 * * *",
+  "evening-cron": "0 21 * * *"
+}
 ```
+
+認証ファイル（シークレット・手動配置）:
+
+- `~/.config/scale2sheet/google-sheets-service-account.json` — Google Sheets 用サービスアカウント鍵
+- `~/.config/scale2sheet/google-fit-credentials.json` — Google Fit 利用時のみ。`{"client_id": "...", "client_secret": "..."}`（scale_exporter と同形式）
+
+環境変数（`.env` 含む）は settings.json への**上書き**として引き続き使えます（変数名は `.env.example` 参照）。優先順位: 環境変数 > settings.json > 既定値。
 
 Google Sheets は service account を使います。対象Spreadsheetをservice accountのメールアドレスに共有してください。
 

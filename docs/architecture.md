@@ -174,3 +174,42 @@ Google Fit REST API の廃止（2026 年末）に伴い、API 直接取得に代
 - ディレクトリ不存在・対象日のファイルなし → 空配列を返す（service 側が「体重なし」として転記しない）
 - 不正な JSON 行・スキーマ違反 → ファイル名と行番号つきでエラーにする（黙って捨てない）
 - 朝・夜の時間帯フィルタと体重アンカー選択は従来の service ロジックをそのまま使う
+
+## 設定ファイル構造（2026-07-02 改定・scale_exporter 標準に統一）
+
+設定は scale_exporter と同じ `~/.config/<アプリ名>/` 構造を標準とする。`.env` / 環境変数は上書き用として残る（優先順位: 環境変数 > settings.json > 既定値）。
+
+### `~/.config/scale2sheet/settings.json`（非シークレット設定・初回実行時に自動生成）
+
+```json
+{
+  "time-zone": "Asia/Tokyo",
+  "source": "scale-exporter",
+  "sheet-id": "<スプレッドシートID>",
+  "sheet-name": "体温・血圧",
+  "sheets-credentials": "~/.config/scale2sheet/google-sheets-service-account.json",
+  "scale-exporter-output-dir": "~/Documents/scale_exporter",
+  "morning-cron": "0 7 * * *",
+  "evening-cron": "0 21 * * *"
+}
+```
+
+- キーは scale_exporter の settings.json と同じ kebab-case
+- `source` は CLI `--source` 省略時の既定値になる
+- パス値の先頭 `~` は展開する
+
+### 認証ファイル（シークレット・自動生成しない）
+
+| ファイル | 内容 |
+| --- | --- |
+| `~/.config/scale2sheet/google-sheets-service-account.json` | Google Sheets 用サービスアカウント鍵（`sheets-credentials` で場所変更可） |
+| `~/.config/scale2sheet/google-fit-credentials.json` | Google Fit OAuth クライアント（`client_id` / `client_secret` / 任意 `redirect_uri`。scale_exporter と同形式） |
+| `~/.config/scale2sheet/google-fit-token.json` | Google Fit トークン（`GOOGLE_FIT_TOKEN_PATH` で変更可） |
+
+### 優先順位と後方互換
+
+1. 環境変数（`.env` 含む）が最優先 — 既存の運用はそのまま動く
+2. settings.json
+3. 組み込み既定値
+
+`GOOGLE_FIT_CLIENT_ID` / `GOOGLE_FIT_CLIENT_SECRET` が環境変数に無い場合は `google-fit-credentials.json` から読む。

@@ -38,9 +38,8 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     )
     .option(
       "--source <source>",
-      "data source: scale-exporter, google-fit or apple-health",
+      "data source: scale-exporter, google-fit or apple-health (default: settings.json の source)",
       parseSource,
-      "scale-exporter",
     )
     .option(
       "--date <date>",
@@ -55,7 +54,7 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
       const row = await syncMeasurements({
         config,
         period: options.period,
-        source: options.source,
+        source: options.source ?? config.defaultSource,
         ...(referenceTime ? { referenceTime } : {}),
       });
 
@@ -67,13 +66,12 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     .description("Run morning/evening sync on MORNING_CRON and EVENING_CRON.")
     .option(
       "--source <source>",
-      "data source: scale-exporter, google-fit or apple-health",
+      "data source: scale-exporter, google-fit or apple-health (default: settings.json の source)",
       parseSource,
-      "scale-exporter",
     )
     .action((options: ServeCommandOptions) => {
       const config = loadConfig();
-      startScheduler({ config, source: options.source });
+      startScheduler({ config, source: options.source ?? config.defaultSource });
     });
 
   try {
@@ -91,12 +89,12 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
 
 interface RunCommandOptions {
   readonly period: MeasurementPeriod;
-  readonly source: MeasurementSourceOption;
+  readonly source?: MeasurementSourceOption;
   readonly date?: string;
 }
 
 interface ServeCommandOptions {
-  readonly source: MeasurementSourceOption;
+  readonly source?: MeasurementSourceOption;
 }
 
 function parsePeriod(value: string): MeasurementPeriod {
