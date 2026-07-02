@@ -245,6 +245,9 @@ describe("measurement service", () => {
       appleHealth: {
         exportXmlPath: exportPath,
       },
+      scaleExporter: {
+        outputDir: dir,
+      },
       scheduler: {
         morningCron: "0 7 * * *",
         eveningCron: "0 21 * * *",
@@ -290,6 +293,9 @@ describe("measurement service", () => {
       timeZone: "Asia/Tokyo",
       appleHealth: {
         exportXmlPath: exportPath,
+      },
+      scaleExporter: {
+        outputDir: dir,
       },
       scheduler: {
         morningCron: "0 7 * * *",
