@@ -20,6 +20,7 @@ import {
 import {
   readAppleHealthMeasurements,
   readGoogleFitMeasurements,
+  readScaleExporterMeasurements,
 } from "../sources/index.js";
 import type { MeasurementSourceOption } from "../sources/index.js";
 import { updateSpreadsheetMeasurements } from "../sheets/index.js";
@@ -231,6 +232,14 @@ export async function readLatestMeasurementsForSource(
   source: MeasurementSourceOption,
   referenceTime: Date,
 ): Promise<MeasurementReading[]> {
+  if (source === "scale-exporter") {
+    return readScaleExporterMeasurements(
+      config.scaleExporter,
+      referenceTime,
+      config.timeZone,
+    );
+  }
+
   if (source === "google-fit") {
     return readGoogleFitMeasurements(
       requireGoogleFitConfig(config),
