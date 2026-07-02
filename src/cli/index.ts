@@ -36,10 +36,11 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
       "measurement period: morning or evening",
       parsePeriod,
     )
-    .requiredOption(
+    .option(
       "--source <source>",
-      "data source: google-fit or apple-health",
+      "data source: scale-exporter, google-fit or apple-health",
       parseSource,
+      "scale-exporter",
     )
     .option(
       "--date <date>",
@@ -66,9 +67,9 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     .description("Run morning/evening sync on MORNING_CRON and EVENING_CRON.")
     .option(
       "--source <source>",
-      "data source: google-fit or apple-health",
+      "data source: scale-exporter, google-fit or apple-health",
       parseSource,
-      "google-fit",
+      "scale-exporter",
     )
     .action((options: ServeCommandOptions) => {
       const config = loadConfig();
@@ -107,11 +108,17 @@ function parsePeriod(value: string): MeasurementPeriod {
 }
 
 function parseSource(value: string): MeasurementSourceOption {
-  if (value === "google-fit" || value === "apple-health") {
+  if (
+    value === "scale-exporter" ||
+    value === "google-fit" ||
+    value === "apple-health"
+  ) {
     return value;
   }
 
-  throw new InvalidArgumentError("source must be google-fit or apple-health");
+  throw new InvalidArgumentError(
+    "source must be scale-exporter, google-fit or apple-health",
+  );
 }
 
 export function parseDateOption(value: string): string {

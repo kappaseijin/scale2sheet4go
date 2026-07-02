@@ -3,7 +3,10 @@ import type {
   MeasurementSource,
 } from "../domain/index.js";
 
-export type MeasurementSourceOption = "google-fit" | "apple-health";
+export type MeasurementSourceOption =
+  | "scale-exporter"
+  | "google-fit"
+  | "apple-health";
 
 export interface MeasurementSourceReader {
   readonly source: Exclude<MeasurementSource, "mixed">;
@@ -11,7 +14,7 @@ export interface MeasurementSourceReader {
 }
 
 export function sourceOptionToMeasurementSource(
-  source: MeasurementSourceOption,
+  source: Exclude<MeasurementSourceOption, "scale-exporter">,
 ): Exclude<MeasurementSource, "mixed"> {
   return source === "google-fit" ? "google_fit" : "apple_health_export";
 }
