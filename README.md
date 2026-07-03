@@ -132,7 +132,7 @@ npm run build
 
 | ファイル | 役割 |
 | --- | --- |
-| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（exporter → run --period）。exporter は3回リトライ、失敗時は通知して非0終了 |
+| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（exporter → run --period）。exporter は初回を含め最大3回試行（60秒間隔）、失敗時は通知して非0終了 |
 | `scripts/launchd/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 本実行 + 11:30 拾い直し |
 | `scripts/launchd/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 本実行 + 23:30 拾い直し |
 
