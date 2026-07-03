@@ -213,3 +213,33 @@ Google Fit REST API の廃止（2026 年末）に伴い、API 直接取得に代
 3. 組み込み既定値
 
 `GOOGLE_FIT_CLIENT_ID` / `GOOGLE_FIT_CLIENT_SECRET` が環境変数に無い場合は `google-fit-credentials.json` から読む。
+
+## 開発体制：エージェント構成（herdr + agmsg、2026-07-03 確立）
+
+運用の正本は `/Users/kappa/Dropbox/data/dev/codex_monitor_agents/README.md`。本プロジェクト固有の構成は以下。
+
+### 構成
+
+- **agmsg チーム**: `scale2sheet`（チーム = プロジェクト。他プロジェクトへはアクセスしない）
+- **herdr**: default セッション（ghostty）内の workspace `scale2sheet`
+
+| 役割 | agmsg 名 / herdr 名 | 作業ディレクトリ | GitHub |
+| --- | --- | --- | --- |
+| PM・レビュー | claude_product_manager | 本リポジトリ（dev/scale2sheet） | kappaseijin4claude |
+| 設計・マージ | codex_senior_architect / s2s_architect | codex_monitor_agents/scale2sheet-architect（専用クローン） | kappaseijin4codex |
+| 実装・レビュー | codex_senior_programmer / s2s_programmer | codex_monitor_agents/scale2sheet-programmer（専用クローン） | kappaseijin4codex |
+
+### 開発フロー
+
+1. PR は作成した LLM と別の LLM がレビューし、GitHub の Approve 機能で承認（Claude 作成→codex 承認、codex 作成→Claude 承認）
+2. PR 定型作業は `codex_monitor_agents/bin/pr-flow.sh`（作成/approve/merge/finish/status）
+3. エージェント間連絡は agmsg（配送停滞は agmsg-watchdog が自動修復・通知）
+4. エージェントの起動・監視は herdr CLI（`agent start/list/read/wait`。pane への `pane run` は bash 3.2 で文字化けするため使わない）
+
+### 構築（再現手順の要点）
+
+1. 専用クローン作成 → `delivery.sh set monitor codex <dir>` → agmsg `join.sh`（チーム=プロジェクト、1ディレクトリ1codex）
+2. `herdr agent start <herdr名> --cwd <dir> --workspace <wID> -- ~/.agents/bin/codex "/agmsg actas <agmsg名>"`
+3. git は各クローンの origin（SSH エイリアス github.com-kappaseijin4{claude,codex}）と user.name/email で分離。gh API は `GH_CONFIG_DIR=~/.config/gh-4{claude,codex}`
+
+詳細・トラブルシューティングは codex_monitor_agents/README.md を参照。
