@@ -93,12 +93,15 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.7 | OS-native scheduling（PR #4） | launchd catch-up runs、失敗通知 | **完了** |
 | Ph.8 | エージェント運用体制確立 | herdr + agmsg 3層体制、モデル/effortフォールバック方針 | **完了**（2026-07-04） |
 | Ph.9 | 計画書・設計書の新設、検討書ワークフロー導入 | 本書 / ARCHITECTURE_DESIGN.md / EXTERNAL_DESIGN.md / INTERNAL_DESIGN.md / decisions/ | **完了**（2026-07-04） |
+| Ph.10 | テスト設計書群の追加 | EXTERNAL_TEST_DESIGN.md / INTERNAL_TEST_DESIGN.md / ACCEPTANCE_TEST_REPORT.md | **完了**（2026-07-04） |
 
 ---
 
 ## 受け入れテスト
 
 CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <YYYY-MM-DD>]` / `scale2sheet serve` / `scale2sheet auth`）に対応したテストケース。実装済みテストは `test/` 配下（`cli`, `config`, `domain`, `scale-exporter`, `service`, `sheets`, `apple-health`）を参照。
+
+各ケースの詳細な実行手順・検証方法は [EXTERNAL_TEST_DESIGN.md](./EXTERNAL_TEST_DESIGN.md)、ユニットテストとの対応は [INTERNAL_TEST_DESIGN.md](./INTERNAL_TEST_DESIGN.md)、実施結果は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) を参照。
 
 ### 正常系
 
