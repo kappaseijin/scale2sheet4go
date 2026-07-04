@@ -190,7 +190,8 @@ Spreadsheet書き込みを伴うケースでは以下を常に確認する。
 
 | 区分 | 対象 |
 | --- | --- |
-| 完全自動（vitest） | AT-07〜AT-18（`test/`配下で再現可能。詳細は[INTERNAL_TEST_DESIGN.md](./INTERNAL_TEST_DESIGN.md#受け入れテストとの対応)） |
+| 完全自動（vitest） | AT-07〜AT-11、AT-13〜AT-18（`test/`配下で再現可能。詳細は[INTERNAL_TEST_DESIGN.md](./INTERNAL_TEST_DESIGN.md#受け入れテストとの対応)） |
+| 一部自動（要追加） | AT-12（`--period`が不正な値であること自体のCLIバリデーションは、`test/cli/index.test.ts`では`--date`のみ検証しており未整備。追加候補として記録、現状は[ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md)でPARTIAL扱い） |
 | 手動受け入れ（実API） | AT-01〜AT-06（実 scale_exporter 出力ファイル、実 Google Fit OAuth、実 Google Sheets 書き込みを要する） |
 
 自動化テストは `sources`/`sheets`層をfixture・in-memoryデータに差し替えて再現する（`googleapis`の実APIコールは行わない）。手動受け入れテストは検証用Spreadsheetと実データで実施し、結果は[ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md)に記録する。
