@@ -21,7 +21,7 @@ timestamp: "2026-07-02"
 [scale_exporter] --JSONL出力--> ~/Documents/scale_exporter/ --読込--> [scale2sheet] --> Google スプレッドシート
 ```
 
-デフォルトのデータソースは `scale-exporter`（[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した分割 JSONL ファイルの読み込み）です。Google Fit REST API 直接取得（`--source google-fit`）も残っていますが、同 API は 2026 年末で終了するため非推奨です。launchd による朝 07:00 / 夜 21:00 の自動実行に対応します（後述）。
+デフォルトのデータソースは `scale-exporter`（[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した分割 JSONL ファイルの読み込み）です。Google Fit REST API 直接取得（`--source google-fit`）も残っていますが、同 API は 2026 年末で終了するため非推奨です。launchd による朝夕の自動実行（本実行＋拾い直し）に対応します（後述）。
 
 ## 対応データ
 
@@ -128,13 +128,15 @@ npm run build
 
 ## launchd による日次自動実行
 
-`scripts/run-pipeline.sh` が「scale_exporter でエクスポート → scale2sheet で転記」を1回分実行します。launchd で朝 07:00 と夜 21:00 に起動します。
+`scripts/run-pipeline.sh` が「scale_exporter でエクスポート → scale2sheet で転記」を1回分実行します。launchd が本実行と拾い直し実行の計 2 回/期を起動します（本体は冪等なので重複実行しても当日行を上書きするだけ）。異常は `osascript` の macOS 通知で知らせるため、LLM やログ監視に依存しません。
 
 | ファイル | 役割 |
 | --- | --- |
-| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（exporter → run --period） |
-| `scripts/launchd/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 実行 |
-| `scripts/launchd/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 実行 |
+| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（exporter → run --period）。exporter は初回を含め最大3回試行（60秒間隔）、失敗時は通知して非0終了 |
+| `scripts/launchd/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 本実行 + 11:30 拾い直し |
+| `scripts/launchd/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 本実行 + 23:30 拾い直し |
+
+拾い直し実行は「測定が実行時刻より後になり本実行で取りこぼす」ケースを OS 側で自動的に補う（従来は手動再実行していた作業を launchd に移管）。
 
 インストール:
 

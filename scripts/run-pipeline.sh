@@ -37,12 +37,22 @@ run_exporter() {
   done
   return 1
 }
-run_exporter
+notify() {  # 失敗を macOS 通知（LLM やログ監視に頼らない OS 完結の異常検知）
+  /usr/bin/osascript -e "display notification \"$1\" with title \"scale-pipeline\" sound name \"Basso\"" 2>/dev/null || true
+}
+
+if ! run_exporter; then
+  notify "exporter が3回失敗しました（period=$period）。~/Library/Logs/scale-pipeline/ を確認してください"
+  exit 1
+fi
 
 # Apple Health は HealthKit 署名後に有効化する（scale_exporter/APPLE_HEALTH_SETUP.md 参照）
 # "$exporter" --source apple-health
 
 cd "$scale2sheet_dir"
-"$node_bin" dist/index.js run --period "$period"
+if ! "$node_bin" dist/index.js run --period "$period"; then
+  notify "シート転記が失敗しました（period=$period）"
+  exit 1
+fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] pipeline done (period=$period)"
