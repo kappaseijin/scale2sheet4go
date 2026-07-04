@@ -53,11 +53,16 @@ scale2sheet/
       scale-exporter/       # scale_exporter 出力 JSONL reader（既定）
     index.ts               # package entry point
   test/                    # src/ 各モジュールに対応するユニットテスト
-  PLAN.md
-  ARCHITECTURE_DESIGN.md
-  EXTERNAL_DESIGN.md
-  INTERNAL_DESIGN.md
-  decisions/
+  docs/
+    PLAN.md
+    ARCHITECTURE_DESIGN.md
+    EXTERNAL_DESIGN.md
+    INTERNAL_DESIGN.md
+    EXTERNAL_TEST_DESIGN.md
+    INTERNAL_TEST_DESIGN.md
+    ACCEPTANCE_TEST_REPORT.md
+    decisions/
+  README.md
 ```
 
 依存方向は `cli/scheduler → service → sources/sheets/domain` とし、`domain` は外部パッケージへ依存しない。
