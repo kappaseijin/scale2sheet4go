@@ -243,3 +243,16 @@ Google Fit REST API の廃止（2026 年末）に伴い、API 直接取得に代
 3. git は各クローンの origin（SSH エイリアス github.com-kappaseijin4{claude,codex}）と user.name/email で分離。gh API は `GH_CONFIG_DIR=~/.config/gh-4{claude,codex}`
 
 詳細・トラブルシューティングは codex_monitor_agents/README.md を参照。
+
+## エージェント実行ポリシー（モデル・effort 階層、2026-07-04）
+
+各エージェントは優先順で起動し、トークン制限時に次段へ自動遷移する。正本: `/Users/kappa/Dropbox/data/dev/fable5/README.md`。
+
+| エージェント | 第1優先 | 制限時フォールバック |
+| --- | --- | --- |
+| claude_product_manager | Fable 5（claude-fable-5）＋ effort low | Opus 最高（claude-opus-4-8）＋ effort low |
+| codex_senior_architect | Codex ＋ effort ultra high（xhigh） | Codex ＋ effort low |
+| codex_senior_programmer | Codex ＋ effort low | Codex ＋ effort low |
+
+- effort 対応: 「ultra high」= xhigh。
+- claude 側は settings.json の model/fallbackModel と effortLevel:low で自動フォールバック。codex 側は herdr 起動時の model/effort フラグで制御。
