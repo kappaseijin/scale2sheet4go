@@ -135,7 +135,7 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 
 | ID | 検証内容 | 期待結果 |
 |----|---------|---------|
-| AT-17 | 複数ソースが混在した場合の `ソース` 列 | `mixed` として記録される |
+| AT-17 | 複数ソースが混在した場合の内部モデル | `LatestMeasurementSet.source` が `mixed` になる（Spreadsheetへは列として書き込まれない） |
 | AT-18 | 列名に半角/全角括弧付き血圧表記 | `血圧(上)` / `血圧(下)` 形式のヘッダも認識される |
 
 ---

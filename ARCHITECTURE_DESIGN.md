@@ -19,7 +19,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 - Google Fit REST API は 2026 年末で終了予定。`google-fit` ソースは非推奨として残すが、標準の入力は `scale-exporter`（ファイル入力）に切り替え済み。
 - Google Sheets への書き込みは既存行の更新のみ。`月日` 列で当日行を検索し、行の自動作成はしない。
-- Apple Health データは本サービスが直接取得するのではなく、`scale_exporter`（別リポジトリ、Swift/HealthKit）が出力した JSONL を読む。
+- 標準の入力は `scale_exporter`（別リポジトリ、Swift/HealthKit）が出力した JSONL（`--source scale-exporter`、既定）。`--source apple-health` による Apple Health `export.xml` の直接読み込みも互換・補助経路として引き続き提供する。
 
 ## 技術選定
 
@@ -117,5 +117,5 @@ scale2sheet/
 
 - 体重を必須アンカーとし、朝は最も早い体重、夜は最も遅い体重を採用する。体重がない場合はSpreadsheetへ転記しない。
 - 体温・血圧上・血圧下・脈拍は、採用した体重の測定時刻に最も近い同種別レコードを採用する。
-- source混在時は行の`ソース`を`mixed`とし、`sourcesByKind`で内訳を保持する。
+- source混在時は内部モデル（`LatestMeasurementSet.source`）を`mixed`とし、`sourcesByKind`で内訳を保持する。この値はSpreadsheetの列としては書き込まれない（batchUpdate対象は測定5項目のみ）。
 - Google Fit直接取得は非推奨ソースとして維持しつつ、`scale-exporter`ファイル入力を主戦略とする。
