@@ -255,4 +255,5 @@ Google Fit REST API の廃止（2026 年末）に伴い、API 直接取得に代
 | codex_senior_programmer | Codex ＋ effort low | Codex ＋ effort low |
 
 - effort 対応: 「ultra high」= xhigh。
+- フォールバック後は約30分間隔で制限解除を確認し、解除されていればプライマリへ自動復帰する（claude は fallbackModel がプライマリ優先のため自動、codex は codex_monitor_agents/bin/codex-tier-controller.sh が launchd で実施）。
 - claude 側は settings.json の model/fallbackModel と effortLevel:low で自動フォールバック。codex 側は herdr 起動時の model/effort フラグで制御。
