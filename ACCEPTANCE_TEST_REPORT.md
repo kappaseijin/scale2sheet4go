@@ -44,7 +44,7 @@ tags: [acceptance-test, scale2sheet]
 | AT-10 | scale_exporter出力の不正行 | **COVERED_BY_AUTOMATED_TEST** | `test/scale-exporter/reader.test.ts`「不正JSON行/スキーマ違反行でエラー」 |
 | AT-11 | 連番ファイル境界での重複除去 | **COVERED_BY_AUTOMATED_TEST** | `test/scale-exporter/reader.test.ts`「ファイル境界の重複除去」 |
 | AT-12 | 不正な`--period`引数 | **PARTIAL** | `test/cli/index.test.ts`は日付オプションの検証のみをカバー。`--period`自体のcommander検証は自動テスト未整備 |
-| AT-13 | Spreadsheetに当日行がない | **COVERED_BY_AUTOMATED_TEST** | `test/sheets/adapter.test.ts`「対応日付形式からの当日行検索」（該当なしケース） |
+| AT-13 | Spreadsheetに当日行がない | **PARTIAL** | `test/sheets/adapter.test.ts`「対応日付形式からの当日行検索」は該当ありケースのみ。当日行が見つからず`undefined`になるケースは未テスト |
 
 ## 設定ファイル系（AT-14〜AT-16）
 
@@ -66,8 +66,8 @@ tags: [acceptance-test, scale2sheet]
 | 判定 | 件数 |
 | --- | --- |
 | PASS | 0 |
-| PARTIAL | 1 |
-| COVERED_BY_AUTOMATED_TEST | 11 |
+| PARTIAL | 2 |
+| COVERED_BY_AUTOMATED_TEST | 10 |
 | BLOCKED | 6 |
 | 合計 | 18 |
 
@@ -75,4 +75,5 @@ tags: [acceptance-test, scale2sheet]
 
 - AT-01〜AT-06（実Google Sheets/Google Fit連携）は、検証用Spreadsheetと`~/.config/scale2sheet/`の実クレデンシャルを用意した上で手動実施する必要がある。次回実機検証時に本レポートを更新すること。
 - AT-12（`--period`不正値のCLIレベル検証）はユニットテストの追加候補（`test/cli/index.test.ts`にcommanderのバリデーションを直接テストするケースを足す）。
+- AT-13（Spreadsheetに当日行がない場合に`undefined`を返すこと）もユニットテストの追加候補（`test/sheets/adapter.test.ts`の`findTodayRowNumber`に該当なしケースを足す）。
 - secret / token の実値はレポートに含めない。

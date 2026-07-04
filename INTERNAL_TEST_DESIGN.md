@@ -117,7 +117,7 @@ test/
 | AT-10 | `scale-exporter/reader.test.ts`（不正JSON行/スキーマ違反行でエラー） |
 | AT-11 | `scale-exporter/reader.test.ts`（ファイル境界の重複除去） |
 | AT-12 | `cli/index.test.ts`（不正な日付オプションの拒否と同様の引数検証。`--period`自体の自動テストは未整備、[ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md)参照） |
-| AT-13 | `sheets/adapter.test.ts`（対応日付形式からの当日行検索：該当なしケース） |
+| AT-13 | `sheets/adapter.test.ts`「対応日付形式からの当日行検索」は該当ありケースのみ検証。当日行が見つからず`undefined`になるケースは未テスト（[ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md)でPARTIAL扱い、追加候補） |
 | AT-14〜AT-16 | `config/settings.test.ts` |
 | AT-17 | `domain/measurement.test.ts`, `service/measurements.test.ts`（mixed判定） |
 | AT-18 | `sheets/adapter.test.ts`（括弧付き血圧ヘッダからのマッピング） |
