@@ -143,6 +143,7 @@ npm run build
 ```sh
 npm install
 npm run build
+mkdir -p ~/Library/LaunchAgents ~/Library/Logs/scale-pipeline
 cp scripts/launchd/*.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
