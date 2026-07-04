@@ -138,15 +138,37 @@ npm run build
 
 拾い直し実行は「測定が実行時刻より後になり本実行で取りこぼす」ケースを OS 側で自動的に補う（従来は手動再実行していた作業を launchd に移管）。
 
-インストール:
+### インストール
 
 ```sh
+npm install
 npm run build
+mkdir -p ~/Library/LaunchAgents ~/Library/Logs/scale-pipeline
 cp scripts/launchd/*.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
 ```
 
-ログは `~/Library/Logs/scale-pipeline/` に出力されます。Apple Health ソースは HealthKit 署名後に `run-pipeline.sh` のコメントアウトを外して有効化してください。停止は `launchctl bootout gui/$(id -u)/jp.seijin.kappa.scale-pipeline.morning`（evening も同様）。
+ログは `~/Library/Logs/scale-pipeline/` に出力されます。Apple Health ソースは HealthKit 署名後に `run-pipeline.sh` のコメントアウトを外して有効化してください。
+
+### アンインストール
+
+launchd 自動実行を止めて登録解除します。
+
+```sh
+launchctl bootout gui/$(id -u)/jp.seijin.kappa.scale-pipeline.morning
+launchctl bootout gui/$(id -u)/jp.seijin.kappa.scale-pipeline.evening
+rm ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
+rm ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
+```
+
+上記で自動実行のみ解除されます。設定・認証情報・ログは残るため、完全に削除する場合は加えて以下も実行してください。
+
+```sh
+rm -rf ~/Library/Logs/scale-pipeline/   # 実行ログ
+rm -rf ~/.config/scale2sheet/           # settings.json・認証情報（scale_exporterの設定とは別ディレクトリ）
+```
+
+リポジトリのクローン（`node_modules/` / `dist/` を含む）を削除すればアプリ本体も完全にアンインストールされます。
 
 注意: 常駐モード（`serve`）と併用すると二重書き込みになるため、launchd 運用時は `serve` を起動しないでください。
