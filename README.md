@@ -37,7 +37,7 @@ Spreadsheet は既存行を更新します。1行目の `月日` 列で当日行
 
 ## セットアップ
 
-設定は scale_exporter と同じ `~/.config/scale2sheet/` 構造が標準です（詳細: docs/architecture.md「設定ファイル構造」）。
+設定は scale_exporter と同じ `~/.config/scale2sheet/` 構造が標準です（詳細: [EXTERNAL_DESIGN.md](./EXTERNAL_DESIGN.md#設定ファイル)）。
 
 ```sh
 npm install
@@ -92,7 +92,7 @@ node dist/index.js auth
 node dist/index.js run --period morning
 ```
 
-Google Fit REST APIから直接取得する場合（非推奨: 2026年末でAPI終了。docs/architecture.md 参照）:
+Google Fit REST APIから直接取得する場合（非推奨: 2026年末でAPI終了。[ARCHITECTURE_DESIGN.md](./ARCHITECTURE_DESIGN.md#重要な外部制約) 参照）:
 
 ```sh
 node dist/index.js run --period morning --source google-fit
