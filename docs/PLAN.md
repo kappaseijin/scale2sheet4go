@@ -94,6 +94,35 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.8 | エージェント運用体制確立 | herdr + agmsg 3層体制、モデル/effortフォールバック方針 | **完了**（2026-07-04） |
 | Ph.9 | 計画書・設計書の新設、検討書ワークフロー導入 | 本書 / ARCHITECTURE_DESIGN.md / EXTERNAL_DESIGN.md / INTERNAL_DESIGN.md / decisions/ | **完了**（2026-07-04） |
 | Ph.10 | テスト設計書群の追加 | EXTERNAL_TEST_DESIGN.md / INTERNAL_TEST_DESIGN.md / ACCEPTANCE_TEST_REPORT.md | **完了**（2026-07-04） |
+| Ph.11 | Bun CLI対応 | `bun build --compile`による単体実行バイナリ（`build:bun`）、`bun run`によるソース直接実行の補助サポート。Node.js経路（`npm run build` / `node dist/index.js`）は現状維持 | **計画中**（検討書: [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md)） |
+
+---
+
+## Bun CLI対応方針（Ph.11、2026-07-05 計画）
+
+目的: Node.jsアプリであることを維持したまま、Bunでも動くCLIアプリとして配布できるようにする。詳細な選択肢の検討・却下理由は [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md) を参照。
+
+### 変更しないもの
+
+- `npm install && npm run build && node dist/index.js` による既存の実行方法
+- `scripts/run-pipeline.sh` / `scripts/launchd/*.plist` によるlaunchd自動実行（引き続き`node`で実行）
+- ソースコードはNode.js専用API（`Bun.file`等のBun固有API）に依存させない
+
+### 追加するもの
+
+- `package.json`に`build:bun`スクリプトを追加: `bun build ./src/index.ts --compile --outfile dist/scale2sheet-bun`（単体実行バイナリ）
+- 補助的に`bun run src/index.ts`でのソース直接実行もサポート（ビルド不要な動作確認用）
+- README/EXTERNAL_DESIGN.mdにBun版のインストール・実行手順を追記
+
+### 実装フェーズで検証すること（受け入れ基準）
+
+- 既存のvitestスイート（37テスト）が、Bunランタイム上での実行でも通過すること。確認コマンドは `bunx --bun vitest run --run` を使う（`--bun`を付けない`bunx vitest run --run`はshebang経由でNode側にフォールバックする場合があり、Bunランタイムでの実行を保証しない）
+- **既知の要解決リスク**: 上記コマンドで現時点（2026-07-05、PR #9レビュー時点）で `z.object` が `undefined` になり4スイートがFAILすることを確認済み。zodとBunランタイムの相互運用性に起因する問題とみられ、Bun CLI対応を完了とするにはこれを解消する必要がある（zodのバージョン変更、Bun側のNode互換設定、または回避策の特定を実装フェーズで行う）
+- `bun build --compile`で生成した単体バイナリが、隔離環境で正常に起動・終了すること。具体的には次の条件で実データ・実Spreadsheetへの書き込みが発生しないことを確認する:
+  - `HOME`を空の一時ディレクトリに差し替える（`~/.config/scale2sheet/`の実設定・認証情報を読ませない）
+  - `SCALE_EXPORTER_OUTPUT_DIR`を空の一時ディレクトリに向ける（scale_exporterの実出力を読ませない）
+  - 例: `HOME=<一時dir> SCALE_EXPORTER_OUTPUT_DIR=<空の一時dir> <compiled-binary> run --period morning --source scale-exporter` を実行し、"No spreadsheet row updated." 相当の出力で正常終了することを確認する
+- 特に`googleapis`が`--compile`のバンドル過程で問題を起こさないこと（依存の中で最もリスクが高いため個別に確認する）
 
 ---
 
