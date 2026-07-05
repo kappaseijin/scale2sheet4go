@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-07-04（計画書・設計書の新設、検討書ワークフロー導入）
+最終更新: 2026-07-05（herdr pane 配置と構築コマンドを追記）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -215,6 +215,55 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 | PM・レビュー | claude_product_manager | 本リポジトリ（dev/scale2sheet） | kappaseijin4claude |
 | 設計・マージ | codex_senior_architect / s2s_architect | codex_monitor_agents/scale2sheet-architect（専用クローン） | kappaseijin4codex |
 | 実装・レビュー | codex_senior_programmer / s2s_programmer | codex_monitor_agents/scale2sheet-programmer（専用クローン） | kappaseijin4codex |
+
+### herdr pane 配置（2026-07-05 構築）
+
+default セッション内の workspace `scale2sheet`（ラベルで識別。workspace ID / pane ID は再作成で変わるため `herdr agent list` で都度取得する）。
+
+```text
+┌──────────────────────┬──────────────────────┐
+│                      │ s2s_architect        │
+│ s2s_manager          │ （右上）             │
+│ （左・全高）         ├──────────────────────┤
+│ claude PM            │ s2s_programmer       │
+│                      │ （右下）             │
+└──────────────────────┴──────────────────────┘
+```
+
+構築コマンド（`--split` はフォーカス中 pane を基準に分割される点に注意）:
+
+```sh
+H=~/.local/bin/herdr
+AG=/Users/kappa/Dropbox/data/dev/codex_monitor_agents
+
+# 1. workspace 作成（root pane は空シェルなので manager 起動後に閉じる）
+$H workspace create --cwd ~/Dropbox/data/dev/scale2sheet --label scale2sheet --no-focus
+# → 出力の workspace_id（例: wH）と root pane_id（例: wH:p1）を控える
+
+# 2. manager（claude）を起動し、空の root pane を閉じる → 左・全高になる
+$H agent start s2s_manager --cwd ~/Dropbox/data/dev/scale2sheet \
+  --workspace <wID> --no-focus \
+  -- ~/.local/bin/claude "/agmsg actas claude_product_manager"
+$H pane close <root pane_id>
+
+# 3. architect を manager の右に分割起動（右・全高）
+$H agent start s2s_architect --cwd $AG/scale2sheet-architect \
+  --workspace <wID> --split right --no-focus \
+  -- ~/.agents/bin/codex -p architect "/agmsg actas codex_senior_architect"
+
+# 4. architect pane にフォーカスしてから下分割で programmer を起動（右下）
+#    （フォーカスが architect 以外にあると別の pane が分割されるため必須）
+$H agent focus s2s_architect
+$H agent start s2s_programmer --cwd $AG/scale2sheet-programmer \
+  --workspace <wID> --split down --no-focus \
+  -- ~/.agents/bin/codex -p programmer "/agmsg actas codex_senior_programmer"
+
+# 5. 確認
+$H agent list
+$H pane layout --pane <manager pane_id>
+```
+
+前提: 各エージェントディレクトリの agmsg delivery mode が `monitor` であること（`delivery.sh status <type> <dir>` で確認。off のまま起動するとブリッジ無しになる）。
 
 ### 開発フロー
 
