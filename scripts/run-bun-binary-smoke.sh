@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-binary="$repo_root/dist/scale2sheet-bun"
-temp_root="$(mktemp -d "${TMPDIR:-/tmp}/scale2sheet-bun-smoke.XXXXXX")"
+binary="$repo_root/dist/scale2sheet"
+temp_root="$(mktemp -d "${TMPDIR:-/tmp}/scale2sheet-smoke.XXXXXX")"
 
 cleanup() {
   rm -rf "$temp_root"

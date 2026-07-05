@@ -17,7 +17,7 @@ esac
 
 exporter="/Users/kappa/Dropbox/data/dev/scale_exporter/.build/release/scale_exporter"
 scale2sheet_dir="/Users/kappa/Dropbox/data/dev/scale2sheet"
-scale2sheet_bin="$scale2sheet_dir/dist/scale2sheet-bun"
+scale2sheet_bin="$scale2sheet_dir/dist/scale2sheet"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] pipeline start (period=$period)"
 
