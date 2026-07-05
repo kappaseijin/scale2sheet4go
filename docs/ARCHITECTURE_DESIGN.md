@@ -13,11 +13,12 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 ## 目的
 
-朝・夜の身体測定値（体重・体温・血圧上/下・脈拍）を、[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した JSONL（既定・推奨）、Google Fit REST API、または Apple Health XML エクスポートから取得し、Google Spreadsheet の当日行へ転記する。Node.js（>= 22）上で完結し、OS 固有 API・ネイティブバインディング・LLM・外部推論サービスは使わない。
+朝・夜の身体測定値（体重・体温・血圧上/下・脈拍）を、[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した JSONL（既定・推奨）、Google Fit REST API、または Apple Health XML エクスポートから取得し、Google Spreadsheet の当日行へ転記する。ソースコードは Node.js（>= 22）互換の TypeScript を維持し、配布・運用は Bun コンパイル済み単体バイナリ `scale2sheet` を優先する。OS 固有 API・ネイティブバインディング・LLM・外部推論サービスは使わない。
 
 ## 重要な外部制約
 
 - Google Fit REST API は 2026 年末で終了予定。`google-fit` ソースは非推奨として残すが、標準の入力は `scale-exporter`（ファイル入力）に切り替え済み。
+- 配布・運用の正式経路は `bun build --compile` で生成する `scale2sheet` バイナリとする。Node.js での `npm run build && node dist/index.js` は開発・デバッグ用の補助経路として残す。
 - Google Sheets への書き込みは既存行の更新のみ。`月日` 列で当日行を検索し、行の自動作成はしない。
 - 標準の入力は `scale_exporter`（別リポジトリ、Swift/HealthKit）が出力した JSONL（`--source scale-exporter`、既定）。`--source apple-health` による Apple Health `export.xml` の直接読み込みも互換・補助経路として引き続き提供する。
 

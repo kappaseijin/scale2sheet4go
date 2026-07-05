@@ -5,11 +5,11 @@
   "type": "module",
   "private": true,
   "bin": {
-    "cale2sheet": "./dist/index.js"
+    "scale2sheet": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:bun": "bun build ./src/index.ts --compile --outfile dist/scale2sheet-bun",
+    "build:bun": "bun build ./src/index.ts --compile --outfile dist/scale2sheet",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"

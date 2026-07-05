@@ -12,6 +12,8 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet — 外部設計
 
+正式な配布・運用形態は `bun build --compile` で生成する単体バイナリ `scale2sheet`。開発・型検査・ユニットテストは Node.js ツールチェインを維持する。
+
 ## CLI
 
 ```text
@@ -29,6 +31,12 @@ scale2sheet auth
 | `--date <YYYY-MM-DD>` | `run` | 任意 | 過去日転記用。省略時は当日（`TIME_ZONE`基準） |
 
 `auth` は Google Fit の installed app OAuth フローを実行し、トークンを保存する。
+
+## 実行環境
+
+- 配布・運用の第一選択は Bun コンパイル済みバイナリ `./dist/scale2sheet`
+- 開発・デバッグ時は `npm run build && node dist/index.js` も利用可
+- CLI 名は `scale2sheet`。npm パッケージ名は `cale2sheet`
 
 ## 設定ファイル
 
@@ -146,17 +154,17 @@ scale2sheet auth
 
 ```sh
 # scale_exporter出力から朝の値を転記
-scale2sheet run --period morning
+./dist/scale2sheet run --period morning
 
 # 過去日を指定して手動転記
-scale2sheet run --period evening --date 2026-06-27
+./dist/scale2sheet run --period evening --date 2026-06-27
 
 # Google Fitから直接取得（非推奨）
-scale2sheet run --period morning --source google-fit
+./dist/scale2sheet run --period morning --source google-fit
 
 # 常駐実行
-scale2sheet serve
+./dist/scale2sheet serve
 
 # Google Fit初回認証
-scale2sheet auth
+./dist/scale2sheet auth
 ```

@@ -11,9 +11,9 @@ timestamp: "2026-07-02"
 
 # scale2sheet
 
-朝・夜の身体測定値を Google Spreadsheet の当日行へ転記する TypeScript サービスです。Node.js（>= 22）のみで動作し、OS 固有 API、ネイティブバインディング、LLM、外部推論サービスは使いません。
+朝・夜の身体測定値を Google Spreadsheet の当日行へ転記する TypeScript サービスです。正式な配布・運用形態は `bun build --compile` で生成する単体バイナリ `scale2sheet` です。開発・型検査・ユニットテストは Node.js（>= 22）ツールチェインを使い続けます。
 
-パッケージ名 `cale2sheet` は既存の Google Cloud サービス名（変更不可）に合わせた意図的な表記です。
+パッケージ名は `cale2sheet`、CLI コマンド名は `scale2sheet` です。
 
 ## データフロー
 
@@ -39,10 +39,20 @@ Spreadsheet は既存行を更新します。1行目の `月日` 列で当日行
 
 設定は scale_exporter と同じ `~/.config/scale2sheet/` 構造が標準です（詳細: [EXTERNAL_DESIGN.md](./docs/EXTERNAL_DESIGN.md#設定ファイル)）。
 
+### Bun バイナリの作成と実行
+
+```sh
+npm install
+npm run build:bun
+./dist/scale2sheet run --period morning   # 初回実行で settings.json が自動生成される
+```
+
+### Node.js での開発・デバッグ
+
 ```sh
 npm install
 npm run build
-node dist/index.js run --period morning   # 初回実行で settings.json が自動生成される
+node dist/index.js run --period morning
 ```
 
 `~/.config/scale2sheet/settings.json`（非シークレット・自動生成後に編集）:
@@ -74,6 +84,13 @@ Google Fit は個人health dataのためinstalled app OAuthを使います。Goo
 ## Google Fit 初回認証
 
 ```sh
+npm run build:bun
+./dist/scale2sheet auth
+```
+
+Node.js で確認する場合は次でも実行できます。
+
+```sh
 npm run build
 node dist/index.js auth
 ```
@@ -89,19 +106,19 @@ node dist/index.js auth
 既定のsourceは `scale-exporter`（scale_exporter の出力JSONLファイルを読み込み）です。朝の列を更新します。
 
 ```sh
-node dist/index.js run --period morning
+./dist/scale2sheet run --period morning
 ```
 
 Google Fit REST APIから直接取得する場合（非推奨: 2026年末でAPI終了。[ARCHITECTURE_DESIGN.md](./docs/ARCHITECTURE_DESIGN.md#重要な外部制約) 参照）:
 
 ```sh
-node dist/index.js run --period morning --source google-fit
+./dist/scale2sheet run --period morning --source google-fit
 ```
 
 Apple Health XMLから夜の列を更新します。
 
 ```sh
-node dist/index.js run --period evening --source apple-health
+./dist/scale2sheet run --period evening --source apple-health
 ```
 
 ## 常駐実行
@@ -109,13 +126,13 @@ node dist/index.js run --period evening --source apple-health
 既定では `scale-exporter` をsourceにして、`MORNING_CRON` と `EVENING_CRON` で実行します。
 
 ```sh
-node dist/index.js serve
+./dist/scale2sheet serve
 ```
 
 別のsourceにする場合:
 
 ```sh
-node dist/index.js serve --source apple-health
+./dist/scale2sheet serve --source apple-health
 ```
 
 ## 開発コマンド
