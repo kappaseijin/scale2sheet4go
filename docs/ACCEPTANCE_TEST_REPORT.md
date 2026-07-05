@@ -40,10 +40,10 @@ tags: [acceptance-test, scale2sheet]
 
 | ID | 内容 | 判定 | 確認方法 |
 | --- | --- | --- | --- |
-| AT-07 | 朝の対象時間帯に体重測定値なし→転記しない | **COVERED_BY_AUTOMATED_TEST** / **COMPILLED_BINARY_SMOKE** | `test/service/measurements.test.ts`「体重なしの期間は同期しない」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
+| AT-07 | 朝の対象時間帯に体重測定値なし→転記しない | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/service/measurements.test.ts`「体重なしの期間は同期しない」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
 | AT-08 | 夜の対象時間帯に体重以外はあるが体重なし→転記しない | **COVERED_BY_AUTOMATED_TEST** | `test/service/measurements.test.ts`「体重がない場合は値が空」 |
-| AT-09 | scale_exporter出力ディレクトリ・当日ファイル不存在 | **COVERED_BY_AUTOMATED_TEST** / **COMPILLED_BINARY_SMOKE** | `test/scale-exporter/reader.test.ts`「ディレクトリ不存在時は空配列」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
-| AT-10 | scale_exporter出力の不正行 | **COVERED_BY_AUTOMATED_TEST** / **COMPILLED_BINARY_SMOKE** | `test/scale-exporter/reader.test.ts`「不正JSON行/スキーマ違反行でエラー」 / `./scripts/run-bun-binary-smoke.sh` `invalid-scale-exporter-reading` |
+| AT-09 | scale_exporter出力ディレクトリ・当日ファイル不存在 | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/scale-exporter/reader.test.ts`「ディレクトリ不存在時は空配列」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
+| AT-10 | scale_exporter出力の不正行 | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/scale-exporter/reader.test.ts`「不正JSON行/スキーマ違反行でエラー」 / `./scripts/run-bun-binary-smoke.sh` `invalid-scale-exporter-reading` |
 | AT-11 | 連番ファイル境界での重複除去 | **COVERED_BY_AUTOMATED_TEST** | `test/scale-exporter/reader.test.ts`「ファイル境界の重複除去」 |
 | AT-12 | 不正な`--period`引数 | **PARTIAL** | `test/cli/index.test.ts`は日付オプションの検証のみをカバー。`--period`自体のcommander検証は自動テスト未整備 |
 | AT-13 | Spreadsheetに当日行がない | **PARTIAL** | `test/sheets/adapter.test.ts`「対応日付形式からの当日行検索」は該当ありケースのみ。当日行が見つからず`undefined`になるケースは未テスト |
@@ -52,7 +52,7 @@ tags: [acceptance-test, scale2sheet]
 
 | ID | 内容 | 判定 | 確認方法 |
 | --- | --- | --- | --- |
-| AT-14 | settings.json自動生成 | **COVERED_BY_AUTOMATED_TEST** / **COMPILLED_BINARY_SMOKE** | `test/config/settings.test.ts`「settings.json自動生成」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
+| AT-14 | settings.json自動生成 | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/config/settings.test.ts`「settings.json自動生成」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
 | AT-15 | settings.jsonの`source`がデフォルトになる | **COVERED_BY_AUTOMATED_TEST** | `test/config/settings.test.ts`「settings値の読込」 |
 | AT-16 | 環境変数優先 | **COVERED_BY_AUTOMATED_TEST** | `test/config/settings.test.ts`「環境変数によるsettings上書き」 |
 
