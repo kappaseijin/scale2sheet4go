@@ -17,7 +17,7 @@ esac
 
 exporter="/Users/kappa/Dropbox/data/dev/scale_exporter/.build/release/scale_exporter"
 scale2sheet_dir="/Users/kappa/Dropbox/data/dev/scale2sheet"
-node_bin="/Users/kappa/.nvm/versions/node/v24.3.0/bin/node"
+scale2sheet_bin="$scale2sheet_dir/dist/scale2sheet-bun"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] pipeline start (period=$period)"
 
@@ -50,7 +50,13 @@ fi
 # "$exporter" --source apple-health
 
 cd "$scale2sheet_dir"
-if ! "$node_bin" dist/index.js run --period "$period"; then
+if [ ! -x "$scale2sheet_bin" ]; then
+  echo "scale2sheet binary not found or not executable: $scale2sheet_bin" >&2
+  notify "scale2sheetバイナリが見つからないか実行できません。npm run build:bun を実行してください"
+  exit 1
+fi
+
+if ! "$scale2sheet_bin" run --period "$period"; then
   notify "シート転記が失敗しました（period=$period）"
   exit 1
 fi
