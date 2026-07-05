@@ -94,6 +94,31 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.8 | エージェント運用体制確立 | herdr + agmsg 3層体制、モデル/effortフォールバック方針 | **完了**（2026-07-04） |
 | Ph.9 | 計画書・設計書の新設、検討書ワークフロー導入 | 本書 / ARCHITECTURE_DESIGN.md / EXTERNAL_DESIGN.md / INTERNAL_DESIGN.md / decisions/ | **完了**（2026-07-04） |
 | Ph.10 | テスト設計書群の追加 | EXTERNAL_TEST_DESIGN.md / INTERNAL_TEST_DESIGN.md / ACCEPTANCE_TEST_REPORT.md | **完了**（2026-07-04） |
+| Ph.11 | Bun CLI対応 | `bun build --compile`による単体実行バイナリ（`build:bun`）、`bun run`によるソース直接実行の補助サポート。Node.js経路（`npm run build` / `node dist/index.js`）は現状維持 | **計画中**（検討書: [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md)） |
+
+---
+
+## Bun CLI対応方針（Ph.11、2026-07-05 計画）
+
+目的: Node.jsアプリであることを維持したまま、Bunでも動くCLIアプリとして配布できるようにする。詳細な選択肢の検討・却下理由は [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md) を参照。
+
+### 変更しないもの
+
+- `npm install && npm run build && node dist/index.js` による既存の実行方法
+- `scripts/run-pipeline.sh` / `scripts/launchd/*.plist` によるlaunchd自動実行（引き続き`node`で実行）
+- ソースコードはNode.js専用API（`Bun.file`等のBun固有API）に依存させない
+
+### 追加するもの
+
+- `package.json`に`build:bun`スクリプトを追加: `bun build ./src/index.ts --compile --outfile dist/scale2sheet-bun`（単体実行バイナリ）
+- 補助的に`bun run src/index.ts`でのソース直接実行もサポート（ビルド不要な動作確認用）
+- README/EXTERNAL_DESIGN.mdにBun版のインストール・実行手順を追記
+
+### 実装フェーズで検証すること（受け入れ基準）
+
+- 既存のvitestスイート（37テスト）が、Bunランタイム上での実行でも通過すること
+- `bun build --compile`で生成した単体バイナリが、少なくとも`run --period morning --source scale-exporter`（stdout確認・実データ書き込みなし相当の検証）で正常に起動・終了すること
+- 特に`googleapis`が`--compile`のバンドル過程で問題を起こさないこと（依存の中で最もリスクが高いため個別に確認する）
 
 ---
 
