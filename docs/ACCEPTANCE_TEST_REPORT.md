@@ -2,17 +2,19 @@
 type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）
-timestamp: "2026-07-04"
+timestamp: "2026-07-05"
 tags: [acceptance-test, scale2sheet]
 ---
 
 # scale2sheet — Acceptance Test Report
 
-- 実施日: 2026-07-04
-- 対象実装コミット: `310bd4f0e182ef0603d2a9014fe5320ce15dfcf0`（main）
+- 実施日: 2026-07-05
+- 対象実装コミット: `6367113`（`feature/bun-priority-rename`）
 - ビルド: `npm run build` 成功
+- Bunビルド: `npm run build:bun` 成功（出力: `dist/scale2sheet`）
 - 型検査: `npm run typecheck` 成功
 - テスト: `npm test -- --run` 7 files / 37 tests PASS
+- 追加確認: `./scripts/run-bun-binary-smoke.sh` 成功
 
 ## 判定凡例
 
@@ -38,10 +40,10 @@ tags: [acceptance-test, scale2sheet]
 
 | ID | 内容 | 判定 | 確認方法 |
 | --- | --- | --- | --- |
-| AT-07 | 朝の対象時間帯に体重測定値なし→転記しない | **COVERED_BY_AUTOMATED_TEST** | `test/service/measurements.test.ts`「体重なしの期間は同期しない」 |
+| AT-07 | 朝の対象時間帯に体重測定値なし→転記しない | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/service/measurements.test.ts`「体重なしの期間は同期しない」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
 | AT-08 | 夜の対象時間帯に体重以外はあるが体重なし→転記しない | **COVERED_BY_AUTOMATED_TEST** | `test/service/measurements.test.ts`「体重がない場合は値が空」 |
-| AT-09 | scale_exporter出力ディレクトリ・当日ファイル不存在 | **COVERED_BY_AUTOMATED_TEST** | `test/scale-exporter/reader.test.ts`「ディレクトリ不存在時は空配列」 |
-| AT-10 | scale_exporter出力の不正行 | **COVERED_BY_AUTOMATED_TEST** | `test/scale-exporter/reader.test.ts`「不正JSON行/スキーマ違反行でエラー」 |
+| AT-09 | scale_exporter出力ディレクトリ・当日ファイル不存在 | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/scale-exporter/reader.test.ts`「ディレクトリ不存在時は空配列」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
+| AT-10 | scale_exporter出力の不正行 | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/scale-exporter/reader.test.ts`「不正JSON行/スキーマ違反行でエラー」 / `./scripts/run-bun-binary-smoke.sh` `invalid-scale-exporter-reading` |
 | AT-11 | 連番ファイル境界での重複除去 | **COVERED_BY_AUTOMATED_TEST** | `test/scale-exporter/reader.test.ts`「ファイル境界の重複除去」 |
 | AT-12 | 不正な`--period`引数 | **PARTIAL** | `test/cli/index.test.ts`は日付オプションの検証のみをカバー。`--period`自体のcommander検証は自動テスト未整備 |
 | AT-13 | Spreadsheetに当日行がない | **PARTIAL** | `test/sheets/adapter.test.ts`「対応日付形式からの当日行検索」は該当ありケースのみ。当日行が見つからず`undefined`になるケースは未テスト |
@@ -50,7 +52,7 @@ tags: [acceptance-test, scale2sheet]
 
 | ID | 内容 | 判定 | 確認方法 |
 | --- | --- | --- | --- |
-| AT-14 | settings.json自動生成 | **COVERED_BY_AUTOMATED_TEST** | `test/config/settings.test.ts`「settings.json自動生成」 |
+| AT-14 | settings.json自動生成 | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/config/settings.test.ts`「settings.json自動生成」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
 | AT-15 | settings.jsonの`source`がデフォルトになる | **COVERED_BY_AUTOMATED_TEST** | `test/config/settings.test.ts`「settings値の読込」 |
 | AT-16 | 環境変数優先 | **COVERED_BY_AUTOMATED_TEST** | `test/config/settings.test.ts`「環境変数によるsettings上書き」 |
 
@@ -74,6 +76,7 @@ tags: [acceptance-test, scale2sheet]
 ## 補足・残タスク
 
 - AT-01〜AT-06（実Google Sheets/Google Fit連携）は、検証用Spreadsheetと`~/.config/scale2sheet/`の実クレデンシャルを用意した上で手動実施する必要がある。次回実機検証時に本レポートを更新すること。
+- `./scripts/run-bun-binary-smoke.sh` により、コンパイル済みバイナリ `dist/scale2sheet` の `--help` / `--version` / 空設定 / 不正設定 / 不正読込 / Sheets認証欠如の各経路を確認済み。これは AT-07 / AT-09 / AT-10 / AT-14 のバイナリ経路確認に相当する。
 - AT-12（`--period`不正値のCLIレベル検証）はユニットテストの追加候補（`test/cli/index.test.ts`にcommanderのバリデーションを直接テストするケースを足す）。
 - AT-13（Spreadsheetに当日行がない場合に`undefined`を返すこと）もユニットテストの追加候補（`test/sheets/adapter.test.ts`の`findTodayRowNumber`に該当なしケースを足す）。
 - secret / token の実値はレポートに含めない。
