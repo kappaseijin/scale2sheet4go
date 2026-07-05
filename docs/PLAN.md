@@ -218,6 +218,8 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 
 ### herdr pane 配置（2026-07-05 構築）
 
+検討経緯: [decisions/2026-07-05T224500_herdr_pane配置についての検討書.md](./decisions/2026-07-05T224500_herdr_pane配置についての検討書.md)
+
 default セッション内の workspace `scale2sheet`（ラベルで識別。workspace ID / pane ID は再作成で変わるため `herdr agent list` で都度取得する）。
 
 ```text
