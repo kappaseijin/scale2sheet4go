@@ -95,11 +95,12 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.9 | 計画書・設計書の新設、検討書ワークフロー導入 | 本書 / ARCHITECTURE_DESIGN.md / EXTERNAL_DESIGN.md / INTERNAL_DESIGN.md / decisions/ | **完了**（2026-07-04） |
 | Ph.10 | テスト設計書群の追加 | EXTERNAL_TEST_DESIGN.md / INTERNAL_TEST_DESIGN.md / ACCEPTANCE_TEST_REPORT.md | **完了**（2026-07-04） |
 | Ph.11 | Bun CLI対応（第一段階、Ph.12により方針拡張） | `bun build --compile`による単体実行バイナリ（`build:bun`）、`bun run`によるソース直接実行の補助サポート | **計画をPh.12へ拡張**（検討書: [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md)） |
-| Ph.12 | 単一バイナリ化（bun buildを正式配布形態にする） | launchd運用・エンドユーザー向け配布をBunコンパイル済み単体バイナリへ切り替え。開発・型検査・テストはNode.jsツールチェイン継続 | **着手**（検討書: [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md)） |
+| Ph.12 | 単一バイナリ化（bun buildを正式配布形態にする） | launchd運用・エンドユーザー向け配布をBunコンパイル済み単体バイナリへ切り替え。開発・型検査・テストはNode.jsツールチェイン継続 | **実装中**（PR #11, #12 完了。検討書: [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md)） |
+| Ph.13 | Bunを優先実行環境にする・バイナリ名変更 | バイナリ名を`scale2sheet-bun`→`scale2sheet`へ変更、README/設計書をBun優先の書き方へ更新 | **計画中**（検討書: [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md)） |
 
 ---
 
-## Bun単一バイナリ化方針（Ph.11〜Ph.12、2026-07-05更新）
+## Bun単一バイナリ化方針（Ph.11〜Ph.13、2026-07-05更新）
 
 目的: ソースコードはNode.js API互換のTypeScriptを維持しつつ、**このプロジェクトが配布・運用するアプリの正式な形態を`bun build --compile`による単体実行バイナリとする**（2026-07-05、ユーザー指示によりPh.11の「追加オプション」方針から拡張）。詳細な選択肢の検討・却下理由は [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md) と [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md) を参照。
 
@@ -111,27 +112,38 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 
 ### 正式化するもの
 
-- `bun build --compile`による単体実行バイナリ（`build:bun`スクリプト）を正式な配布成果物とする
-- `scripts/run-pipeline.sh`のlaunchd実行対象を、Node実行からコンパイル済み単体バイナリへ切り替える
-- READMEの「インストール」手順の主経路をBunバイナリのビルド・配置に更新する（Node実行手順は開発者向けとして残す）
+- `bun build --compile`による単体実行バイナリ（`build:bun`スクリプト、出力名`scale2sheet`。Ph.13で`scale2sheet-bun`から改名）を正式な配布成果物とする
+- `scripts/run-pipeline.sh`のlaunchd実行対象を、Node実行からコンパイル済み単体バイナリへ切り替える（完了、PR #12）
+- READMEの「インストール」手順の主経路をBunバイナリのビルド・配置に更新する（Node実行手順は開発者向け代替として残す。Ph.13で正式に「Bunが優先」と明記する）
 
-### 実装優先順位
+### 実装優先順位・進捗
 
-1. **ブロッカー解消**: コンパイル済みバイナリでzodスキーマ検証（`config/settings.ts`, `config/env.ts`, `sources/scale-exporter/reader.ts`）が正しく動くかを切り分ける。問題があればzodのバージョン変更や代替手段を検討する
-2. `build:bun`パイプラインの整備、隔離環境でのsmoke test（下記受け入れ基準）
-3. `scripts/run-pipeline.sh` / launchd plistをコンパイル済みバイナリ呼び出しへ切り替え
-4. README/EXTERNAL_DESIGN.mdの更新
-5. 受け入れテスト（AT-01〜AT-18相当）をコンパイル済みバイナリ経路で再確認
+1. ~~ブロッカー確認: コンパイル済みバイナリでzodスキーマ検証（`config/settings.ts`, `config/env.ts`, `sources/scale-exporter/reader.ts`）が正しく動くか切り分け~~ → **解消済み**。`bunx --bun vitest run --run`実行時のみ`z.object`が`undefined`になる問題（下記）を確認したが、`bun build --compile`で生成した実バイナリでは再現しない（PR #11レビュー時点で確認）。バイナリ側の対応は不要と判断
+2. `build:bun`パイプラインの整備、隔離環境でのsmoke test → **完了**（PR #11）
+3. `scripts/run-pipeline.sh` / launchd plistをコンパイル済みバイナリ呼び出しへ切り替え → **完了**（PR #12。plistは`run-pipeline.sh`経由のため変更不要と確認）
+4. README/EXTERNAL_DESIGN.mdの更新、バイナリ名変更（Ph.13） → **進行中**
+5. 受け入れテスト（AT-01〜AT-18相当）をコンパイル済みバイナリ経路で再確認、ACCEPTANCE_TEST_REPORT.md更新 → 未着手
 
 ### 実装フェーズで検証すること（受け入れ基準）
 
 - 既存のvitestスイート（37テスト）が、Bunランタイム上での実行でも通過すること。確認コマンドは `bunx --bun vitest run --run` を使う（`--bun`を付けない`bunx vitest run --run`はshebang経由でNode側にフォールバックする場合があり、Bunランタイムでの実行を保証しない）
-- **既知の要解決リスク**: 上記コマンドで現時点（2026-07-05、PR #9レビュー時点）で `z.object` が `undefined` になり4スイートがFAILすることを確認済み。zodとBunランタイムの相互運用性に起因する問題とみられ、Bun CLI対応を完了とするにはこれを解消する必要がある（zodのバージョン変更、Bun側のNode互換設定、または回避策の特定を実装フェーズで行う）
-- `bun build --compile`で生成した単体バイナリが、隔離環境で正常に起動・終了すること。具体的には次の条件で実データ・実Spreadsheetへの書き込みが発生しないことを確認する:
+- **既知の残存事象（バイナリの対応は不要と判断済み）**: `bunx --bun vitest run --run`実行時に`z.object`が`undefined`になり4スイートがFAILする（zodとBunの`vitest`実行経路上の相互運用性に起因、PR #9レビューで確認）。ただし`bun build --compile`で生成した実バイナリでは同事象は再現せず（PR #11レビューで確認）、コンパイル済みバイナリ側での修正は不要。開発時のNode.jsツールチェイン（`npm test`）は影響を受けないため、この事象を理由に開発フローを変更する必要はない
+- `bun build --compile`で生成した単体バイナリが、隔離環境で正常に起動・終了すること（**確認済み**、`scripts/run-bun-binary-smoke.sh`、PR #11）。具体的には次の条件で実データ・実Spreadsheetへの書き込みが発生しないことを確認する:
   - `HOME`を空の一時ディレクトリに差し替える（`~/.config/scale2sheet/`の実設定・認証情報を読ませない）
   - `SCALE_EXPORTER_OUTPUT_DIR`を空の一時ディレクトリに向ける（scale_exporterの実出力を読ませない）
   - 例: `HOME=<一時dir> SCALE_EXPORTER_OUTPUT_DIR=<空の一時dir> <compiled-binary> run --period morning --source scale-exporter` を実行し、"No spreadsheet row updated." 相当の出力で正常終了することを確認する
-- 特に`googleapis`が`--compile`のバンドル過程で問題を起こさないこと（依存の中で最もリスクが高いため個別に確認する）
+- 特に`googleapis`が`--compile`のバンドル過程で問題を起こさないこと → **確認済み**（`scripts/run-bun-binary-smoke.sh`のSheets認証欠如ケースが期待通り失敗することで、`googleapis`のロードとエラーパスがバイナリ内で機能していることを確認）
+
+---
+
+## Bunを優先実行環境にする方針（Ph.13、2026-07-05計画）
+
+目的・詳細な選択肢の検討は [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md) を参照。要点:
+
+- バイナリ名を`scale2sheet-bun`から`scale2sheet`へ変更する（`build:bun`スクリプトの`--outfile`、`scripts/run-pipeline.sh`の参照先を追従）
+- READMEの実行手順は、Bun手順（`bun build --compile` → `./dist/scale2sheet`）を主経路として先頭に、Node.js手順（`npm run build && node dist/index.js`）を開発・デバッグ用の代替として後段に配置する
+- EXTERNAL_DESIGN.md/ARCHITECTURE_DESIGN.mdにも、配布・実行環境としてBunを優先する旨を明記する
+- 開発・型検査・テストのツールチェイン（`npm test` / `npm run typecheck`、vitest）は変更しない（理由は検討書参照）
 
 ---
 

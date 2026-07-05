@@ -51,7 +51,8 @@ fi
 
 cd "$scale2sheet_dir"
 if [ ! -x "$scale2sheet_bin" ]; then
-  notify "scale2sheet バイナリが見つかりません: $scale2sheet_bin"
+  echo "scale2sheet binary not found or not executable: $scale2sheet_bin" >&2
+  notify "scale2sheetバイナリが見つからないか実行できません。npm run build:bun を実行してください"
   exit 1
 fi
 
