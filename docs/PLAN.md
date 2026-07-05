@@ -94,25 +94,34 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.8 | エージェント運用体制確立 | herdr + agmsg 3層体制、モデル/effortフォールバック方針 | **完了**（2026-07-04） |
 | Ph.9 | 計画書・設計書の新設、検討書ワークフロー導入 | 本書 / ARCHITECTURE_DESIGN.md / EXTERNAL_DESIGN.md / INTERNAL_DESIGN.md / decisions/ | **完了**（2026-07-04） |
 | Ph.10 | テスト設計書群の追加 | EXTERNAL_TEST_DESIGN.md / INTERNAL_TEST_DESIGN.md / ACCEPTANCE_TEST_REPORT.md | **完了**（2026-07-04） |
-| Ph.11 | Bun CLI対応 | `bun build --compile`による単体実行バイナリ（`build:bun`）、`bun run`によるソース直接実行の補助サポート。Node.js経路（`npm run build` / `node dist/index.js`）は現状維持 | **計画中**（検討書: [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md)） |
+| Ph.11 | Bun CLI対応（第一段階、Ph.12により方針拡張） | `bun build --compile`による単体実行バイナリ（`build:bun`）、`bun run`によるソース直接実行の補助サポート | **計画をPh.12へ拡張**（検討書: [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md)） |
+| Ph.12 | 単一バイナリ化（bun buildを正式配布形態にする） | launchd運用・エンドユーザー向け配布をBunコンパイル済み単体バイナリへ切り替え。開発・型検査・テストはNode.jsツールチェイン継続 | **着手**（検討書: [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md)） |
 
 ---
 
-## Bun CLI対応方針（Ph.11、2026-07-05 計画）
+## Bun単一バイナリ化方針（Ph.11〜Ph.12、2026-07-05更新）
 
-目的: Node.jsアプリであることを維持したまま、Bunでも動くCLIアプリとして配布できるようにする。詳細な選択肢の検討・却下理由は [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md) を参照。
+目的: ソースコードはNode.js API互換のTypeScriptを維持しつつ、**このプロジェクトが配布・運用するアプリの正式な形態を`bun build --compile`による単体実行バイナリとする**（2026-07-05、ユーザー指示によりPh.11の「追加オプション」方針から拡張）。詳細な選択肢の検討・却下理由は [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md) と [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md) を参照。
 
-### 変更しないもの
+### 維持するもの
 
-- `npm install && npm run build && node dist/index.js` による既存の実行方法
-- `scripts/run-pipeline.sh` / `scripts/launchd/*.plist` によるlaunchd自動実行（引き続き`node`で実行）
-- ソースコードはNode.js専用API（`Bun.file`等のBun固有API）に依存させない
+- ソースコードはNode.js API互換のTypeScript（Bun固有API不使用）
+- 開発・型検査・ユニットテスト（`npm run typecheck` / `npm test`）はNode.jsツールチェインのまま
+- `npm run build && node dist/index.js`は開発・デバッグ用の経路として残す（運用上の正式手順ではなくなる）
 
-### 追加するもの
+### 正式化するもの
 
-- `package.json`に`build:bun`スクリプトを追加: `bun build ./src/index.ts --compile --outfile dist/scale2sheet-bun`（単体実行バイナリ）
-- 補助的に`bun run src/index.ts`でのソース直接実行もサポート（ビルド不要な動作確認用）
-- README/EXTERNAL_DESIGN.mdにBun版のインストール・実行手順を追記
+- `bun build --compile`による単体実行バイナリ（`build:bun`スクリプト）を正式な配布成果物とする
+- `scripts/run-pipeline.sh`のlaunchd実行対象を、Node実行からコンパイル済み単体バイナリへ切り替える
+- READMEの「インストール」手順の主経路をBunバイナリのビルド・配置に更新する（Node実行手順は開発者向けとして残す）
+
+### 実装優先順位
+
+1. **ブロッカー解消**: コンパイル済みバイナリでzodスキーマ検証（`config/settings.ts`, `config/env.ts`, `sources/scale-exporter/reader.ts`）が正しく動くかを切り分ける。問題があればzodのバージョン変更や代替手段を検討する
+2. `build:bun`パイプラインの整備、隔離環境でのsmoke test（下記受け入れ基準）
+3. `scripts/run-pipeline.sh` / launchd plistをコンパイル済みバイナリ呼び出しへ切り替え
+4. README/EXTERNAL_DESIGN.mdの更新
+5. 受け入れテスト（AT-01〜AT-18相当）をコンパイル済みバイナリ経路で再確認
 
 ### 実装フェーズで検証すること（受け入れ基準）
 
