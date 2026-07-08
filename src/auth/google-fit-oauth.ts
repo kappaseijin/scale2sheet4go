@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { URL } from "node:url";
 
@@ -101,11 +101,21 @@ export async function runGoogleFitAuthFlow(
           codeVerifier,
         });
         await mkdir(dirname(config.tokenPath), { recursive: true });
+        // mode オプションはファイル新規作成時のみ有効なため、
+        // 既存ファイルがある場合は書き込み前後に chmod で 0600 を保証する
+        try {
+          await chmod(config.tokenPath, 0o600);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw error;
+          }
+        }
         await writeFile(
           config.tokenPath,
           JSON.stringify(tokenResponse.tokens, null, 2),
           { encoding: "utf8", mode: 0o600 },
         );
+        await chmod(config.tokenPath, 0o600);
 
         response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
         response.end("Google Fit authorization completed. You can close this tab.");
