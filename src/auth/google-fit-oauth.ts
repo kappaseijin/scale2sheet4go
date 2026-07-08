@@ -1,10 +1,10 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { URL } from "node:url";
 
-import { google } from "googleapis";
+import { Auth, google } from "googleapis";
 
 import type { GoogleFitAuthConfig } from "../config/index.js";
 
@@ -54,11 +54,17 @@ export async function runGoogleFitAuthFlow(
   }
 
   const state = randomUUID();
+  const codeVerifier = randomBytes(32).toString("base64url");
+  const codeChallenge = createHash("sha256")
+    .update(codeVerifier)
+    .digest("base64url");
   const authUrl = oauthClient.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: [...googleFitScopes],
     state,
+    code_challenge: codeChallenge,
+    code_challenge_method: Auth.CodeChallengeMethod.S256,
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -90,13 +96,26 @@ export async function runGoogleFitAuthFlow(
           return;
         }
 
-        const tokenResponse = await oauthClient.getToken(code);
+        const tokenResponse = await oauthClient.getToken({
+          code,
+          codeVerifier,
+        });
         await mkdir(dirname(config.tokenPath), { recursive: true });
+        // mode オプションはファイル新規作成時のみ有効なため、
+        // 既存ファイルがある場合は書き込み前後に chmod で 0600 を保証する
+        try {
+          await chmod(config.tokenPath, 0o600);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw error;
+          }
+        }
         await writeFile(
           config.tokenPath,
           JSON.stringify(tokenResponse.tokens, null, 2),
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
+        await chmod(config.tokenPath, 0o600);
 
         response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
         response.end("Google Fit authorization completed. You can close this tab.");
