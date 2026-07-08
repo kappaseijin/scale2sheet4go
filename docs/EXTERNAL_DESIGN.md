@@ -30,7 +30,7 @@ scale2sheet auth
 | `--source <scale-exporter\|google-fit\|apple-health>` | `run`, `serve` | 任意 | 省略時は `settings.json` の `source`（既定 `scale-exporter`） |
 | `--date <YYYY-MM-DD>` | `run` | 任意 | 過去日転記用。省略時は当日（`TIME_ZONE`基準） |
 
-`auth` は Google Fit の installed app OAuth フローを実行し、トークンを保存する。
+`auth` は Google Fit の installed app OAuth フロー（PKCE S256 + state 検証、localhost リダイレクト）を実行し、トークンをパーミッション `600` で保存する。
 
 ## 実行環境
 
