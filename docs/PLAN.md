@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-07-05（herdr pane 配置と構築コマンドを追記）
+最終更新: 2026-07-28（エージェント体制を派生命名の6役割へ移行、herdr 配置を1エージェント=1タブへ改訂）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -18,32 +18,35 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 ## 担当エージェント
 
-`~/.agents/skills/agmsg/teams/scale2sheet/config.json` に登録済みの3層体制。
+`~/.agents/skills/agmsg/teams/scale2sheet/config.json` に登録済みの7役割体制（2026-07-28、派生命名へ移行）。
 
-| エージェント | タイプ | 役割 |
-|------------|--------|------|
-| `claude_product_manager` | claude-code | プロダクト管理・計画立案・検討書/計画書の作成・PRレビュー＆承認・相談窓口 |
-| `codex_senior_architect` | codex | アーキテクチャ設計・外部設計・内部設計、programmerへの実装指示、PRマージ |
-| `codex_senior_programmer` | codex | コーディング（`codex_senior_architect` の指示に従う） |
+命名規約は `<プロジェクト名>_<役割>_<ベンダー>`（`~/.agents/rules/agent-team.rule.md`）。
+主人格（`claude_product_manager` / `codex_senior_architect` 等）は**派生元の定義であって、チームへ直接登録する識別子ではない**。
+各エージェントは **scale2sheet チームのみ**に所属し、他プロジェクトを跨がない。
+
+| エージェント | タイプ | モデル / effort | 常駐 | 役割 |
+|------------|--------|------|------|------|
+| `scale2sheet_pm_claude` | claude-code | `claude-opus-5` / low | 常駐 | ユーザー窓口・他プロジェクト manager との窓口・提示と承認の中継・PLAN/NOTES 記録 |
+| `scale2sheet_innovator_claude` | claude-code | `claude-opus-5` / xhigh | 短命 | 目標の明確化（サクセスストーリー・合格条件・選択肢の追加） |
+| `scale2sheet_architect_codex` | codex | `gpt-5.6-sol` / xhigh | 短命 | 調査・検討書/設計書の起草（アーキテクチャ・外部・内部・テスト設計） |
+| `scale2sheet_programmer_codex` | codex | `gpt-5.6-terra` / medium | 常駐 | 実装・計測・スクリプト化（TypeScript / vitest） |
+| `scale2sheet_reviewer_claude` | claude-code | `claude-opus-5` / medium | 常駐 | **codex 系が作成した成果物**の敵対的検証（定量主張の独立再集計・決定前レビュー・PR レビュー） |
+| `scale2sheet_reviewer_codex` | codex | `gpt-5.6-terra` / medium（暫定） | 短命 | **Claude 系が作成した成果物**の敵対的検証・PR レビュー |
+| `scale2sheet_worker_codex` | codex | `gpt-5.6-luna` / low | 短命 | 設計判断を伴わない定型作業 |
+
+人格差分は `codex_monitor_agents/<派生名>/AGENT.md`、プロジェクト固有の差分と kaizen は同 `projects/scale2sheet/` に置く。
 
 ### ワークフロー
 
+```text
+ユーザー → manager → innovator → architect & programmer → reviewer
+             ↑（提示・承認の中継のみ）        └──────────┘（直接往復・manager を経由しない）
 ```
-[ユーザー]
-    │ 要件・承認
-    ▼
-[claude_product_manager]  ← 相談・質問・承認依頼を随時受け付ける
-    │ 計画・指示
-    ▼
-[codex_senior_architect]  ← 設計全般を担当
-    │  ┌─────────────────────────────────────────┐
-    │  │ 構造・手法・判断で迷った場合は          │
-    │  │ claude_product_manager へ相談してよい    │
-    │  └─────────────────────────────────────────┘
-    │ 実装指示
-    ▼
-[codex_senior_programmer] ← コーディング専任
-```
+
+- **決定権はユーザー**。manager は決定者ではなく提示者であり、**決定しない・起草しない・検証しない・案を出さない**
+- innovator → architect → programmer → reviewer の実務往復は当事者間で直接行い、manager を経由しない
+- 起草者は自分の起草物を検証しない。**生産者と検証者は必ず別ロールかつ別ベンダー**。検証者はベンダーを跨いで決まる（codex 作成物 → `reviewer_claude`、Claude 作成物 → `reviewer_codex`）
+- 短命セッション（innovator / architect / worker）は案件ごとに起動し、成果物の受け渡しで pane を閉じる
 
 エージェント間の連絡は agmsg、起動・監視は herdr CLI を使う。詳細は「開発体制」を参照。
 
@@ -54,9 +57,13 @@ timestamp: "2026-07-04T18:00:00+09:00"
 | 作業 | 担当 |
 | --- | --- |
 | ブランチ作成（`git switch -c <branch-name>`） | 作業を開始するエージェント |
-| 設計ドキュメントのコミット | `codex_senior_architect`（作成者がコミット） |
-| 実装コードのコミット | `codex_senior_programmer`（作成者がコミット） |
-| 計画書・検討書・プロジェクト管理ファイルのコミット | `claude_product_manager`（作成者がコミット） |
+| 設計書・検討書の起草とコミット | `scale2sheet_architect_codex`（作成者がコミット） |
+| 実装コードのコミット | `scale2sheet_programmer_codex`（作成者がコミット） |
+| `PLAN.md` / `NOTES.md` の記録とコミット | `scale2sheet_pm_claude`（作成者がコミット） |
+
+manager は**検討書・設計書を起草しない**（`~/.agents/rules/agent-role.rule.md`）。manager が書くのは
+決定・合意の結果を反映する `PLAN.md` の記録と `NOTES.md` の作業ログに限る。
+検討書（`docs/decisions/`）と設計書は architect が起草してコミットする。
 
 PRレビュー・approveの運用（作成者と別LLM・別GitHubアカウントによるレビュー、GitHub Approve機能の使用）は [feedback_pr_review_workflow メモリ](#) の通り。
 
@@ -97,6 +104,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.11 | Bun CLI対応（第一段階、Ph.12により方針拡張） | `bun build --compile`による単体実行バイナリ（`build:bun`）、`bun run`によるソース直接実行の補助サポート | **計画をPh.12へ拡張**（検討書: [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md)） |
 | Ph.12 | 単一バイナリ化（bun buildを正式配布形態にする） | launchd運用・エンドユーザー向け配布をBunコンパイル済み単体バイナリへ切り替え。開発・型検査・テストはNode.jsツールチェイン継続 | **実装中**（PR #11, #12 完了。検討書: [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md)） |
 | Ph.13 | Bunを優先実行環境にする・バイナリ名変更 | バイナリ名を`scale2sheet-bun`→`scale2sheet`へ変更、README/設計書をBun優先の書き方へ更新 | **計画中**（検討書: [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md)） |
+| Ph.14 | エージェント体制の派生命名への移行 | 7役割（pm/innovator/architect/programmer/reviewer×2/worker）を `<プロジェクト名>_<役割>_<ベンダー>` で登録、専用クローンと人格差分 AGENT.md を整備、兼任・プロジェクト跨ぎを解消。reviewer をベンダー別2名に分割しレビュー経路を閉じた | **完了**（2026-07-28） |
 
 ---
 
@@ -210,90 +218,90 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 - **agmsg チーム**: `scale2sheet`（チーム = プロジェクト。他プロジェクトへはアクセスしない）
 - **herdr**: default セッション（ghostty）内の workspace `scale2sheet`
 
-| 役割 | agmsg 名 / herdr 名 | 作業ディレクトリ | GitHub |
+| 役割 | agmsg 名（= herdr タブラベル） | 作業ディレクトリ | GitHub |
 | --- | --- | --- | --- |
-| PM・レビュー | claude_product_manager | 本リポジトリ（dev/scale2sheet） | kappaseijin4claude |
-| 設計・マージ | codex_senior_architect / s2s_architect | codex_monitor_agents/scale2sheet-architect（専用クローン） | kappaseijin4codex |
-| 実装・レビュー | codex_senior_programmer / s2s_programmer | codex_monitor_agents/scale2sheet-programmer（専用クローン） | kappaseijin4codex |
+| manager | scale2sheet_pm_claude | 本リポジトリ（dev/scale2sheet） | kappaseijin4claude |
+| innovator | scale2sheet_innovator_claude | codex_monitor_agents/scale2sheet-innovator-claude | kappaseijin4claude |
+| architect | scale2sheet_architect_codex | codex_monitor_agents/scale2sheet-architect | kappaseijin4codex |
+| programmer | scale2sheet_programmer_codex | codex_monitor_agents/scale2sheet-programmer | kappaseijin4codex |
+| reviewer（codex 作成物の検証） | scale2sheet_reviewer_claude | codex_monitor_agents/scale2sheet-reviewer-claude | kappaseijin4claude |
+| reviewer（Claude 作成物の検証） | scale2sheet_reviewer_codex | codex_monitor_agents/scale2sheet-reviewer-codex | kappaseijin4codex |
+| worker | scale2sheet_worker_codex | codex_monitor_agents/scale2sheet-worker | kappaseijin4codex |
 
-### herdr pane 配置（2026-07-05 構築）
+### herdr 配置（2026-07-28 改訂・1エージェント = 1タブ）
 
-検討経緯: [decisions/2026-07-05T224500_herdr_pane配置についての検討書.md](./decisions/2026-07-05T224500_herdr_pane配置についての検討書.md)
+旧 3-pane 分割レイアウトの検討経緯: [decisions/2026-07-05T224500_herdr_pane配置についての検討書.md](./decisions/2026-07-05T224500_herdr_pane配置についての検討書.md)（体制改編前の記録）
 
 default セッション内の workspace `scale2sheet`（ラベルで識別。workspace ID / pane ID は再作成で変わるため `herdr agent list` で都度取得する）。
-
-```text
-┌──────────────────────┬──────────────────────┐
-│                      │ s2s_architect        │
-│ s2s_manager          │ （右上）             │
-│ （左・全高）         ├──────────────────────┤
-│ claude PM            │ s2s_programmer       │
-│                      │ （右下）             │
-└──────────────────────┴──────────────────────┘
-```
-
-構築コマンド（`--split` はフォーカス中 pane を基準に分割される点に注意）:
+**1 エージェント = 1 タブ**とし、タブラベルは派生名をそのまま使う。
 
 ```sh
 H=~/.local/bin/herdr
 AG=/Users/kappa/Dropbox/data/dev/codex_monitor_agents
 
-# 1. workspace 作成（root pane は空シェルなので manager 起動後に閉じる）
+# workspace（無ければ作成。あれば再利用）
+$H workspace list
 $H workspace create --cwd ~/Dropbox/data/dev/scale2sheet --label scale2sheet --no-focus
-# → 出力の workspace_id（例: wH）と root pane_id（例: wH:p1）を控える
 
-# 2. manager（claude）を起動し、空の root pane を閉じる → 左・全高になる
-$H agent start s2s_manager --cwd ~/Dropbox/data/dev/scale2sheet \
-  --workspace <wID> --no-focus \
-  -- ~/.local/bin/claude "/agmsg actas claude_product_manager"
+# 各エージェント: tab create → agent start --tab → 空の root pane を close
+$H tab create --workspace <wID> --label scale2sheet_pm_claude
+$H agent start scale2sheet_pm_claude --cwd ~/Dropbox/data/dev/scale2sheet \
+  --tab <tabID> --no-focus \
+  -- ~/.local/bin/claude "/agmsg actas scale2sheet_pm_claude"
 $H pane close <root pane_id>
 
-# 3. architect を manager の右に分割起動（右・全高）
-$H agent start s2s_architect --cwd $AG/scale2sheet-architect \
-  --workspace <wID> --split right --no-focus \
-  -- ~/.agents/bin/codex -p architect "/agmsg actas codex_senior_architect"
-
-# 4. architect pane にフォーカスしてから下分割で programmer を起動（右下）
-#    （フォーカスが architect 以外にあると別の pane が分割されるため必須）
-$H agent focus s2s_architect
-$H agent start s2s_programmer --cwd $AG/scale2sheet-programmer \
-  --workspace <wID> --split down --no-focus \
-  -- ~/.agents/bin/codex -p programmer "/agmsg actas codex_senior_programmer"
-
-# 5. 確認
-$H agent list
-$H pane layout --pane <manager pane_id>
+# codex 側の例（architect）。エージェントごとに tab create からやり直す
+$H tab create --workspace <wID> --label scale2sheet_architect_codex
+$H agent start scale2sheet_architect_codex --cwd $AG/scale2sheet-architect \
+  --tab <architect の tabID> --no-focus \
+  -- ~/.agents/bin/codex -p architect "/agmsg actas scale2sheet_architect_codex"
+$H pane close <architect タブの root pane_id>
 ```
 
-前提: 各エージェントディレクトリの agmsg delivery mode が `monitor` であること（`delivery.sh status <type> <dir>` で確認。off のまま起動するとブリッジ無しになる）。
+- 常駐は **pm / programmer / reviewer_claude** のみ。innovator / architect / reviewer_codex / worker は案件ごとに起動し、受け渡し後にタブを閉じる
+- タブの最後の pane を閉じるとタブごと消えるため、再起動は `tab create` からやり直す
+- 前提: 各エージェントディレクトリの agmsg delivery mode が `monitor` であること（`delivery.sh status <type> <dir>` で確認。off のまま起動するとブリッジ無しになる）
+- codex 側は `delivery.sh set monitor codex <dir>` 実行後に hooks の trust プロンプトが出るため、起動中のセッションは一度落として再 actas する
 
 ### 開発フロー
 
-1. PR は作成した LLM と別の LLM がレビューし、GitHub の Approve 機能で承認（Claude 作成→codex 承認、codex 作成→Claude 承認）
+1. PR は**作成者と別ロールかつ別ベンダー**がレビューし、GitHub の Approve 機能で承認する。GitHub アカウントも分離する（4claude / 4codex）。6役割内の担当は以下で固定する
+
+   | PR の作成者 | レビュー・approve 担当 | GitHub アカウント |
+   | --- | --- | --- |
+   | `scale2sheet_architect_codex`（設計書・検討書） | `scale2sheet_reviewer_claude` | kappaseijin4claude |
+   | `scale2sheet_programmer_codex`（実装） | `scale2sheet_reviewer_claude` | kappaseijin4claude |
+   | `scale2sheet_worker_codex`（定型作業） | `scale2sheet_reviewer_claude` | kappaseijin4claude |
+   | `scale2sheet_pm_claude`（PLAN / NOTES） | `scale2sheet_reviewer_codex` | kappaseijin4codex |
+   | `scale2sheet_innovator_claude`（目標定義） | `scale2sheet_reviewer_codex` | kappaseijin4codex |
+
+   **レビューは常に reviewer が担う**（`~/.agents/rules/agent-role.rule.md`）。reviewer をベンダー別に
+   2名（claude / codex）置くことで、「PR レビュー = reviewer」「生産者と検証者は別ロールかつ別ベンダー」
+   「approve は別 GitHub アカウント」の3条件を同時に満たす。architect / programmer は検証者を兼務しない
+   （2026-07-28、ユーザー決定により reviewer を分割）
 2. PR 定型作業は `codex_monitor_agents/bin/pr-flow.sh`（作成/approve/merge/finish/status）
 3. エージェント間連絡は agmsg（配送停滞は agmsg-watchdog が自動修復・通知）
 4. エージェントの起動・監視は herdr CLI（`agent start/list/read/wait`。pane への `pane run` は bash 3.2 で文字化けするため使わない）
 
 ### 構築（再現手順の要点）
 
-1. 専用クローン作成 → `delivery.sh set monitor codex <dir>` → agmsg `join.sh`（チーム=プロジェクト、1ディレクトリ1codex）
-2. `herdr agent start <herdr名> --cwd <dir> --workspace <wID> -- ~/.agents/bin/codex "/agmsg actas <agmsg名>"`
-3. git は各クローンの origin（SSH エイリアス github.com-kappaseijin4{claude,codex}）と user.name/email で分離。gh API は `GH_CONFIG_DIR=~/.config/gh-4{claude,codex}`
+1. 専用クローン作成（1 役割 = 1 ディレクトリ）。git は origin の SSH エイリアス github.com-kappaseijin4{claude,codex} と `user.name` / `user.email` で分離。gh API は `GH_CONFIG_DIR=~/.config/gh-4{claude,codex}`
+2. agmsg 登録: `AGMSG_RESOLVE_PROJECT=0 join.sh scale2sheet <派生名> <claude-code|codex> <dir>`（**`AGMSG_RESOLVE_PROJECT=0` は必須**。付けないと渡したパスが既存登録へ吸われる）
+3. `delivery.sh set monitor <type> <dir>` を全ディレクトリで実行する。`<type>` は claude 系なら `claude-code`、codex 系なら `codex`
+4. herdr 配置は上記「herdr 配置」節のとおり `tab create --label <派生名>` → `agent start --tab <tabID>`（`--workspace` 指定の旧手順は使わない）
 
 詳細・トラブルシューティングは codex_monitor_agents/README.md を参照。
 
-## エージェント実行ポリシー（モデル・effort 階層、2026-07-04）
+## エージェント実行ポリシー（モデル・effort）
 
-各エージェントは優先順で起動し、トークン制限時に次段へ自動遷移する。正本: `/Users/kappa/Dropbox/data/dev/fable5/README.md`。
+**正本は `~/.agents/rules/model-orchestration.rule.md`**。本書はモデル配置を再定義せず、正本を参照する
+（上の「担当エージェント」表に載せた model / effort は、正本の値を読みやすさのために転記したもの。
+食い違った場合は正本が優先する）。
 
-| エージェント | 第1優先 | 制限時フォールバック |
-| --- | --- | --- |
-| claude_product_manager | Fable 5（claude-fable-5）＋ effort low | Opus 最高（claude-opus-4-8）＋ effort low |
-| codex_senior_architect | Codex ＋ effort ultra high（xhigh） | Codex ＋ effort low |
-| codex_senior_programmer | Codex ＋ effort low | Codex ＋ effort low |
-
-- フォールバック後は約30分間隔で制限解除を確認し、解除されていればプライマリへ自動復帰する。
-- 承認不要でフォールバック・復帰を自動実行してよい。
+- トークン制限に達した場合のフォールバック先は本書では定義しない。制限時の切替は**正本および各エージェントの人格設定（`AGENT.md` / `~/.codex/<role>.config.toml`）に従い、承認不要で実行する**。正本に定義が不足している場合は、正本側の更新をユーザー決定として起票する（本書で暫定値を定義しない）
+- reviewer のモデルは正本上「`claude-opus-5`、対抗案 `claude-sonnet-5` を A/B で確定」の段階にある。確定するまで対抗案を既定として扱わない
+- `scale2sheet_reviewer_codex` は正本に codex 側 reviewer の定義が無いため `gpt-5.6-terra` / medium を**暫定**とする。正本（`model-orchestration.rule.md`）への追記はユーザー決定事項として起票済み
+- 制限解除の確認と復帰は承認不要で自動実行してよい
 
 ---
 
