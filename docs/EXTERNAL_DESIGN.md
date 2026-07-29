@@ -7,7 +7,7 @@ tags:
   - external
   - cli
   - scale2sheet
-timestamp: "2026-07-04T18:00:00+09:00"
+timestamp: "2026-07-29T09:05:20+09:00"
 ---
 
 # scale2sheet — 外部設計
@@ -35,7 +35,7 @@ scale2sheet auth
 ## 実行環境
 
 - 配布・運用の第一選択は Bun コンパイル済みバイナリ `./dist/scale2sheet`
-- 開発・デバッグ時は `npm run build && node dist/index.js` も利用可
+- 開発・デバッグ時は `npm run build:node && node dist/index.js` も利用可
 - CLI 名は `scale2sheet`。npm パッケージ名は `cale2sheet`
 
 ## 設定ファイル

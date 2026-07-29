@@ -7,7 +7,7 @@ tags:
   - unit
   - integration
   - scale2sheet
-timestamp: "2026-07-04T18:00:00+09:00"
+timestamp: "2026-07-29T09:05:20+09:00"
 ---
 
 # scale2sheet — 内部テスト設計
@@ -127,7 +127,7 @@ test/
 ```sh
 npm test -- --run
 npm run typecheck
-npm run build
+npm run build:node
 ```
 
 Google Sheets/Google Fitの実APIを使う検証はローカル手動受け入れに分離する（CIでは実施しない）。
