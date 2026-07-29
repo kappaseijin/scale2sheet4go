@@ -8,7 +8,7 @@
     "cale2sheet": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build:node": "tsc -p tsconfig.json",
     "build:bun": "bun build ./src/index.ts --compile --outfile dist/scale2sheet",
     "dev": "tsx src/index.ts",
     "test": "vitest run",

@@ -51,7 +51,7 @@ npm run build:bun
 
 ```sh
 npm install
-npm run build
+npm run build:node
 node dist/index.js run --period morning
 ```
 
@@ -91,7 +91,7 @@ npm run build:bun
 Node.js で確認する場合は次でも実行できます。
 
 ```sh
-npm run build
+npm run build:node
 node dist/index.js auth
 ```
 
@@ -140,7 +140,7 @@ Apple Health XMLから夜の列を更新します。
 ```sh
 npm run typecheck
 npm test
-npm run build
+npm run build:node
 ```
 
 ## launchd による日次自動実行
@@ -159,7 +159,7 @@ npm run build
 
 ```sh
 npm install
-npm run build
+npm run build:bun
 mkdir -p ~/Library/LaunchAgents ~/Library/Logs/scale-pipeline
 cp scripts/launchd/*.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
