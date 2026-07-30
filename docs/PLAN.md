@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-07-28（エージェント体制を派生命名の6役割へ移行、herdr 配置を1エージェント=1タブへ改訂）
+最終更新: 2026-07-29（Ph.15 インストーラ整備を追加、build → build:node 改名を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -23,14 +23,15 @@ timestamp: "2026-07-04T18:00:00+09:00"
 命名規約は `<プロジェクト名>_<役割>_<ベンダー>`（`~/.agents/rules/agent-team.rule.md`）。
 主人格（`claude_product_manager` / `codex_senior_architect` 等）は**派生元の定義であって、チームへ直接登録する識別子ではない**。
 各エージェントは **scale2sheet チームのみ**に所属し、他プロジェクトを跨がない。
+役割名は **pm** を正式名とする（`manager` は pm のエイリアス。グローバルの `agent-role.rule.md` は manager 表記だが同一の役割を指す）。
 
 | エージェント | タイプ | モデル / effort | 常駐 | 役割 |
 |------------|--------|------|------|------|
-| `scale2sheet_pm_claude` | claude-code | `claude-opus-5` / low | 常駐 | ユーザー窓口・他プロジェクト manager との窓口・提示と承認の中継・PLAN/NOTES 記録 |
+| `scale2sheet_pm_claude` | claude-code | `claude-opus-5` / low | 常駐 | ユーザー窓口・他プロジェクトの pm との窓口・提示と承認の中継・PLAN/NOTES 記録 |
 | `scale2sheet_innovator_claude` | claude-code | `claude-opus-5` / xhigh | 短命 | 目標の明確化（サクセスストーリー・合格条件・選択肢の追加） |
 | `scale2sheet_architect_codex` | codex | `gpt-5.6-sol` / xhigh | 短命 | 調査・検討書/設計書の起草（アーキテクチャ・外部・内部・テスト設計） |
 | `scale2sheet_programmer_codex` | codex | `gpt-5.6-terra` / medium | 常駐 | 実装・計測・スクリプト化（TypeScript / vitest） |
-| `scale2sheet_reviewer_claude` | claude-code | `claude-opus-5` / medium | 常駐 | **codex 系が作成した成果物**の敵対的検証（定量主張の独立再集計・決定前レビュー・PR レビュー） |
+| `scale2sheet_reviewer_claude` | claude-code | `claude-opus-5` / xhigh | 常駐 | **codex 系が作成した成果物**の敵対的検証（定量主張の独立再集計・決定前レビュー・PR レビュー） |
 | `scale2sheet_reviewer_codex` | codex | `gpt-5.6-terra` / medium（暫定） | 短命 | **Claude 系が作成した成果物**の敵対的検証・PR レビュー |
 | `scale2sheet_worker_codex` | codex | `gpt-5.6-luna` / low | 短命 | 設計判断を伴わない定型作業 |
 
@@ -39,14 +40,14 @@ timestamp: "2026-07-04T18:00:00+09:00"
 ### ワークフロー
 
 ```text
-ユーザー → manager → innovator → architect & programmer → reviewer
-             ↑（提示・承認の中継のみ）        └──────────┘（直接往復・manager を経由しない）
+ユーザー → pm → innovator → architect & programmer → reviewer
+             ↑（提示・承認の中継のみ）        └──────────┘（直接往復・pm を経由しない）
 ```
 
-- **決定権はユーザー**。manager は決定者ではなく提示者であり、**決定しない・起草しない・検証しない・案を出さない**
-- innovator → architect → programmer → reviewer の実務往復は当事者間で直接行い、manager を経由しない
+- **決定権はユーザー**。pm は決定者ではなく提示者であり、**決定しない・起草しない・検証しない・案を出さない**
+- innovator → architect → programmer → reviewer の実務往復は当事者間で直接行い、pm を経由しない
 - 起草者は自分の起草物を検証しない。**生産者と検証者は必ず別ロールかつ別ベンダー**。検証者はベンダーを跨いで決まる（codex 作成物 → `reviewer_claude`、Claude 作成物 → `reviewer_codex`）
-- 短命セッション（innovator / architect / worker）は案件ごとに起動し、成果物の受け渡しで pane を閉じる
+- 短命セッション（innovator / architect / reviewer_codex / worker）は案件ごとに起動し、成果物の受け渡しでタブを閉じる
 
 エージェント間の連絡は agmsg、起動・監視は herdr CLI を使う。詳細は「開発体制」を参照。
 
@@ -61,7 +62,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 | 実装コードのコミット | `scale2sheet_programmer_codex`（作成者がコミット） |
 | `PLAN.md` / `NOTES.md` の記録とコミット | `scale2sheet_pm_claude`（作成者がコミット） |
 
-manager は**検討書・設計書を起草しない**（`~/.agents/rules/agent-role.rule.md`）。manager が書くのは
+pm は**検討書・設計書を起草しない**（`~/.agents/rules/agent-role.rule.md`）。pm が書くのは
 決定・合意の結果を反映する `PLAN.md` の記録と `NOTES.md` の作業ログに限る。
 検討書（`docs/decisions/`）と設計書は architect が起草してコミットする。
 
@@ -105,6 +106,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.12 | 単一バイナリ化（bun buildを正式配布形態にする） | launchd運用・エンドユーザー向け配布をBunコンパイル済み単体バイナリへ切り替え。開発・型検査・テストはNode.jsツールチェイン継続 | **実装中**（PR #11, #12 完了。検討書: [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md)） |
 | Ph.13 | Bunを優先実行環境にする・バイナリ名変更 | バイナリ名を`scale2sheet-bun`→`scale2sheet`へ変更、README/設計書をBun優先の書き方へ更新 | **計画中**（検討書: [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md)） |
 | Ph.14 | エージェント体制の派生命名への移行 | 7役割（pm/innovator/architect/programmer/reviewer×2/worker）を `<プロジェクト名>_<役割>_<ベンダー>` で登録、専用クローンと人格差分 AGENT.md を整備、兼任・プロジェクト跨ぎを解消。reviewer をベンダー別2名に分割しレビュー経路を閉じた | **完了**（2026-07-28） |
+| Ph.15 | インストーラ／アンインストーラの整備 | インストール後の実行体をソースチェックアウトから独立させる（Ph.12 の未完了分の回収）。導入・撤収・診断の手段を提供し、launchd plist と run-pipeline.sh の絶対パス依存を解消する。あわせて `build` → `build:node` へ改名 | **設計完了・実装待ち**（2026-07-29 マージ。目標定義: [decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md](./decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md)、設計書: [INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md)） |
 
 ---
 
@@ -116,7 +118,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 
 - ソースコードはNode.js API互換のTypeScript（Bun固有API不使用）
 - 開発・型検査・ユニットテスト（`npm run typecheck` / `npm test`）はNode.jsツールチェインのまま
-- `npm run build && node dist/index.js`は開発・デバッグ用の経路として残す（運用上の正式手順ではなくなる）
+- `npm run build:node && node dist/index.js`は開発・デバッグ用の経路として残す（運用上の正式手順ではなくなる）
 
 ### 正式化するもの
 
@@ -149,7 +151,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 目的・詳細な選択肢の検討は [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md) を参照。要点:
 
 - バイナリ名を`scale2sheet-bun`から`scale2sheet`へ変更する（`build:bun`スクリプトの`--outfile`、`scripts/run-pipeline.sh`の参照先を追従）
-- READMEの実行手順は、Bun手順（`bun build --compile` → `./dist/scale2sheet`）を主経路として先頭に、Node.js手順（`npm run build && node dist/index.js`）を開発・デバッグ用の代替として後段に配置する
+- READMEの実行手順は、Bun手順（`bun build --compile` → `./dist/scale2sheet`）を主経路として先頭に、Node.js手順（`npm run build:node && node dist/index.js`）を開発・デバッグ用の代替として後段に配置する
 - EXTERNAL_DESIGN.md/ARCHITECTURE_DESIGN.mdにも、配布・実行環境としてBunを優先する旨を明記する
 - 開発・型検査・テストのツールチェイン（`npm test` / `npm run typecheck`、vitest）は変更しない（理由は検討書参照）
 
@@ -220,7 +222,7 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 
 | 役割 | agmsg 名（= herdr タブラベル） | 作業ディレクトリ | GitHub |
 | --- | --- | --- | --- |
-| manager | scale2sheet_pm_claude | 本リポジトリ（dev/scale2sheet） | kappaseijin4claude |
+| pm | scale2sheet_pm_claude | 本リポジトリ（dev/scale2sheet） | kappaseijin4claude |
 | innovator | scale2sheet_innovator_claude | codex_monitor_agents/scale2sheet-innovator-claude | kappaseijin4claude |
 | architect | scale2sheet_architect_codex | codex_monitor_agents/scale2sheet-architect | kappaseijin4codex |
 | programmer | scale2sheet_programmer_codex | codex_monitor_agents/scale2sheet-programmer | kappaseijin4codex |
@@ -265,7 +267,7 @@ $H pane close <architect タブの root pane_id>
 
 ### 開発フロー
 
-1. PR は**作成者と別ロールかつ別ベンダー**がレビューし、GitHub の Approve 機能で承認する。GitHub アカウントも分離する（4claude / 4codex）。6役割内の担当は以下で固定する
+1. PR は**作成者と別ロールかつ別ベンダー**がレビューし、GitHub の Approve 機能で承認する。GitHub アカウントも分離する（4claude / 4codex）。7役割内の担当は以下で固定する
 
    | PR の作成者 | レビュー・approve 担当 | GitHub アカウント |
    | --- | --- | --- |
@@ -279,6 +281,12 @@ $H pane close <architect タブの root pane_id>
    2名（claude / codex）置くことで、「PR レビュー = reviewer」「生産者と検証者は別ロールかつ別ベンダー」
    「approve は別 GitHub アカウント」の3条件を同時に満たす。architect / programmer は検証者を兼務しない
    （2026-07-28、ユーザー決定により reviewer を分割）
+
+   **PR の作成者アカウントも分離する**。GitHub は自分が作成した PR への approve / request changes を
+   拒否するため、コミットの author を分けるだけでは足りない。codex 成果物の PR は
+   `GH_CONFIG_DIR=~/.config/gh-4codex` で、Claude 成果物の PR は `~/.config/gh-4claude` で作成する。
+   pm が代理作成する場合も、**成果物の作成者側のアカウントを使う**
+   （2026-07-29、pm が 4claude で codex 成果物の PR を作り reviewer_claude が判定を出せなくなった事故に基づく）
 2. PR 定型作業は `codex_monitor_agents/bin/pr-flow.sh`（作成/approve/merge/finish/status）
 3. エージェント間連絡は agmsg（配送停滞は agmsg-watchdog が自動修復・通知）
 4. エージェントの起動・監視は herdr CLI（`agent start/list/read/wait`。pane への `pane run` は bash 3.2 で文字化けするため使わない）
