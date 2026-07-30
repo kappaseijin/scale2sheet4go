@@ -230,12 +230,37 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 | reviewer（Claude 作成物の検証） | scale2sheet_reviewer_codex | codex_monitor_agents/scale2sheet-reviewer-codex | kappaseijin4codex |
 | worker | scale2sheet_worker_codex | codex_monitor_agents/scale2sheet-worker | kappaseijin4codex |
 
-### herdr 配置（2026-07-28 改訂・1エージェント = 1タブ）
+### herdr 配置（2026-07-30 改訂・1エージェント = 1タブ ＋ pm タブに監視 pane）
 
 旧 3-pane 分割レイアウトの検討経緯: [decisions/2026-07-05T224500_herdr_pane配置についての検討書.md](./decisions/2026-07-05T224500_herdr_pane配置についての検討書.md)（体制改編前の記録）
 
 default セッション内の workspace `scale2sheet`（ラベルで識別。workspace ID / pane ID は再作成で変わるため `herdr agent list` で都度取得する）。
 **1 エージェント = 1 タブ**とし、タブラベルは派生名をそのまま使う。
+ただし **pm のタブだけは 3 pane 構成**とし、右カラムに監視 pane を 2 枚置く（2026-07-30 ユーザー決定）。
+
+```text
+pm タブ                              他タブ（1エージェント = 1タブ）
+┌───────────┬──────────────────────┐  ┌──────────────┐
+│           │ watch:agmsg   (背高) │  │ programmer   │
+│  pm       │  ← 新着が下端に出る  │  └──────────────┘
+│  (全高)   ├──────────────────────┤  ┌──────────────┐
+│           │ watch:agents  (約10行)│ │ reviewer     │
+└───────────┴──────────────────────┘  └──────────────┘
+```
+
+- 右上 = `~/.agents/bin/agmsg-watch-stream.sh scale2sheet 10`（agmsg の往復を新着だけ 1 行ずつ追記）
+- 右下 = `~/.agents/bin/herdr-watch-agents.sh <wID> 5`（全席の稼働状況。`blocked` を赤で警告）
+- **上下を逆にしない**。メッセージ流は新着が pane 下端から上がるため、一覧を*下*に置くと
+  最新メッセージと一覧が隣接し目線の移動が最小になる
+- 構築は `pane split <pm pane> --direction right --ratio 0.45` → `pane split <上pane> --direction down --ratio 0.76`
+
+```sh
+$H pane split <pm pane> --direction right --ratio 0.45 --no-focus   # → 上 pane
+$H pane split <上pane>  --direction down  --ratio 0.76 --no-focus   # → 下 pane
+$H pane rename <上pane> watch:agmsg;  $H pane rename <下pane> watch:agents
+$H pane run <上pane> '~/.agents/bin/agmsg-watch-stream.sh scale2sheet 10'
+$H pane run <下pane> '~/.agents/bin/herdr-watch-agents.sh <wID> 5'
+```
 
 ```sh
 H=~/.local/bin/herdr
@@ -289,7 +314,14 @@ $H pane close <architect タブの root pane_id>
    （2026-07-29、pm が 4claude で codex 成果物の PR を作り reviewer_claude が判定を出せなくなった事故に基づく）
 2. PR 定型作業は `codex_monitor_agents/bin/pr-flow.sh`（作成/approve/merge/finish/status）
 3. エージェント間連絡は agmsg（配送停滞は agmsg-watchdog が自動修復・通知）
-4. エージェントの起動・監視は herdr CLI（`agent start/list/read/wait`。pane への `pane run` は bash 3.2 で文字化けするため使わない）
+4. エージェントの起動・監視は herdr CLI（`agent start/list/read/wait`）。
+   `pane run` は**日本語を含むコマンドでは文字化けする**ため、エージェントへの指示送信には使わず
+   `agent send` を使う。ASCII のみの監視スクリプト起動（上記 watch 系）には `pane run` を使ってよい
+5. 席の移動は `pane move <pane> --new-tab --workspace <wID> --label <役割>`（元タブが空になれば自動で閉じる）。
+   `pane read` は画面クリアするスクリプトでは空に見えるため `--format ansi` で確認する
+6. `AGMSG_SPAWN_WORKSPACE` は**ラベルではなく workspace ID**（`w29` 等）を渡す。ラベルだと `workspace_not_found` になる。
+   `spawn.sh` は `--project` 既定値が `$PWD` のため、**必ず対象クローンを `--project` で明示する**
+   （省略すると pane の cwd が本リポジトリになり、agmsg 登録にも重複エントリが増える）
 
 ### 構築（再現手順の要点）
 
