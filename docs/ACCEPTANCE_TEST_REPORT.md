@@ -80,3 +80,48 @@ tags: [acceptance-test, scale2sheet]
 - AT-12（`--period`不正値のCLIレベル検証）はユニットテストの追加候補（`test/cli/index.test.ts`にcommanderのバリデーションを直接テストするケースを足す）。
 - AT-13（Spreadsheetに当日行がない場合に`undefined`を返すこと）もユニットテストの追加候補（`test/sheets/adapter.test.ts`の`findTodayRowNumber`に該当なしケースを足す）。
 - secret / token の実値はレポートに含めない。
+
+## Installer AC（AC-01〜AC-38）
+
+各 AC は最終 owner Slice が完了するまで `PENDING` とする。Slice 1 は run lease の基盤のみを提供するため、本表の最終判定を閉じない。
+
+| AC | owner Slice | 必須方式 | 実施方式 | 対象 commit | 実施日時 (JST) | 証跡 | 判定 | 備考 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| AC-01 | Slice 3 | 自動 | — | — | — | compiled install | PENDING | Slice 3 で判定 |
+| AC-02 | Slice 3 | 自動 | — | — | — | installed `--version` | PENDING | Slice 3 で判定 |
+| AC-03 | Slice 6 | 代理指標、手動 | — | — | — | checkout rename | PENDING | Slice 6 で判定 |
+| AC-04 | Slice 3 | 自動 | — | — | — | credential failure | PENDING | Slice 3 で判定 |
+| AC-05 | Slice 3 | 自動 | — | — | — | launchd opt-in | PENDING | Slice 3 で判定 |
+| AC-06 | Slice 6 | 代理指標、手動 | — | — | — | temporary label | PENDING | Slice 6 で判定 |
+| AC-07 | Slice 2 | 自動 | — | — | — | pure plist | PENDING | Slice 2 で判定 |
+| AC-08 | Slice 3 | 自動 | — | — | — | fake launchctl | PENDING | Slice 3 で判定 |
+| AC-09 | Slice 3 | 自動 | — | — | — | default uninstall | PENDING | Slice 3 で判定 |
+| AC-10 | Slice 3 | 自動 | — | — | — | manifest prefix | PENDING | Slice 3 で判定 |
+| AC-11 | Slice 3 | 自動 | — | — | — | uninstall output | PENDING | Slice 3 で判定 |
+| AC-12 | Slice 5 | 自動 | — | — | — | purge notice | PENDING | Slice 5 で判定 |
+| AC-13 | Slice 5 | 自動 | — | — | — | noninteractive purge | PENDING | Slice 5 で判定 |
+| AC-14 | Slice 3 | 自動 | — | — | — | uninstalled state | PENDING | Slice 3 で判定 |
+| AC-15 | Slice 3 | 自動 | — | — | — | repeated install | PENDING | Slice 3 で判定 |
+| AC-16 | Slice 3 | 自動 | — | — | — | settings hash | PENDING | Slice 3 で判定 |
+| AC-17 | Slice 3 | 自動 | — | — | — | old inode | PENDING | Slice 3 で判定 |
+| AC-18 | Slice 3 | 自動 | — | — | — | active serve | PENDING | Slice 3 で判定 |
+| AC-19 | Slice 3 | 自動 | — | — | — | dry-run isolation | PENDING | Slice 3 で判定 |
+| AC-20 | Slice 7 | 自動 | — | — | — | all-slice isolation | PENDING | Slice 7 で最終集約 |
+| AC-21 | Slice 5 | 自動 | — | — | — | interruption points | PENDING | Slice 5 で判定 |
+| AC-22 | Slice 6 | 自動 | — | — | — | README path | PENDING | Slice 6 で判定 |
+| AC-23 | Slice 5 | 自動 | — | — | — | dry-run tree | PENDING | Slice 5 で判定 |
+| AC-24 | Slice 6 | 代理指標、手動 | — | — | — | read-only Sheets | PENDING | Slice 4 fake + Slice 6 real read-only |
+| AC-25 | Slice 4 | 自動 | — | — | — | no doctor network | PENDING | Slice 4 で判定 |
+| AC-26 | Slice 2 | 自動 | — | — | — | exporter retry | PENDING | Slice 2 で判定 |
+| AC-27 | Slice 6 | 代理指標、手動 | — | — | — | exporter notification | PENDING | Slice 6 で判定 |
+| AC-28 | Slice 6 | 代理指標、手動 | — | — | — | transfer notification | PENDING | Slice 6 で判定 |
+| AC-29 | Slice 2 | 自動 | — | — | — | timestamp logs | PENDING | Slice 2 で判定 |
+| AC-30 | Slice 2 | 自動 | — | — | — | pipeline failure | PENDING | Slice 2 で判定 |
+| AC-31 | Slice 2 | 自動 | — | — | — | pipeline ports | PENDING | Slice 2 で判定 |
+| AC-32 | Slice 7 | 自動 | — | — | — | legacy reference removal | PENDING | Slice 7 で判定 |
+| AC-33 | Slice 4 | 自動 | — | — | — | doctor diagnostics | PENDING | Slice 4 で判定 |
+| AC-34 | Slice 2 | 自動 | — | — | — | plist stderr | PENDING | Slice 2 で判定 |
+| AC-35 | Slice 6 | 自動、手動 | — | — | — | registration check | PENDING | Slice 6 で判定 |
+| AC-36 | Slice 6 | 自動、手動 | — | — | — | status history | PENDING | Slice 6 で判定 |
+| AC-37 | Slice 6 | 代理指標、手動 | — | — | — | normal active pipeline | PENDING | Slice 6 で判定 |
+| AC-38 | Slice 6 | 代理指標、手動 | — | — | — | force stop warning | PENDING | Slice 6 で判定 |

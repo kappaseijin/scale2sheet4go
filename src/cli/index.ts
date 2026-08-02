@@ -9,8 +9,9 @@ import {
 import { runGoogleFitAuthFlow } from "../auth/index.js";
 import type { MeasurementPeriod } from "../domain/index.js";
 import type { MeasurementSourceOption } from "../sources/index.js";
-import { startScheduler } from "../scheduler/index.js";
+import { acquireRunLease, startScheduler } from "../scheduler/index.js";
 import { syncMeasurements } from "../service/index.js";
+import { APP_VERSION } from "../version.js";
 
 export async function runCli(argv: readonly string[] = process.argv): Promise<void> {
   const program = new Command();
@@ -18,7 +19,7 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
   program
     .name("scale2sheet")
     .description("Sync body measurements to Google Sheets.")
-    .version("0.1.0");
+    .version(APP_VERSION);
 
   program
     .command("auth")
@@ -69,9 +70,14 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
       "data source: scale-exporter, google-fit or apple-health (default: settings.json の source)",
       parseSource,
     )
-    .action((options: ServeCommandOptions) => {
+    .action(async (options: ServeCommandOptions) => {
       const config = loadConfig();
-      startScheduler({ config, source: options.source ?? config.defaultSource });
+      const lease = await acquireRunLease({ kind: "serve" });
+      startScheduler({
+        config,
+        source: options.source ?? config.defaultSource,
+        lease,
+      });
     });
 
   try {
