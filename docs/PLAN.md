@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-07-29（Ph.15 インストーラ整備を追加、build → build:node 改名を反映）
+最終更新: 2026-08-02（Ph.15 の実装分割確定と Slice 1 着手、scale_exporter との責任境界を追加）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -106,7 +106,46 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.12 | 単一バイナリ化（bun buildを正式配布形態にする） | launchd運用・エンドユーザー向け配布をBunコンパイル済み単体バイナリへ切り替え。開発・型検査・テストはNode.jsツールチェイン継続 | **実装中**（PR #11, #12 完了。検討書: [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md)） |
 | Ph.13 | Bunを優先実行環境にする・バイナリ名変更 | バイナリ名を`scale2sheet-bun`→`scale2sheet`へ変更、README/設計書をBun優先の書き方へ更新 | **計画中**（検討書: [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md)） |
 | Ph.14 | エージェント体制の派生命名への移行 | 7役割（pm/innovator/architect/programmer/reviewer×2/worker）を `<プロジェクト名>_<役割>_<ベンダー>` で登録、専用クローンと人格差分 AGENT.md を整備、兼任・プロジェクト跨ぎを解消。reviewer をベンダー別2名に分割しレビュー経路を閉じた | **完了**（2026-07-28） |
-| Ph.15 | インストーラ／アンインストーラの整備 | インストール後の実行体をソースチェックアウトから独立させる（Ph.12 の未完了分の回収）。導入・撤収・診断の手段を提供し、launchd plist と run-pipeline.sh の絶対パス依存を解消する。あわせて `build` → `build:node` へ改名 | **設計完了・実装待ち**（2026-07-29 マージ。目標定義: [decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md](./decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md)、設計書: [INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md)） |
+| Ph.15 | インストーラ／アンインストーラの整備 | インストール後の実行体をソースチェックアウトから独立させる（Ph.12 の未完了分の回収）。導入・撤収・診断の手段を提供し、launchd plist と run-pipeline.sh の絶対パス依存を解消する。あわせて `build` → `build:node` へ改名 | **実装中・Slice 1**（2026-08-02 着手。目標定義: [decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md](./decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md)、設計書: [INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md)、実装分割: [decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md](./decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md)） |
+
+---
+
+### Ph.15 の実装分割（2026-07-30 ユーザー決定・PR #27 で確定）
+
+正本は [実装分割と受け入れ確認の検討書](./decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md)（status: accepted、main = 24ef0b8）。
+
+- **U-1 = 依存順の capability slice（7本）**。案 I（単一 PR）・案 II（コマンド別 PR）は却下
+- **U-2 = 直列 PR**。並行させない
+- **U-3 = 連続7日観測後に legacy cleanup を別 PR**。内蔵 pipeline を先に入れ、朝夕の自動実行が7日連続で正常に回るのを確認してから `run-pipeline.sh` を削除する
+
+| Slice | 内容 | 状態 |
+| --- | --- | --- |
+| 0 | 着手条件の確認（PR を作らない） | 完了（2026-08-02 全項目 PASS） |
+| 1 | runtime safety foundation（APP_VERSION / read-only settings / run lease / `O_EXLOCK_DARWIN` / 最小 acceptance harness / AC 骨格） | **実装中** |
+| 2 | 内蔵 pipeline の shadow path | 未着手（責任境界の監査待ち） |
+| 3 | install と既定 uninstall | 未着手 |
+| 4 | doctor | 未着手 |
+| 5 | purge と wipe | 未着手 |
+| 6 | distribution と切替準備 | 未着手 |
+| 7 | 観測後 cleanup | 未着手 |
+
+検証方針は検討書の「Slice ごとの完了ゲート」表が正本。共通ゲートは `npm run typecheck` / `npm test` / `npm run build:bun`。
+**通常 Vitest（Node）と隔離 Bun acceptance は一方が他方を代用しない**。とくに `O_EXLOCK` と atomic 置換は
+Bun compiled binary の2 process 試験でしか実証できない（AC-15、AC-17〜20、AC-23〜25 は個別ゲート表を優先）。
+
+### scale_exporter との責任境界（2026-08-02 合意）
+
+| | 責任範囲 |
+| --- | --- |
+| scale_exporter | 測定データ取得、JSONL 出力、**自身の**設定・認証・バイナリの install / uninstall、自身の LaunchAgent（`jp.seijin.kappa.scale-exporter`、既定 07:00/21:00） |
+| scale2sheet | pipeline 実行、launchd（**自身の** pipeline / Sheets 用 LaunchAgent のみ）、朝夕スケジュール、Sheets 転記 |
+
+- 連携は**公開 CLI と出力契約だけ**に限定する。相手側の設定・認証・導入を所有しない
+- scale2sheet の installer が scale_exporter を install しないことは当初からの非目標。維持する
+- 相手の LaunchAgent を重複管理しない
+- **未解決**: exporter が自身のスケジュールで動くと、当方 pipeline からの呼び出しと二重取得になる。
+  案A（pipeline は取得を呼ばず出力済み JSONL を消費）／案B（従来どおり pipeline が呼ぶ）のどちらを前提にするかを
+  先方へ照会中。Slice 2 の前提がこれに依存する
 
 ---
 
