@@ -21,7 +21,12 @@ manager が一度その判断を誤りとみなして復席させ、約 30 分�
 
 ### 何が起きたか
 
-前項の終了後、Claude 作成の PR #33 / #36 のレビュー先が不明になった。
+前項の終了後、Claude 側が起草した PR #33 / #36 のレビュー先が不明になった。
+
+なお 2 本は PR 作成アカウントが異なる。#33 は `kappaseijin4claude`、#36 は**ユーザー本人の既定アカウント
+`kappaseijin`** で作成されていた。#36 は manager が `GH_CONFIG_DIR` を付けずに `gh pr create` を実行したためで、
+当時のルール（成果物の作成者側のアカウントを使う）からも外れていた。アカウント規律の逸脱が既に 1 件
+起きていたことになる。ユーザー判断により #36 はそのまま進めた。
 manager が `scale2sheet_architect_codex` へ回したところ、次の理由で正当に差し戻された。
 
 > AGENT.md に「PR レビューは担当しない」「Claude 作成物は `scale2sheet_reviewer_codex` が検証」と明記。
@@ -42,6 +47,15 @@ codex 版は列挙されていない。architect の AGENT.md にあった記述
 
 **前項の「代替として終了した」という判断は、結果として正しかった。**
 
+### 未投稿のまま消えた判定が 1 件ある
+
+`scale2sheet_reviewer_codex` は 2026-08-02 に PR #31 を単独 LLM failover として検証し APPROVE 判定を出したが、
+PR author と同一アカウント（`kappaseijin4codex`）であることを理由に formal review を投稿せず manager へ委ねた。
+その委譲は完了しないまま席が閉じたため、**GitHub 上に当該判定の痕跡は残っていない**。
+
+その後 `scale2sheet_reviewer_claude` が独立に再検証し（reviewer_codex の所見は参照していない）、
+REQUEST_CHANGES を経て APPROVE に至っている。#31 の GitHub 履歴に reviewer_codex が現れないのはこのため。
+
 ### 誤りの原因
 
 manager が、他エージェントの AGENT.md に残っていた記述を常設の役割分担として一般化した。
@@ -50,10 +64,15 @@ manager が、他エージェントの AGENT.md に残っていた記述を常�
 そもそもこの問いは、manager が PR を起草したことで生まれた。PLAN / NOTES の記録は manager の
 担当範囲だが、その成果物を誰が検証するかという問題を自分で作り出す点は意識しておく。
 
-### 反映（PR #42、merge commit b0099cd）
+### 反映
+
+**リポジトリ内**（PR #42、merge commit `b0099cd`）
 
 - `docs/PLAN.md`: 役割表の reviewer を 1 行へ統合、開発フローの「別ロールかつ別ベンダー」を「別ロール」へ、
   `reviewer_codex` をフォールバック専用と明記、体制表のラベルを修正
+
+**リポジトリ外**（本リポジトリのコミット単位では追跡できない。`git show b0099cd` には現れない）
+
 - `~/.agents/rules/agent-role.rule.md`: 検証者条項を「別ロールは必須・ベンダー跨ぎは必須条件としない」へ改訂。
   同一ベンダー時の緩和策と PR 作成アカウント条項を新設
 - `~/.agents/rules/model-orchestration.rule.md`: 役割別モデル配置の説明を同趣旨へ更新
