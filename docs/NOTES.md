@@ -95,6 +95,15 @@ reviewer_codex が挙げた 3 点とは異なる欠陥であり、単独 LLM 検
 - `pr-flow.sh` の `create` は agmsg 送信者・宛先を主人格名（`claude_product_manager` /
   `codex_senior_architect`）でハードコードしており、同じ理由で失敗する。
   `gh pr create` と push は先に完了するため、失敗するのはレビュー依頼の送信のみ
-- `agmsg spawn.sh` は `AGMSG_SPAWN_WORKSPACE` / `AGMSG_SPAWN_LABEL` を指定しても新しい tab を作らず、
-  呼び出し元の tab を分割する。1 エージェント 1 tab を保つには
-  `herdr pane move <pane> --new-tab` で分離する必要がある
+- `agmsg spawn.sh` で新しい tab に起動するには **`--window` と環境変数 `HERDR_WORKSPACE_ID` の両方**が要る。
+  `spawn.sh` の `launch_in_herdr()` は `--window` 指定時に `HERDR_WORKSPACE_ID` を読み、
+  設定されていれば `herdr tab create --workspace <ws> --label <name>` を実行する。
+  未設定なら警告を出して pane 分割へフォールバックし、`--window` 無指定なら常に
+  `herdr pane split <呼び出し元 pane>` になる。
+  `AGMSG_SPAWN_WORKSPACE` / `AGMSG_SPAWN_LABEL` は `agmsg-spawn-herdr.sh`（非 tmux 経路の
+  ターミナル起動ラッパー）向けの変数で、herdr 内から `spawn.sh` を直接叩く経路では参照されない。
+  この違いを取り違えて `AGMSG_SPAWN_WORKSPACE` だけを指定したため、呼び出し元 tab が分割された。
+  事後に是正する場合は `herdr pane move <pane> --new-tab --label <name>` で分離できる
+  （エージェントの再起動は不要）。
+  なお `spawn.sh` の usage には「`--window` は tmux 専用」と書かれているが、実装は herdr にも対応している。
+  ドキュメントと実装が食い違っている
