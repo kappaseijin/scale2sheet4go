@@ -53,7 +53,7 @@ launchd の日次処理は、インストール済み単体バイナリだけを
 現行pipelineは公開CLIを同期起動してからJSONLを読む。
 一方、`scale_exporter` 側にも07:00と21:00の定期実行が追加されるため、両LaunchAgentを有効にすると二重取得が起きうる。
 当方のrun leaseは `scale2sheet` processだけを排他し、先方processを排他しない。
-したがって、取得を先方scheduleだけに委ねるか、当方pipelineから同期起動するかのユーザー決定と公開契約が確定するまで、Slice 2以降の実装を開始しない。
+したがって、取得を先方scheduleだけに委ねる案、当方pipelineから同期起動する案、`invoke`と`consume`を切り替える案のユーザー決定と、選択した案の公開契約が確定するまで、Slice 2以降の実装を開始しない。
 
 ## 外部インターフェース
 
