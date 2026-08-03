@@ -40,14 +40,16 @@ consumer は period ごとに次の順で判定する。
 
 1. 対象キーの atomic status を読む。
 2. status の契約/schema、対象日、period、source、`newUniqueRecordCount` を検証する。
-3. producer status が `completed` で、`periodUniqueRecordCount = 0` なら `completed:no-data` とし、転記せず終了コード 0 とする。`newUniqueRecordCount` は今回 publish の鮮度・生存確認に使い、再実行の転記ゲートには使わない。
+3. `newUniqueRecordCount` は今回 publish の鮮度・生存確認として保持し、再実行の転記ゲートには使わない。
 4. JSONL を bounded stable snapshot で読み、period window と exact dedup を適用して consumer 自身の `periodUniqueRecordCount` と usable reading を得る。
-5. usable reading が 1 件以上なら転記へ進む。`periodUniqueRecordCount > 0` なのに usable reading が 0 件なら `failed:input-contract` とする。status が period 内容を示すのに consumer が読めないためである。
+5. producer status が `completed` で、consumer の `periodUniqueRecordCount = 0` なら `completed:no-data` とし、転記せず終了コード 0 とする。1 件以上なら転記へ進み、0 件なのに producer が period 内容を示す場合は `failed:input-contract` とする。
 6. status が無い、atomic publish 前の不完全な status、キー不一致、schema 不正、または status と JSONL の整合が取れない場合は `failed:input-contract` とし、転記しない。
 
 `newUniqueRecordCount` は producer が今回 publish で増やした値であり、consumer が file の更新時刻から推測する値ではない。
 `periodUniqueRecordCount` は producer status のフィールドではなく、consumer が JSONL から計算する値である。これは先方への新規契約要求ではない。
 consumer は自前の `periodUniqueRecordCount` を再実行を含む転記判定のゲートにする。
+この値は producer status と比較しない。`newUniqueRecordCount` は今回 publish の差分、`periodUniqueRecordCount` は period 全体の量であり、拾い直し run では差分0・総量Nが正常になり得るためである。
+producer 公開内容との整合性は `publishId` と `files[].digest` の世代照合で検査する。
 同じ reading を再実行で転記しても、reader の exact dedup と Sheets 当日行の冪等な upsert により、転記結果を二重加算しない。
 
 ### status と当方 reading の4象限
@@ -109,7 +111,7 @@ closed boundary による重複再出力は reader の exact dedup で転記結�
 | status が completed、JSONL が不安定 | `failed:input-unstable` | 1 | しない | する |
 | status が completed、JSONL parse不能/部分公開 | `failed:input-contract` | 1 | しない | する |
 | status 欠落・不正・キー不一致 | `failed:input-contract` | 1 | しない | する |
-| status と JSONL の unique 件数不一致 | `failed:input-contract` | 1 | しない | する |
+| status の `publishId` / `files[].digest` と JSONL 世代の不一致 | `failed:input-contract` | 1 | しない | する |
 
 producer が status を公開できない場合は、正常な no-data として黙って終了しない。
 status 不在は no-data の証明ではなく、producer の公開契約を検証できない状態だからである。
