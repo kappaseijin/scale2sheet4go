@@ -18,7 +18,7 @@ timestamp: "2026-07-02"
 ## データフロー
 
 ```text
-[scale_exporter] --JSONL出力--> ~/Dropbox/data/private/健康/scale_exporter/ --読込--> [scale2sheet] --> Google スプレッドシート
+[scale_exporter] --JSONL出力--> <入力フォルダ> --読込--> [scale2sheet] --> Google スプレッドシート
 ```
 
 デフォルトのデータソースは `scale-exporter`（[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した分割 JSONL ファイルの読み込み）です。Google Fit REST API 直接取得（`--source google-fit`）も残っていますが、同 API は 2026 年末で終了するため非推奨です。launchd による朝夕の自動実行（本実行＋拾い直し）に対応します（後述）。
@@ -64,11 +64,13 @@ node dist/index.js run --period morning
   "sheet-id": "<スプレッドシートID>",
   "sheet-name": "体温・血圧",
   "sheets-credentials": "~/.config/scale2sheet/google-sheets-service-account.json",
-  "scale-exporter-output-dir": "~/Dropbox/data/private/健康/scale_exporter",
+  "scale-exporter-output-dir": "/path/to/scale-exporter-output",
   "morning-cron": "0 7 * * *",
   "evening-cron": "0 21 * * *"
 }
 ```
+
+`scale-exporter-output-dir` は利用環境の入力フォルダへ変更してください。設定は環境変数、`settings.json`、組み込み既定値の順で解決されます。
 
 認証ファイル（シークレット・手動配置）:
 
