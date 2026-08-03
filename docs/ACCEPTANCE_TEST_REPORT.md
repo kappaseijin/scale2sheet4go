@@ -2,7 +2,7 @@
 type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）
-timestamp: "2026-07-05"
+timestamp: "2026-07-05T00:00:00+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
@@ -112,12 +112,12 @@ tags: [acceptance-test, scale2sheet]
 | AC-23 | Slice 5 | 自動 | — | — | — | dry-run tree | PENDING | Slice 5 で判定 |
 | AC-24 | Slice 6 | 代理指標、手動 | — | — | — | read-only Sheets | PENDING | Slice 4 fake + Slice 6 real read-only |
 | AC-25 | Slice 4 | 自動 | — | — | — | no doctor network | PENDING | Slice 4 で判定 |
-| AC-26 | Slice 2 | 自動 | — | — | — | exporter retry | PENDING | Slice 2 で判定 |
-| AC-27 | Slice 6 | 代理指標、手動 | — | — | — | exporter notification | PENDING | Slice 6 で判定 |
-| AC-28 | Slice 6 | 代理指標、手動 | — | — | — | transfer notification | PENDING | Slice 6 で判定 |
+| AC-26 | Slice 2 | 自動 | — | — | — | bounded stable snapshot | PENDING | fake clock/stat/delayで3attemptと読取前後一致を判定 |
+| AC-27 | Slice 6 | 代理指標、手動 | — | — | — | input failure notification | PENDING | missing/unstable/invalidの要求をSlice 2、実通知をSlice 6で判定 |
+| AC-28 | Slice 6 | 代理指標、手動 | — | — | — | input / transfer notification | PENDING | 2段階を区別。実行体欠落は対象外 |
 | AC-29 | Slice 2 | 自動 | — | — | — | timestamp logs | PENDING | Slice 2 で判定 |
-| AC-30 | Slice 2 | 自動 | — | — | — | pipeline failure | PENDING | Slice 2 で判定 |
-| AC-31 | Slice 2 | 自動 | — | — | — | pipeline ports | PENDING | Slice 2 で判定 |
+| AC-30 | Slice 2 | 自動 | — | — | — | missing failure / present-zero no-op | PENDING | code 1/0と転記非呼出を判定 |
+| AC-31 | Slice 2 | 自動 | — | — | — | input snapshot ports | PENDING | 実時間5秒待機なしで判定 |
 | AC-32 | Slice 7 | 自動 | — | — | — | legacy reference removal | PENDING | Slice 7 で判定 |
 | AC-33 | Slice 4 | 自動 | — | — | — | doctor diagnostics | PENDING | Slice 4 で判定 |
 | AC-34 | Slice 2 | 自動 | — | — | — | plist stderr | PENDING | Slice 2 で判定 |
