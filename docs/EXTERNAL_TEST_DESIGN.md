@@ -37,7 +37,7 @@ Spreadsheet書き込みを伴うケースでは以下を常に確認する。
 | --- | --- |
 | 目的 | scale_exporter出力からの朝の同期 |
 | コマンド | `scale2sheet run --period morning` |
-| 前提 | `~/Documents/scale_exporter` に当日05:00-12:00の体重を含む出力ファイルあり |
+| 前提 | 解決済みの `scale-exporter-output-dir`（既定: `~/Dropbox/data/private/健康/scale_exporter`）に当日05:00-12:00の体重を含む出力ファイルあり |
 | 期待 | Spreadsheet当日行の朝列が更新される。exit 0 |
 | 検証 | 採用した体重の`measuredAt`が朝ウィンドウ内、他項目は体重時刻に最も近いもの |
 
@@ -117,7 +117,7 @@ Spreadsheet書き込みを伴うケースでは以下を常に確認する。
 | --- | --- |
 | 目的 | scale_exporter出力ディレクトリ・当日ファイル不存在 |
 | コマンド | `scale2sheet run --period morning` |
-| 前提 | `~/Documents/scale_exporter` にディレクトリ・当日ファイルなし |
+| 前提 | 解決済みの `scale-exporter-output-dir`（既定: `~/Dropbox/data/private/健康/scale_exporter`）にディレクトリ・当日ファイルなし |
 | 期待 | 空配列扱いで正常終了。exit 0 |
 | 検証 | `readScaleExporterMeasurements`が空配列を返す（`ENOENT`をcatch） |
 
