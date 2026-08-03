@@ -42,7 +42,7 @@ consumer は period ごとに次の順で判定する。
 2. status の契約/schema、対象日、period、source、`newUniqueRecordCount` を検証する。
 3. `newUniqueRecordCount` は今回 publish の鮮度・生存確認として保持し、再実行の転記ゲートには使わない。
 4. JSONL を bounded stable snapshot で読み、period window と exact dedup を適用して consumer 自身の `periodUniqueRecordCount` と usable reading を得る。
-5. producer status が `completed` で、consumer の `periodUniqueRecordCount = 0` なら、`newUniqueRecordCount = 0` のときは `completed:no-data` とし、転記せず終了コード 0 とする。`newUniqueRecordCount > 0` なのに consumer の `periodUniqueRecordCount = 0` の場合は `failed:input-contract` とする。1 件以上なら転記へ進む。
+5. producer status が `completed` で、consumer の `periodUniqueRecordCount = 0` なら、`newUniqueRecordCount = 0` のときは `completed:no-data` とし、転記せず終了コード 0 とする。`newUniqueRecordCount > 0` なのに consumer の `periodUniqueRecordCount = 0` の場合は `failed:input-contract` とする。ただしこの分岐は producer の period 境界が consumer の window（朝 05:00–12:00、夜 20:00–23:30）と一致することを前提とする。境界一致は照会3として先方へ確認中であり、回答まで本分岐は有効化しない。1 件以上なら転記へ進む。
 6. status が無い、atomic publish 前の不完全な status、キー不一致、schema 不正、または status と JSONL の整合が取れない場合は `failed:input-contract` とし、転記しない。
 
 `newUniqueRecordCount` は producer が今回 publish で増やした値であり、consumer が file の更新時刻から推測する値ではない。
@@ -50,7 +50,7 @@ consumer は period ごとに次の順で判定する。
 consumer は自前の `periodUniqueRecordCount` を再実行を含む転記判定のゲートにする。
 この値は producer status と比較しない。`newUniqueRecordCount` は今回 publish の差分、`periodUniqueRecordCount` は period 全体の量であり、拾い直し run では差分0・総量Nが正常になり得るためである。
 producer 公開内容との整合性は、status に `publishId` と `files[].digest` が含まれる場合、その世代照合で検査する。
-先方から明言されているのは `newUniqueRecordCount` のみであり、`publishId` / `files[].digest` は既存契約と断定しない。これらは精度を高める optional な追加契約として照会するが、先方の受諾を Slice 2 の開始条件にはしない。受諾されない場合は世代照合の通知行を実装せず、consumer 側の bounded stable snapshot、mtime、内容ハッシュで検出できる範囲を使い、producer の公開世代との対応を検出できない限界を status と受け入れ報告へ記録する。
+先方から明言されているのは `newUniqueRecordCount` のみであり、`publishId` / `files[].digest` は既存契約と断定しない。これらは精度を高める optional な追加契約として照会するが、先方の受諾を Slice 2 の開始条件にはしない。受諾されない場合は世代照合の通知行を実装せず、consumer 側の bounded stable snapshot、mtime、内容ハッシュで検出できる範囲を使い、producer の公開世代との対応を検出できない限界を status と受け入れ報告へ記録する。ここでの mtime は file 集合の読取前後の安定性検査にだけ使い、freshness 判定には使わない。
 同じ reading を再実行で転記しても、reader の exact dedup と Sheets 当日行の冪等な upsert により、転記結果を二重加算しない。
 
 ### status と当方 reading の4象限
