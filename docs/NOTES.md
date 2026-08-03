@@ -14,6 +14,93 @@ timestamp: "2026-08-03T10:30:00+09:00"
 
 ---
 
+## 2026-08-03 reviewer を 1 席へ統合（前項の判断の揺れと確定）
+
+Issue #32 で `scale2sheet_reviewer_codex` を「Claude 系ロールの codex 代替」として終了したあと、
+manager が一度その判断を誤りとみなして復席させ、約 30 分後に再終了した。経緯と確定内容を記録する。
+
+### 何が起きたか
+
+前項の終了後、Claude 側が起草した PR #33 / #36 のレビュー先が不明になった。
+
+なお 2 本は PR 作成アカウントが異なる。#33 は `kappaseijin4claude`、#36 は**ユーザー本人の既定アカウント
+`kappaseijin`** で作成されていた。#36 は manager が `GH_CONFIG_DIR` を付けずに `gh pr create` を実行したためで、
+当時のルール（成果物の作成者側のアカウントを使う）からも外れていた。アカウント規律の逸脱が既に 1 件
+起きていたことになる。ユーザー判断により #36 はそのまま進めた。
+manager が `scale2sheet_architect_codex` へ回したところ、次の理由で正当に差し戻された。
+
+> AGENT.md に「PR レビューは担当しない」「Claude 作成物は `scale2sheet_reviewer_codex` が検証」と明記。
+> `agent-role.rule.md` も PR review を reviewer 工程としている。
+
+architect は起草ロールでレビュー工程を持たないため、差し戻し自体は正しい。
+
+manager はこれを見て「`reviewer_codex` は Claude 起草物を検証する常設のベンダー跨ぎ検証席であり、
+閉じたのは誤りだった」と判断し復席させた。**この判断が誤りだった。**
+
+### 確定内容（ユーザー決定）
+
+> reviewer は Claude が既定。`reviewer_codex` はフォールバック専用。
+
+正本（`~/.agents/rules/model-orchestration.rule.md`）の役割表でも reviewer は claude-code の 1 席のみで、
+codex 版は列挙されていない。architect の AGENT.md にあった記述は、フォールバック期間中に
+`reviewer_codex` が実在していた時期のものであり、常設の役割分担ではなかった。
+
+**前項の「代替として終了した」という判断は、結果として正しかった。**
+
+### 未投稿のまま消えた判定が 1 件ある
+
+`scale2sheet_reviewer_codex` は 2026-08-02 に PR #31 を単独 LLM failover として検証し APPROVE 判定を出したが、
+PR author と同一アカウント（`kappaseijin4codex`）であることを理由に formal review を投稿せず manager へ委ねた。
+その委譲は完了しないまま席が閉じたため、**GitHub 上に当該判定の痕跡は残っていない**。
+
+その後 `scale2sheet_reviewer_claude` が独立に再検証し（reviewer_codex の所見は参照していない）、
+REQUEST_CHANGES を経て APPROVE に至っている。#31 の GitHub 履歴に reviewer_codex が現れないのはこのため。
+
+### 誤りの原因
+
+manager が、他エージェントの AGENT.md に残っていた記述を常設の役割分担として一般化した。
+席の要否は役割表（正本）で判断すべきで、他エージェントの人格定義は常設の根拠にならない。
+
+そもそもこの問いは、manager が PR を起草したことで生まれた。PLAN / NOTES の記録は manager の
+担当範囲だが、その成果物を誰が検証するかという問題を自分で作り出す点は意識しておく。
+
+### 反映
+
+**リポジトリ内**（PR #42、merge commit `b0099cd`）
+
+- `docs/PLAN.md`: 役割表の reviewer を 1 行へ統合、開発フローの「別ロールかつ別ベンダー」を「別ロール」へ、
+  `reviewer_codex` をフォールバック専用と明記、体制表のラベルを修正
+
+**リポジトリ外**（本リポジトリのコミット単位では追跡できない。`git show b0099cd` には現れない）
+
+- `~/.agents/rules/agent-role.rule.md`: 検証者条項を「別ロールは必須・ベンダー跨ぎは必須条件としない」へ改訂。
+  同一ベンダー時の緩和策と PR 作成アカウント条項を新設
+- `~/.agents/rules/model-orchestration.rule.md`: 役割別モデル配置の説明を同趣旨へ更新
+- `codex_monitor_agents/scale2sheet_architect_codex/AGENT.md`: 差し戻しの原因になった記述 2 箇所を訂正
+
+### 副次的に判明したこと
+
+reviewer 統合にともない **PR の approve 経路が閉じる**問題が出た。
+
+PLAN は「Claude 成果物の PR は `gh-4claude` で作成する」と定めていたが、これは Claude 成果物を
+`reviewer_codex`（4codex）が検証する前提でのみ成立していた。検証先を `reviewer_claude`（4claude）へ
+移すと作成者も検証者も 4claude になる。GitHub はセッションやロールではなく**アカウント単位**で判定する。
+
+```
+$ GH_CONFIG_DIR=~/.config/gh-4claude gh pr review 41 --approve
+failed to create review: GraphQL: Review Can not approve your own pull request
+```
+
+PR 作成アカウントの基準を「成果物の作成者側」から「**検証者と別**」へ変更し、
+全成果物の PR 作成を `kappaseijin4codex` へ寄せることで解消した。
+最初に出した PR #41 自体が 4claude 作成でこの問題の実例になっていたため、
+4codex で作り直して PR #42 とした。
+
+### 前項の記述について
+
+前項に「`scale2sheet_reviewer_codex` を代替として終了した」とあるのは正しい記述である。
+本項は、その後に manager が判断を揺らした経緯と、ユーザー決定による確定を記録するもの。
+
 ## 2026-08-03 codex 代替エージェント（pm_codex / reviewer_codex）の引き継ぎと終了
 
 Issue #32。Claude 系ロールを codex ハーネスで代替していた 2 名を終了し、本来の claude-code 構成へ戻した。
