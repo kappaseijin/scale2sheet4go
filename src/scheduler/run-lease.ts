@@ -331,9 +331,10 @@ function recoverDeadOwner(receiptPath: string, runtimeDir: string): void {
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw new RunLeaseError("existing run lease receipt is invalid; state is unknown", {
-        cause: error,
-      });
+      throw new RunLeaseError(
+        `run lease receipt is invalid: ${receiptPath}. No owner holds the lock; remove this receipt and retry.`,
+        { cause: error },
+      );
     }
   }
 }

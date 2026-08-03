@@ -6,15 +6,22 @@ set -euo pipefail
 
 root=$(mktemp -d /private/tmp/scale2sheet-runtime-safety.XXXXXX)
 holder_pid=""
+conflict_pid=""
 
 cleanup() {
-  if [ -n "$holder_pid" ] && kill -0 "$holder_pid" 2>/dev/null; then
-    kill -TERM "$holder_pid" 2>/dev/null || true
-    wait "$holder_pid" 2>/dev/null || true
-  fi
+  stop_process "$conflict_pid"
+  stop_process "$holder_pid"
   rm -rf "$root"
 }
 trap cleanup EXIT
+
+stop_process() {
+  local pid=${1:-}
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+}
 
 npm run build:bun >/dev/null
 binary="$PWD/dist/scale2sheet"
@@ -52,10 +59,28 @@ if ! grep -q 'Scheduler started' "$root/holder.log"; then
   exit 1
 fi
 
-set +e
-run_compiled >"$root/conflict.log" 2>&1
-conflict_status=$?
-set -e
+run_compiled >"$root/conflict.log" 2>&1 &
+conflict_pid=$!
+conflict_status=""
+for _ in $(seq 1 100); do
+  if ! kill -0 "$conflict_pid" 2>/dev/null; then
+    if wait "$conflict_pid"; then
+      conflict_status=0
+    else
+      conflict_status=$?
+    fi
+    break
+  fi
+  sleep 0.1
+done
+if [ -z "$conflict_status" ]; then
+  kill -KILL "$conflict_pid" 2>/dev/null || true
+  wait "$conflict_pid" 2>/dev/null || true
+  conflict_pid=""
+  echo 'second compiled process kept running: exclusive lock is not enforced' >&2
+  exit 1
+fi
+conflict_pid=""
 if [ "$conflict_status" -eq 0 ] || ! grep -Eq 'EAGAIN|EWOULDBLOCK|RunLeaseConflictError' "$root/conflict.log"; then
   echo 'second compiled process did not report lock conflict' >&2
   cat "$root/conflict.log" >&2
