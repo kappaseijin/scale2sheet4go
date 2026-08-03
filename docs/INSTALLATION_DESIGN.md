@@ -580,10 +580,9 @@ pipelineはsourceの値にかかわらずproducerを起動しない。
 終了コード3は、前提失効したexit code検討で提案された値であり、Slice 2では使用しない。
 入力不在を失敗にする一方、producerには「正当なno-data日にもfileを公開する」合意済み契約がない。
 したがって正当なno-data日を`failed:input-missing`とする偽陽性を許容する暫定判断であり、producer失敗と利用者が測定しなかった状態を区別したとは記録しない。
-入力不在まで通知すると、朝夕の測定をしない日に最大4回/日の偽通知が発生し、AC-27の異常通知がalarm fatigueで無視される。
-このため入力不在は非ゼロ終了とstatus/logだけでfail-closedにし、OS通知は入力不安定、parse不能、転記失敗へ限定する。
-当方の消費対象ディレクトリを2026-06-29から2026-07-09 JSTまで実測すると、11日中2日（約18%）で対象日fileが無く、file存在日の最長連続は6日だった。
-不在原因は未測定かproducer失敗か区別できないが、本設計ではcode 1と観測日数リセットになり、OS通知は出さない。
+producerがno-data日にfileを公開する契約はなく、入力不在まで通知すると同じ未知原因に対してschedule上は最大4回/日の重複通知が起こりうる。
+設定済み出力ディレクトリでは2026-06-29から2026-08-03 JSTの36日間に対象日file不在は観測されておらず、実際の発火頻度は現時点で未知である。file存在は正当な測定を含むことを証明しない。
+原因を分類できず同じperiodの拾い直しでも重複しうる通知はactionableでないため、入力不在は非ゼロ終了とstatus/logだけでfail-closedにし、OS通知は入力不安定、parse不能、転記失敗へ限定する。
 
 現行`reader.ts`が出力ディレクトリの`ENOENT`を空配列へ畳む挙動を、pipelineの成功判定へ使わない。
 pipeline用readerは`missing | unstable | invalid | ready`を区別するresultを返し、`ready`だけをserviceへ渡す。
