@@ -44,16 +44,20 @@ launchd の日次処理は、インストール済み単体バイナリだけを
 `scale_exporter` は、測定データ取得、JSONL出力、自身の設定、認証、バイナリ、LaunchAgentを所有する。
 `scale2sheet` は、自身のlaunchd、朝夕スケジュール、JSONL読取、Spreadsheet転記、pipelineを所有する。
 
-連携は公開CLIとJSONL出力契約に限定する。
+連携は公開JSONL出力契約に限定する。
 `scale2sheet` は `jp.seijin.kappa.scale-exporter` を作成、変更、診断、登録解除せず、先方の設定ファイルと認証ファイルを探索または変更しない。
 
-`~/.config/scale2sheet/settings.json` の `scale-exporter-command` と `scale-exporter-output-dir` は、当方が公開CLIまたはJSONLを参照するための消費側設定である。
-参照先のファイルとディレクトリは `scale_exporter` の所有物であり、当方のinstall、uninstall、purge、wipe、archiveの対象にしない。
+`~/.config/scale2sheet/settings.json` の `scale-exporter-output-dir` は、当方が公開JSONLを参照するための消費側設定である。
+参照先のファイルとディレクトリは producer の所有物であり、当方のinstall、uninstall、purge、wipe、archiveの対象にしない。
 
-現行pipelineは公開CLIを同期起動してからJSONLを読む。
-一方、`scale_exporter` 側にも07:00と21:00の定期実行が追加されるため、両LaunchAgentを有効にすると二重取得が起きうる。
-当方のrun leaseは `scale2sheet` processだけを排他し、先方processを排他しない。
-したがって、取得を先方scheduleだけに委ねる案、当方pipelineから同期起動する案、`invoke`と`consume`を切り替える案のユーザー決定、選択した案の公開契約、Issue #38のproducer供給観測設計が確定するまで、Slice 2以降の実装を開始しない。
+ユーザーは2026-08-03に案Aと案Zを採用した。
+Apple HealthはiPhoneショートカット、Google Fitは`scale_exporter`がそれぞれ入力ディレクトリへ公開し、`scale2sheet pipeline`は公開済みJSONLの安定性を暫定確認してSpreadsheetへ転記するだけとする。
+pipelineは`scale_exporter`の公開CLIを起動せず、その終了コード、設定、認証、LaunchAgentを観測しない。
+当方のrun leaseは`scale2sheet` processだけを排他し、producer processとの共通排他を提供しない。
+
+この境界で二重取得は解消するが、現行producerにはatomic publication、batch完了manifest、複数fileの一括完了、共通排他がない。
+後述のbounded stable snapshotは競合確率を下げる暫定防御であり、公開完了を証明しない。
+この限界を受け入れてSlice 2を進めることが案Zの決定内容である。
 
 ## 外部インターフェース
 
@@ -88,7 +92,7 @@ scale2sheet pipeline --period <morning|evening>
 | `--archive <dir>` | `uninstall --purge --wipe` | 無効 | 以前作成した一つの退避先を真削除の対象にする |
 | `--yes` | `uninstall --purge` | 無効 | 非対話実行で確認を明示する |
 
-`--force` は認証不足、実行不能な exporter、不正設定、launchctl の失敗を無視しない。
+`--force` は認証不足、不正設定、launchctl の失敗を無視しない。
 稼働中処理を停止する場合は、処理の中断と当日データ欠測の可能性を実行前に表示する。
 
 `--wipe` を `--purge` 無しで指定した場合は、引数エラーとして終了コード2を返す。
@@ -216,11 +220,12 @@ src/
     doctor.ts                   # ローカル状態と Google API の読取診断
     sheets-read.ts              # doctor 専用の Google Sheets 読取 port
     settings-read.ts            # ファイルを生成しない設定ローダ
-    process.ts                  # launchctl、移行時 ps、子プロセスの adapter
+    process.ts                  # launchctl、移行時 ps の adapter
   scheduler/
     run-lease.ts                # serve、pipeline、install、uninstall 共通の稼働 receipt
   pipeline/
-    pipeline.ts                 # exporter リトライ、同期、通知
+    pipeline.ts                 # 入力安定確認、同期、通知
+    input-snapshot.ts           # JSONL file set、stat、read の port と暫定防御
     notifier.ts                 # macOS notifier port と osascript adapter
     status.ts                   # pipeline-status.json の atomic 更新
 scripts/
@@ -297,8 +302,8 @@ export interface UninstallOptions {
 2. home、prefix、config、log、plist の絶対パスを解決する。
 3. 既存マニフェストを読み、schema を検証する。
 4. `settings-read.ts` で `settings.json` を読取検証し、無ければ生成予定として扱う。
-5. 設定から必要な認証ファイルと exporter command を解決する。
-6. `--launchd` 指定時は共通 run lease、移行前プロセス、exporter、二つの launchd label の登録状態を検査する。
+5. 設定から必要な認証ファイルとJSONL入力ディレクトリを解決する。
+6. `--launchd` 指定時は共通 run lease、移行前プロセス、二つの launchd label の登録状態を検査する。
 7. `InstallationOperation[]` を生成する。
 
 `--dry-run` はこの時点で plan を表示して終了する。
@@ -383,13 +388,12 @@ plist は `HOME`、`PATH`、`SCALE2SHEET_LAUNCHD_LABEL` を明示する。
 `PATH` は次を重複除去して連結する。
 
 1. `<prefix>/bin`
-2. インストール時に解決できた exporter の親ディレクトリ
-3. `/opt/homebrew/bin`
-4. `/usr/local/bin`
-5. `/usr/bin`
-6. `/bin`
-7. `/usr/sbin`
-8. `/sbin`
+2. `/opt/homebrew/bin`
+3. `/usr/local/bin`
+4. `/usr/bin`
+5. `/bin`
+6. `/usr/sbin`
+7. `/sbin`
 
 対話 shell の `PATH` 全体はコピーしない。
 一時的な開発ディレクトリを launchd の恒久設定へ混入させないためである。
@@ -476,7 +480,7 @@ lock 取得後の `fstat`、socket bind、listen、receipt write のいずれか
 安定 lock file 自体は、この失敗経路でも削除または変更しない。
 
 owner は15秒間隔の timer で、自分の token に対応する停止要求だけを読む。
-exporter の60秒待機中も停止要求の確認を止めない。
+入力安定確認の待機中も停止要求の確認を止めない。
 pipeline は転記開始前に停止要求を再検査し、serve は次の scheduler cycle へ入らず終了する。
 
 正常終了時は lock を保持したまま receipt の token と path が自分の値に一致することを確認し、自分の token 固有 listener を close して固有 socket file を削除した後、owner token が一致する receipt と停止要求を削除する。
@@ -491,7 +495,7 @@ manual pipeline または active serve には、owner token 固有の停止要�
 停止確認は最大75秒とし、期限内に安定 lock を取得できなければ install を中断する。
 期限切れを dead の根拠として処理を続けない。
 停止後は lock を取得した owner だけが dead owner の receipt と固有 socket file を回収し、install receipt を作成する。
-install receipt の保有中に新しい serve または pipeline が起動しても、exporter と転記を始める前に終了する。
+install receipt の保有中に新しい serve または pipeline が起動しても、入力読取と転記を始める前に終了する。
 uninstall receipt も同じ排他を提供し、`bootout` からバイナリ削除まで新しい serve または pipeline を開始させない。
 
 `--dry-run` は lock を取得せず、receipt の owner 固有 socket へ接続して snapshot の生存状態を読む。
@@ -514,7 +518,7 @@ unknown は実適用を許可する判定へ使わず、dry-run 自体は「適�
 export interface RunPipelineOptions {
   readonly period: "morning" | "evening";
   readonly config: AppConfig;
-  readonly processRunner: ProcessRunner;
+  readonly inputSnapshot: InputSnapshotPort;
   readonly delay: (milliseconds: number) => Promise<void>;
   readonly notifier: Notifier;
   readonly clock: Clock;
@@ -523,38 +527,75 @@ export interface RunPipelineOptions {
 }
 ```
 
-`processRunner`、`delay`、`notifier`、`clock`、`statusWriter`、`runLease` はテスト時に差し替える。
+`inputSnapshot`、`delay`、`notifier`、`clock`、`statusWriter`、`runLease` はテスト時に差し替える。
+
+`InputSnapshotPort`は対象日file集合の列挙、各fileのpath、device、inode、size、mtimeの取得、file全体の読取だけを公開する。
+clock fake、stat fake、delay fakeを使い、実時間の5秒待機を自動テストへ持ち込まない。
 
 ### 処理
 
 1. CLI 境界で period を検証し、`morning` と `evening` 以外を副作用前に終了コード2で拒否する。
 2. run lease と owner 固有 socket listener を取得し、15秒間隔の停止要求 polling を開始する。
 3. 開始時刻と period をログへ出し、`pipeline-status.json` を `running` にする。
-4. 設定の既定 source を読む。
-5. source が `scale-exporter` の場合だけ exporter を実行する。
-6. exporter が失敗した場合は、初回を含め計3回、試行間を60秒空けて再試行する。
-7. 各試行の失敗を、時刻と `attempt/3` を含めてログへ出す。
-8. exporter が3回失敗した場合は macOS 通知を要求し、status を `failed:exporter` にして非ゼロ終了する。
-9. `syncMeasurements` を指定 period と既定 source で実行する。
-10. 転記が失敗した場合は macOS 通知を要求し、status を `failed:transfer` にして非ゼロ終了する。
-11. 成功時は転記件数または no-data、readerの処理段階別件数、完了時刻を status とログへ記録する。
-12. `finally` で polling と listener を止め、owner token が一致する receipt、固有 socket file、lock file descriptor を順に解放する。
+4. 設定から`scale-exporter-output-dir`と対象日を解決する。
+5. 後述のbounded stable snapshotを最大3回実行する。
+6. 安定したfile集合をmemoryへ読み、空行を除く全行をstrict parseする。
+7. 入力が無い、不安定、またはparse不能なら入力段階のmacOS通知を1回要求し、statusを対応する`failed:input-*`にして終了コード1で終える。Spreadsheet転記は呼ばない。
+8. 安定した入力を指定periodへ適用し、対象readingが0件なら`completed:no-usable-reading`を記録して終了コード0で終える。Spreadsheet転記は呼ばない。
+9. readingがあれば`syncMeasurements`のSpreadsheet転記段階を実行する。
+10. 転記が失敗した場合はmacOS通知を要求し、statusを`failed:transfer`にして終了コード1で終える。
+11. 成功時は転記件数またはno-usable-reading、readerの処理段階別件数、完了時刻をstatusとログへ記録する。
+12. `finally`でpollingとlistenerを止め、owner tokenが一致するreceipt、固有socket file、lock file descriptorを順に解放する。
 
-`google-fit` と `apple-health` を既定 source にした場合は exporter を起動しない。
-停止要求を受けた pipeline は以後の exporter または転記を開始せず、停止理由を status とログへ記録して終了する。
-exporter が失敗した場合は `syncMeasurements` を呼ばない。
+pipelineはsourceの値にかかわらずproducerを起動しない。
+停止要求を受けたpipelineは以後の入力読取または転記を開始せず、停止理由をstatusとログへ記録して終了する。
+
+#### bounded stable snapshot
+
+暫定定数は`INPUT_READ_ATTEMPTS = 3`、`INPUT_STABILITY_INTERVAL_MS = 5_000`とする。
+5秒はproducerの書込特性を実測して得た保証値ではなく、早期復旧の待ち時間と競合確率を両立させる暫定値である。
+
+各attemptは次の順で行う。
+
+1. 対象日に一致する完全なfile集合を列挙し、各fileのpath、device、inode、size、mtimeをsnapshot Aへ記録する。
+2. fileが無ければ、そのattemptを`input-missing`として終了する。最終attemptでなければ5秒待って再列挙する。
+3. fileがあれば5秒待ち、同じ情報をsnapshot Bへ記録する。file集合または属性が異なれば`input-unstable`として次のattemptへ進む。
+4. snapshot Bと一致した全fileをmemoryへ読み、空行を除く全JSONL行をstrict parseする。
+5. 読取後にsnapshot Cを取得し、file集合と全属性がsnapshot Bと一致する場合だけ入力を採用する。
+6. parse失敗またはsnapshot Cの不一致は入力を捨て、最終attemptでなければ次のattemptへ進む。
+
+3attempt後の分類と終了コードは次のとおりである。
+
+| 条件 | outcome | 終了コード | 転記 |
+| --- | --- | --- | --- |
+| 対象日fileが最後まで無い | `failed:input-missing` | 1 | 実行しない |
+| file集合または属性が安定しない | `failed:input-unstable` | 1 | 実行しない |
+| 安定snapshotを全行parseできない | `failed:input-invalid-or-partial` | 1 | 実行しない |
+| fileが存在し、安定し、parse可能だがperiod適用後0件 | `completed:no-usable-reading` | 0 | 実行しない |
+| 転記成功 | `completed:transferred` | 0 | 実行する |
+| 転記失敗 | `failed:transfer` | 1 | 失敗 |
+| period不正 | `failed:invalid-arguments` | 2 | 実行しない |
+
+終了コード3は、前提失効したexit code検討で提案された値であり、Slice 2では使用しない。
+入力不在を失敗にする一方、producerには「正当なno-data日にもfileを公開する」合意済み契約がない。
+したがって正当なno-data日を`failed:input-missing`とする偽陽性を許容する暫定判断であり、producer失敗と利用者が測定しなかった状態を区別したとは記録しない。
+
+現行`reader.ts`が出力ディレクトリの`ENOENT`を空配列へ畳む挙動を、pipelineの成功判定へ使わない。
+pipeline用readerは`missing | unstable | invalid | ready`を区別するresultを返し、`ready`だけをserviceへ渡す。
+既存`syncMeasurements`の`Nothing was written.`経路は、fileが存在し、stableかつparse可能で、usable rowが0件だった場合だけ到達できる。
+Issue #37は「producer失敗と正当な未測定の完全識別」までは閉じず、file不在をfail-closedにする範囲だけをAC-30で検証する。
 
 `pipeline-status.json` は mode `0600` で atomic replacement する。
 period ごとに `last-started-at`、`last-completed-at`、`target-date`、`outcome`、`transferred-count`、`version` を保持する。
 認証情報、Spreadsheet ID、測定値は書かない。
 
 Issue #38のうち当方単独で閉じられる観測として、statusとtimestamp logへ対象日に一致したfile数、空行を除く読取対象行数、period window適用後のreading数を記録する。
-これにより、「対象fileが無い」と「fileはあるが使えるreadingが無い」を分離する。
+これにより、「対象fileが無いため失敗した」と「fileはあるが使えるreadingが無く正常終了した」を分離する。
 処理が到達していない段階またはparse中断後の件数を0として記録せず、未計測として区別する。
 
-この三つの件数だけでは、producerが実行した結果として0件だった状態と、producerが未実行または未公開だった状態を完全には識別できない。
+`matched-file-count: 0`はこのpipelineでは成功時の件数ではなく`failed:input-missing`の根拠になる。
+fileが存在して0件だった状態も、producerの正常なno-dataを証明しない。
 完全な識別とoutcomeの最終解釈は、producerの公開完了、成功、no-dataを表す公開契約に依存する。
-したがって、件数記録の実装と公開契約の確定を分けて検証する。
 
 `MacOsNotifier` は `/usr/bin/osascript` を shell 非経由で呼び、title を `scale-pipeline`、sound を `Basso` とする。
 テストでは `RecordingNotifier` に差し替え、OS 通知を実発火せず要求回数、失敗段階、文面を検証する。
@@ -565,30 +606,29 @@ H-2 では launchd がバイナリを直接起動するため、バイナリ自�
 欠落後の唯一の検出手段は、Spreadsheet の行が増えていないことに利用者が気づくことである。
 体重計に乗らなかった日の no-op と、pipeline が起動しなかった未実行は Spreadsheet 上で同じ見た目になる。
 この沈黙期間は、単体バイナリ直接起動を優先したユーザーが受容した既知のリスクである。
-例外は実行体が起動できない場合だけであり、exporter 失敗と転記失敗は通知する。
+例外は実行体が起動できない場合だけであり、入力失敗と転記失敗は通知する。
 
-### scale_exporter command
+#### 暫定防御で検出できない競合
 
-`settings.json` に次を追加する。
+producerが完全なJSONL行の境界で5秒を超えて停止し、snapshot Cの後に同じfileへ追記すると、不完全batchを安定入力として採用しうる。
+複数fileが順次公開される場合も、completion manifestが無いため、後から追加されるfileを含む完全なbatchか証明できない。
+device、inode、size、mtimeの安定確認は競合確率を下げるだけで、atomic publicationへ変換しない。
+11:30と23:30の再実行は早いrunの失敗を回復しうるが、producer完了の保証ではない。
 
-```json
-{
-  "scale-exporter-command": "scale_exporter"
-}
-```
+#### 将来の公開契約要求案
 
-環境変数 `SCALE_EXPORTER_COMMAND` は設定値を上書きする。
+次は`scale2sheet`側の提案であり、`scale_exporter`チームとの合意済み契約ではない。
 
-値に `/` が含まれる場合はパスとして扱い、存在と実行権限を検査する。
-それ以外は command 名として扱い、`PATH` で解決する。
+- producerは公開済みbatch artifactを変更しない。
+- 同一filesystem上のbatch directory rename、または最後にatomic publishするcompletion manifestでbatch完了を示す。
+- manifestはcontract/schema version、target date、source、batch id、`completed | no-data`、完全なfile list、各sizeとdigest、完了時刻を持つ。
+- consumerはstagingとmanifest未参照fileを無視し、committed manifestが示すfileだけを読む。
+- producerはlaunchdと手動起動を含む全writerに共通排他を持つ。`scale2sheet`はそのlockを所有または共有しない。
 
-子プロセスは shell を介さず、引数配列 `["--source", "google-fit"]` で起動する。
-設定値を shell command として評価しない。
-exporter の source は現行 `run-pipeline.sh` と同じ `google-fit` に固定する。
-`scale-exporter-command` は実行体の配置差を吸収する設定であり、取得元を選ぶ設定ではない。
-
-exporter が未解決の場合、`pipeline` は候補 command、現在の `PATH`、設定キーを表示して失敗する。
-この失敗は exporter 段階の通知対象とする。
+最初のproduction `failed:input-missing`、`failed:input-unstable`、`failed:input-invalid-or-partial`のいずれかを記録した時点、第二writer、新source、schema versionを追加する直前のいずれかで、pmはmanager間の契約監査を直ちに起票する。
+これらが発生しなくても、2026-09-01 23:59 JSTまでに同じ監査を起票する。
+期限を過ぎても現行pipelineを自動停止しないが、暫定契約を合意済みまたは恒久契約へ昇格させず、scope拡張を止め、pmがユーザーへ「リスク受容を継続するか、契約実装を優先するか」を再提示する。
+実装開始条件は、両チームがversioned manifest schema、immutable publication、producer共通排他、互換性、rollback、fixtureを合意することである。
 
 ## doctor
 
@@ -601,8 +641,7 @@ exporter が未解決の場合、`pipeline` は候補 command、現在の `PATH`
 - `settings.json` の JSON と schema
 - Google Sheets 鍵ファイルの存在と読取可否
 - source に必要な追加認証ファイル
-- scale_exporter command の解決
-- scale_exporter 出力ディレクトリ
+- scale_exporter 出力ディレクトリの存在と読取可否
 - 二つの plist の構文と固定チェックアウトパスの不在
 - 二つの launchd label の登録状態
 - launchd label の登録有無と、best-effort の raw 診断出力、stderr ログの存在
@@ -614,7 +653,7 @@ exporter が未解決の場合、`pipeline` は候補 command、現在の `PATH`
 
 `source に必要な追加認証ファイル` は `scale2sheet` が直接扱う `google-fit` sourceの認証を指す。
 `doctor` は `scale_exporter` の設定と認証の健全性を診断せず、先方のinstall、修復、再認証を実行しない。
-先方に関する診断は、採用した連携方式で当方が消費する公開CLIの解決結果またはJSONLの存在、読取可否、入力形式までに限定する。
+先方に関する診断は、当方が消費するJSONLディレクトリの存在、読取可否、入力形式までに限定する。
 
 診断結果は `PASS`、`WARN`、`FAIL` で出す。
 一つでも `FAIL` があれば非ゼロ終了する。
@@ -708,7 +747,7 @@ data-only purge はバイナリ、plist、launchd label を推測して削除し
 退避先のファイルと `archive-manifest.json` は mode `0600` にする。
 `archive-manifest.json` は元の絶対パス、退避先の相対パス、元の mode、SHA-256 を記録し、認証情報の内容を持たない。
 退避対象は既知の `scale2sheet` config file、当方の設定schemaから解決した当方の認証file、当方のログディレクトリに限定し、symlink と glob を使わない。
-`scale-exporter-command` と `scale-exporter-output-dir` の参照先、`jp.seijin.kappa.scale-exporter`、先方の設定と認証は対象にしない。
+`scale-exporter-output-dir` の参照先、`jp.seijin.kappa.scale-exporter`、先方の設定と認証は対象にしない。
 
 退避は次の順で行う。
 
@@ -793,7 +832,7 @@ Retry:
 
 ## セキュリティ
 
-- shell を介して exporter command または path を実行しない。
+- pipeline から producer command を起動しない。
 - plist XML の値は XML escape する。
 - マニフェストは zod schema で検証し、未知 schema version を削除処理へ使わない。
 - `--prefix` は絶対パスへ正規化し、`/`、home、config、ログ、LaunchAgents を prefix として拒否する。
@@ -826,8 +865,9 @@ Retry:
 | `process.ts` | launchctl print の終了コードによる登録有無、変更系呼出、移行時プロセス検出、待機上限の分類 |
 | `doctor.ts` | PASS、WARN、FAIL、失敗段階、直近成功報告、読取 API だけの呼び出し、install からの非呼出 |
 | `sheets-read.ts` | 認証、Spreadsheet 読取、当日行特定、write メソッドの不在 |
-| `pipeline.ts` | 初回を含む3回、60秒を2回、失敗後の転記抑止、period 拒否、時刻ログ、処理段階別件数 |
-| `notifier.ts` | exporter と転記の通知要求、title、sound、実通知を使わない fake |
+| `input-snapshot.ts` | 3attempt、5秒間隔、file集合とdevice/inode/size/mtimeの前後一致、missing/unstable/invalid分類、読取後再stat |
+| `pipeline.ts` | 入力失敗後の転記抑止、present-but-zeroの正常no-op、period拒否、時刻ログ、処理段階別件数 |
+| `notifier.ts` | 入力と転記の通知要求、title、sound、実通知を使わない fake |
 | `status.ts` | period ごとの atomic write、対象日、成功時刻、結果、対象file数、読取行数、window適用後件数、未計測と0の区別 |
 | `run-lease.ts` | raw `O_EXLOCK_DARWIN = 0x0020` と flag assertion、単一 owner、kernel 解放、real path 由来 namespace、ローカル filesystem allowlist、owner 固有 socket、token handshake、初期化窓の unknown、103バイト制限、runtime directory 検証、協調停止 |
 
@@ -835,7 +875,7 @@ Retry:
 
 `HOME`、`TMPDIR`、prefix を一時ディレクトリへ差し替える。
 
-launchctl、osascript、scale_exporter は実行ファイル stub または process adapter の fake を使う。
+launchctlとosascriptは実行ファイルstubまたはprocess adapterのfakeを使う。
 実ユーザーの LaunchAgents、設定、ログ、Spreadsheet へ触れない。
 `scale_exporter` の実設定、認証、バイナリ、LaunchAgentも作成または変更しない。
 
@@ -854,8 +894,8 @@ launchctl、osascript、scale_exporter は実行ファイル stub または proc
 11. doctor の fake API は認証、Spreadsheet 読取、当日行特定を順に返し、write API の呼出回数がゼロである。
 12. active pipeline lease がある間は `bootout` と置換を行わず、無変更で中断する。
 13. `uninstalling` の各中断点とマニフェスト削除後のバイナリ削除失敗から同じ uninstall を再実行でき、バイナリ削除後は一時 receipt の後始末以外の変更操作が残らない。
-14. exporter が3回失敗すると delay が2回とも60,000msで、転記を呼ばず、通知要求を1回記録する。
-15. 転記失敗は別の通知要求を記録し、成功時は対象日、結果、件数を status へ保存する。
+14. fake clock、stat、delayでmissing、更新中、parse不能を3attempt以内に再現し、転記を呼ばず、入力通知要求を1回記録する。実時間の5秒待機は行わない。
+15. present-but-zeroは終了コード0で三つの件数を保存し、転記失敗は別の通知要求を記録する。
 16. plist、README、installer の fixture に `scripts/run-pipeline.sh` 参照が無い。
 17. `--force` 時だけ active pipeline の label を `bootout` し、処理停止と当日データ欠測の警告を記録する。manual pipeline と serve には owner token 付きの協調停止を要求する。
 18. Node 実行と Bun 単体バイナリのそれぞれで、別 process が同時に lease を取得しても `O_EXLOCK` の owner は一つだけであり、owner の sleep 中は競合側が `EAGAIN` または `EWOULDBLOCK`、SIGKILL 後は次の取得者が成功する。少なくとも Bun 単体バイナリの2 process 競合と SIGKILL 解放を受け入れ試験で実行し、単一 process の取得成功だけで代替しない。
@@ -903,10 +943,10 @@ ACCEPTANCE_TEST_REPORT には各条件を「自動」「代理指標」「手動
 | AC-22 | 自動 | README の正本経路と旧手順不在の静的検査 |
 | AC-24 | 代理指標と手動 | 読取専用 fake API を自動検査し、実 Spreadsheet は手動確認 |
 | AC-25 | 自動 | install から doctor と network adapter を呼ばない境界 |
-| AC-26 | 自動 | process fake 3回、delay fake 60,000msを2回 |
-| AC-27、AC-28 | 代理指標と手動 | RecordingNotifier で2段階の要求を自動検査し、実通知は手動確認。H-2 の実行体欠落は通知対象外 |
-| AC-29、AC-30 | 自動 | clock fake、ログ、period validation、exporter 失敗後の転記非呼出 |
-| AC-31 | 自動 | process、delay、clock、notifier、runLease の port を使うユニットテスト |
+| AC-26 | 自動 | clock、stat、delay fakeで3attempt、5,000ms、読取前後のfile集合と属性一致を決定論的に検査する |
+| AC-27、AC-28 | 代理指標と手動 | RecordingNotifierで入力と転記の2段階要求を自動検査し、実通知は手動確認する。H-2の実行体欠落は通知対象外 |
+| AC-29、AC-30 | 自動 | timestamp log、period validation、missing/unstable/invalid後の転記非呼出、present-but-zeroを検査する |
+| AC-31 | 自動 | inputSnapshot、delay、clock、notifier、runLeaseのportを差し替え、実時間待機なしでAC-26〜30を検査する |
 | AC-32 | 自動 | plist、README、installer から `scripts/run-pipeline.sh` 参照がゼロである静的検査 |
 | AC-33 | 自動 | 実行体が存在する隔離環境で、設定破損、認証切れ、権限不足、配置先不整合を doctor が報告する。実行体欠落は適用範囲外 |
 | AC-34 | 自動 | plist の StandardErrorPath を検査する。launchd が実行体を spawn できない場合は適用範囲外 |
@@ -918,15 +958,15 @@ ACCEPTANCE_TEST_REPORT には各条件を「自動」「代理指標」「手動
 
 実装は次の順で行う。
 
-1. `APP_VERSION`、読取専用設定ローダ、`scale-exporter-command`、共通 run lease を追加する。
-2. pipeline、通知 port、status を TypeScript へ移し、H-a、H-b、H-d、H-e、H-f と H-c の2段階通知を fake で検証する。
+1. `APP_VERSION`、読取専用設定ローダ、共通run leaseを追加する。
+2. pipeline、入力snapshot port、通知port、statusをTypeScriptへ移し、H-a、H-b、H-d、H-e、H-fとH-cの入力/転記2段階通知をfakeで検証する。
 3. planner、manifest、plist、executor、doctor を実装する。
 4. CLI と極薄 `scripts/install.sh` を接続する。
 5. 隔離統合テストと AC-32 の静的検査を追加する。
 6. 現行 revision、plist、`run-pipeline.sh` を rollback ディレクトリへ保存する。
 7. 新経路を一時 prefix と一時 label で受け入れた後、本番 label へ適用する。
 8. README の旧手順を新 CLI へ置換するが、旧 script は観測期間中だけ repository に残す。
-9. 朝と夜の両 period について、実行証跡がある run の status と Spreadsheet に後退がなく、失敗を注入した受け入れ試験では2段階の通知要求が維持される状態を連続7日確認する。
+9. 朝と夜の両periodについて、入力不在/不安定/invalidを失敗として除外し、安定入力のtransferredまたはpresent-but-zeroだけを有効なrunとして連続7日確認する。失敗注入では入力/転記2段階の通知要求も維持する。
 10. 各 period で少なくとも一度は launchd 起動の成功証跡があり、観測期間を満たした後に静的 plist と `scripts/run-pipeline.sh` を削除する。
 11. rollback 経路を終了した同じ移行完了変更で、旧 process 一覧の補助検出を削除する。
 
