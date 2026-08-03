@@ -41,12 +41,13 @@ consumer は period ごとに次の順で判定する。
 1. 対象キーの atomic status を読む。
 2. status の契約/schema、対象日、period、source、`newUniqueRecordCount` を検証する。
 3. producer status が `completed` で、`periodUniqueRecordCount = 0` なら `completed:no-data` とし、転記せず終了コード 0 とする。`newUniqueRecordCount` は今回 publish の鮮度・生存確認に使い、再実行の転記ゲートには使わない。
-4. status の `periodUniqueRecordCount` を期待値として JSONL を bounded stable snapshot で読み、period window と exact dedup 後の usable reading を得る。
+4. JSONL を bounded stable snapshot で読み、period window と exact dedup を適用して consumer 自身の `periodUniqueRecordCount` と usable reading を得る。
 5. usable reading が 1 件以上なら転記へ進む。`periodUniqueRecordCount > 0` なのに usable reading が 0 件なら `failed:input-contract` とする。status が period 内容を示すのに consumer が読めないためである。
 6. status が無い、atomic publish 前の不完全な status、キー不一致、schema 不正、または status と JSONL の整合が取れない場合は `failed:input-contract` とし、転記しない。
 
 `newUniqueRecordCount` は producer が今回 publish で増やした値であり、consumer が file の更新時刻から推測する値ではない。
-consumer は `periodUniqueRecordCount` と独自に計算した period 内 unique reading 数を照合する。これは公開内容の整合性検査であり、再実行を no-data と誤判定しないための判定ゲートである。
+`periodUniqueRecordCount` は producer status のフィールドではなく、consumer が JSONL から計算する値である。これは先方への新規契約要求ではない。
+consumer は自前の `periodUniqueRecordCount` を再実行を含む転記判定のゲートにする。
 同じ reading を再実行で転記しても、reader の exact dedup と Sheets 当日行の冪等な upsert により、転記結果を二重加算しない。
 
 ### status と当方 reading の4象限
@@ -93,7 +94,7 @@ snapshot は維持するが、契約上の責務を限定する。
 ### freshness と completeness
 
 freshness は「producer が今回の実行で新しい unique reading を公開したか」を指し、atomic status の `newUniqueRecordCount` が判定材料になる。
-completeness は「対象 period の測定が出揃ったか」を指し、`periodUniqueRecordCount` と period window 内の当方 reading の照合、および status/JSONL の世代一致で判定する。
+completeness は「対象 period の測定が出揃ったか」を指し、consumer が JSONL から計算した `periodUniqueRecordCount`、status の publish 世代、および status/JSONL の世代一致で判定する。
 closed boundary による重複再出力は reader の exact dedup で転記結果を変えないため、重複そのものを freshness failure とはしない。
 ただし新しい測定の取りこぼしは dedup では検出できず、completeness の契約不整合として扱う。
 
@@ -133,12 +134,11 @@ status 不在は no-data の証明ではなく、producer の公開契約を検�
   "publishId": "…",
   "publishedAt": "2026-08-03T07:10:00+09:00",
   "newUniqueRecordCount": 1,
-  "periodUniqueRecordCount": 1,
   "files": [{"path": "…", "size": 1234, "digest": "…"}]
 }
 ```
 
-`newUniqueRecordCount` は今回 publish の鮮度・生存確認用、`periodUniqueRecordCount` は対象 period の公開内容と再実行を含む consumer 判定用である。
+`newUniqueRecordCount` は今回 publish の鮮度・生存確認用で、先方 status の契約項目である。`periodUniqueRecordCount` は JSONL から当方が計算する対象 period の一意件数で、再実行を含む consumer 判定用である。
 `publishId` と `files` は、consumer が status と JSONL の世代を照合するために必要である。
 status は一時 file へ書き、同一 filesystem 上の rename で atomic publish する。
 
