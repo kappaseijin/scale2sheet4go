@@ -52,7 +52,7 @@ scale2sheet auth
   "source": "scale-exporter",
   "sheet-name": "体温・血圧",
   "sheets-credentials": "~/.config/scale2sheet/google-sheets-service-account.json",
-  "scale-exporter-output-dir": "~/Documents/scale_exporter",
+  "scale-exporter-output-dir": "/path/to/scale-exporter-output",
   "google-fit-token-path": "~/.config/scale2sheet/google-fit-token.json",
   "morning-cron": "0 7 * * *",
   "evening-cron": "0 21 * * *"
@@ -92,7 +92,7 @@ scale2sheet auth
 
 ### 読み込み先
 
-`SCALE_EXPORTER_OUTPUT_DIR`（既定 `~/Documents/scale_exporter`）
+`SCALE_EXPORTER_OUTPUT_DIR` または `settings.json` の `scale-exporter-output-dir` で指定する入力フォルダ。実効値は、環境変数 > `settings.json` > 組み込み既定値の順で解決する。
 
 ### 対象ファイル
 
