@@ -50,6 +50,17 @@ const settingsFileSchema = z
 
 export type SettingsFile = z.infer<typeof settingsFileSchema>;
 
+export function parseSettingsFile(value: unknown, settingsPath: string): SettingsFile {
+  const parsed = settingsFileSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new ConfigError(
+      `invalid settings file: ${settingsPath}: ${parsed.error.message}`,
+    );
+  }
+
+  return parsed.data;
+}
+
 export function defaultSettingsContent(configDir: string): SettingsFile {
   return {
     "time-zone": "Asia/Tokyo",
@@ -92,14 +103,7 @@ export function loadOrCreateSettings(
     );
   }
 
-  const parsed = settingsFileSchema.safeParse(json);
-  if (!parsed.success) {
-    throw new ConfigError(
-      `invalid settings file: ${resolvedPath}: ${parsed.error.message}`,
-    );
-  }
-
-  return parsed.data;
+  return parseSettingsFile(json, resolvedPath);
 }
 
 // scale_exporter の google-fit-credentials.json と同形式（snake_case キー）
