@@ -8,7 +8,7 @@ tags:
   - launchd
   - scale2sheet
 status: accepted
-timestamp: "2026-07-29T13:23:53+09:00"
+timestamp: "2026-08-02T12:08:00+09:00"
 ---
 
 # scale2sheet インストール設計
@@ -31,13 +31,29 @@ launchd の日次処理は、インストール済み単体バイナリだけを
 
 ## 非目標
 
-- scale_exporter のインストール
+- scale_exporter の設定、認証、バイナリ、LaunchAgentのinstall、uninstall、修復
 - Homebrew、MacPorts、npm package などの配布基盤
 - GCP プロジェクト、サービスアカウント、OAuth client の作成
 - GCP 側の鍵失効
 - Spreadsheet の共有解除
 - macOS 以外の常駐化
 - 自動更新
+
+## scale_exporterとの責任境界
+
+`scale_exporter` は、測定データ取得、JSONL出力、自身の設定、認証、バイナリ、LaunchAgentを所有する。
+`scale2sheet` は、自身のlaunchd、朝夕スケジュール、JSONL読取、Spreadsheet転記、pipelineを所有する。
+
+連携は公開CLIとJSONL出力契約に限定する。
+`scale2sheet` は `jp.seijin.kappa.scale-exporter` を作成、変更、診断、登録解除せず、先方の設定ファイルと認証ファイルを探索または変更しない。
+
+`~/.config/scale2sheet/settings.json` の `scale-exporter-command` と `scale-exporter-output-dir` は、当方が公開CLIまたはJSONLを参照するための消費側設定である。
+参照先のファイルとディレクトリは `scale_exporter` の所有物であり、当方のinstall、uninstall、purge、wipe、archiveの対象にしない。
+
+現行pipelineは公開CLIを同期起動してからJSONLを読む。
+一方、`scale_exporter` 側にも07:00と21:00の定期実行が追加されるため、両LaunchAgentを有効にすると二重取得が起きうる。
+当方のrun leaseは `scale2sheet` processだけを排他し、先方processを排他しない。
+したがって、取得を先方scheduleだけに委ねる案、当方pipelineから同期起動する案、`invoke`と`consume`を切り替える案のユーザー決定と、選択した案の公開契約が確定するまで、Slice 2以降の実装を開始しない。
 
 ## 外部インターフェース
 
@@ -588,6 +604,10 @@ exporter が未解決の場合、`pipeline` は候補 command、現在の `PATH`
 - 対象 Spreadsheet と対象 sheet の読取
 - 日付列と当日行の特定
 
+`source に必要な追加認証ファイル` は `scale2sheet` が直接扱う `google-fit` sourceの認証を指す。
+`doctor` は `scale_exporter` の設定と認証の健全性を診断せず、先方のinstall、修復、再認証を実行しない。
+先方に関する診断は、採用した連携方式で当方が消費する公開CLIの解決結果またはJSONLの存在、読取可否、入力形式までに限定する。
+
 診断結果は `PASS`、`WARN`、`FAIL` で出す。
 一つでも `FAIL` があれば非ゼロ終了する。
 
@@ -679,7 +699,8 @@ data-only purge はバイナリ、plist、launchd label を推測して削除し
 退避先は `~/.config/scale2sheet.removed-<timestamp>/` とし、mode を `0700` にする。
 退避先のファイルと `archive-manifest.json` は mode `0600` にする。
 `archive-manifest.json` は元の絶対パス、退避先の相対パス、元の mode、SHA-256 を記録し、認証情報の内容を持たない。
-退避対象は既知の config file、設定から解決した認証 file、ログディレクトリに限定し、symlink と glob を使わない。
+退避対象は既知の `scale2sheet` config file、当方の設定schemaから解決した当方の認証file、当方のログディレクトリに限定し、symlink と glob を使わない。
+`scale-exporter-command` と `scale-exporter-output-dir` の参照先、`jp.seijin.kappa.scale-exporter`、先方の設定と認証は対象にしない。
 
 退避は次の順で行う。
 
@@ -808,6 +829,7 @@ Retry:
 
 launchctl、osascript、scale_exporter は実行ファイル stub または process adapter の fake を使う。
 実ユーザーの LaunchAgents、設定、ログ、Spreadsheet へ触れない。
+`scale_exporter` の実設定、認証、バイナリ、LaunchAgentも作成または変更しない。
 
 次を自動化する。
 
