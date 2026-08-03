@@ -42,14 +42,15 @@ consumer は period ごとに次の順で判定する。
 2. status の契約/schema、対象日、period、source、`newUniqueRecordCount` を検証する。
 3. `newUniqueRecordCount` は今回 publish の鮮度・生存確認として保持し、再実行の転記ゲートには使わない。
 4. JSONL を bounded stable snapshot で読み、period window と exact dedup を適用して consumer 自身の `periodUniqueRecordCount` と usable reading を得る。
-5. producer status が `completed` で、consumer の `periodUniqueRecordCount = 0` なら `completed:no-data` とし、転記せず終了コード 0 とする。1 件以上なら転記へ進み、0 件なのに producer が period 内容を示す場合は `failed:input-contract` とする。
+5. producer status が `completed` で、consumer の `periodUniqueRecordCount = 0` なら、`newUniqueRecordCount = 0` のときは `completed:no-data` とし、転記せず終了コード 0 とする。`newUniqueRecordCount > 0` なのに consumer の `periodUniqueRecordCount = 0` の場合は `failed:input-contract` とする。1 件以上なら転記へ進む。
 6. status が無い、atomic publish 前の不完全な status、キー不一致、schema 不正、または status と JSONL の整合が取れない場合は `failed:input-contract` とし、転記しない。
 
 `newUniqueRecordCount` は producer が今回 publish で増やした値であり、consumer が file の更新時刻から推測する値ではない。
 `periodUniqueRecordCount` は producer status のフィールドではなく、consumer が JSONL から計算する値である。これは先方への新規契約要求ではない。
 consumer は自前の `periodUniqueRecordCount` を再実行を含む転記判定のゲートにする。
 この値は producer status と比較しない。`newUniqueRecordCount` は今回 publish の差分、`periodUniqueRecordCount` は period 全体の量であり、拾い直し run では差分0・総量Nが正常になり得るためである。
-producer 公開内容との整合性は `publishId` と `files[].digest` の世代照合で検査する。
+producer 公開内容との整合性は、status に `publishId` と `files[].digest` が含まれる場合、その世代照合で検査する。
+先方から明言されているのは `newUniqueRecordCount` のみであり、`publishId` / `files[].digest` は既存契約と断定しない。これらを status 契約の追加必須項目として照会し、先方が受諾して契約が確定するまで Slice 2 を開始しない。受諾されない場合は世代照合の通知行を削除し、producer の公開内容と当方の読取のずれを検出できない限界をユーザーへ再提示する。
 同じ reading を再実行で転記しても、reader の exact dedup と Sheets 当日行の冪等な upsert により、転記結果を二重加算しない。
 
 ### status と当方 reading の4象限
@@ -141,6 +142,7 @@ status 不在は no-data の証明ではなく、producer の公開契約を検�
 ```
 
 `newUniqueRecordCount` は今回 publish の鮮度・生存確認用で、先方 status の契約項目である。`periodUniqueRecordCount` は JSONL から当方が計算する対象 period の一意件数で、再実行を含む consumer 判定用である。
+両者は、前者が publish 全体の差分、後者が当方の period window 後の総量であり、集計基準が異なるため件数比較しない。window 外の正常な測定を契約不整合と誤判定するからである。
 `publishId` と `files` は、consumer が status と JSONL の世代を照合するために必要である。
 status は一時 file へ書き、同一 filesystem 上の rename で atomic publish する。
 
@@ -180,7 +182,7 @@ Slice 2 の実装と同時に次の順序を守る。
 7. scheduled 再開
 
 逆順の再開および二重 producer は禁止する。
-status 契約が未実装の間は Slice 2 の consumer 実装を開始せず、既存の file 不在判定を新契約として扱わない。
+`newUniqueRecordCount`、`publishId`、`files[].digest` を含む status 契約が未実装または未受諾の間は Slice 2 の consumer 実装を開始せず、既存の file 不在判定を新契約として扱わない。
 
 ### 移行期間の consumer 挙動
 
@@ -199,6 +201,7 @@ status 契約が未実装の間は Slice 2 の consumer 実装を開始せず、
 3. status 欠落を即時通知するか、連続回数による集約を Slice 6 で行うか。
 4. producer が `newUniqueRecordCount = 0` の status を毎回 publish することを先方契約へ含めるか。
 5. producer が取得・認証・公開に失敗した場合、status に `failed` 状態、失敗理由、発生時刻を含めることを契約へ含めるか。含めない場合、consumer は「取得できたが0件」と「取得失敗」を区別できず、#46 と同型の沈黙が残る。
+6. `publishId` と `files[].digest` が先方 status の既存項目か、未提供なら追加契約として採用するか。これらが無い場合、consumer は status と JSONL の世代照合を成立させられない。
 
 ## PR #50 の前提依存性の切り分け
 
