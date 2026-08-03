@@ -53,7 +53,7 @@ launchd の日次処理は、インストール済み単体バイナリだけを
 現行pipelineは公開CLIを同期起動してからJSONLを読む。
 一方、`scale_exporter` 側にも07:00と21:00の定期実行が追加されるため、両LaunchAgentを有効にすると二重取得が起きうる。
 当方のrun leaseは `scale2sheet` processだけを排他し、先方processを排他しない。
-したがって、取得を先方scheduleだけに委ねる案、当方pipelineから同期起動する案、`invoke`と`consume`を切り替える案のユーザー決定と、選択した案の公開契約が確定するまで、Slice 2以降の実装を開始しない。
+したがって、取得を先方scheduleだけに委ねる案、当方pipelineから同期起動する案、`invoke`と`consume`を切り替える案のユーザー決定、選択した案の公開契約、Issue #38のproducer供給観測設計が確定するまで、Slice 2以降の実装を開始しない。
 
 ## 外部インターフェース
 
@@ -537,7 +537,7 @@ export interface RunPipelineOptions {
 8. exporter が3回失敗した場合は macOS 通知を要求し、status を `failed:exporter` にして非ゼロ終了する。
 9. `syncMeasurements` を指定 period と既定 source で実行する。
 10. 転記が失敗した場合は macOS 通知を要求し、status を `failed:transfer` にして非ゼロ終了する。
-11. 成功時は転記件数または no-data と完了時刻を status とログへ記録する。
+11. 成功時は転記件数または no-data、readerの処理段階別件数、完了時刻を status とログへ記録する。
 12. `finally` で polling と listener を止め、owner token が一致する receipt、固有 socket file、lock file descriptor を順に解放する。
 
 `google-fit` と `apple-health` を既定 source にした場合は exporter を起動しない。
@@ -547,6 +547,14 @@ exporter が失敗した場合は `syncMeasurements` を呼ばない。
 `pipeline-status.json` は mode `0600` で atomic replacement する。
 period ごとに `last-started-at`、`last-completed-at`、`target-date`、`outcome`、`transferred-count`、`version` を保持する。
 認証情報、Spreadsheet ID、測定値は書かない。
+
+Issue #38のうち当方単独で閉じられる観測として、statusとtimestamp logへ対象日に一致したfile数、空行を除く読取対象行数、period window適用後のreading数を記録する。
+これにより、「対象fileが無い」と「fileはあるが使えるreadingが無い」を分離する。
+処理が到達していない段階またはparse中断後の件数を0として記録せず、未計測として区別する。
+
+この三つの件数だけでは、producerが実行した結果として0件だった状態と、producerが未実行または未公開だった状態を完全には識別できない。
+完全な識別とoutcomeの最終解釈は、producerの公開完了、成功、no-dataを表す公開契約に依存する。
+したがって、件数記録の実装と公開契約の確定を分けて検証する。
 
 `MacOsNotifier` は `/usr/bin/osascript` を shell 非経由で呼び、title を `scale-pipeline`、sound を `Basso` とする。
 テストでは `RecordingNotifier` に差し替え、OS 通知を実発火せず要求回数、失敗段階、文面を検証する。
@@ -818,9 +826,9 @@ Retry:
 | `process.ts` | launchctl print の終了コードによる登録有無、変更系呼出、移行時プロセス検出、待機上限の分類 |
 | `doctor.ts` | PASS、WARN、FAIL、失敗段階、直近成功報告、読取 API だけの呼び出し、install からの非呼出 |
 | `sheets-read.ts` | 認証、Spreadsheet 読取、当日行特定、write メソッドの不在 |
-| `pipeline.ts` | 初回を含む3回、60秒を2回、失敗後の転記抑止、period 拒否、時刻ログ |
+| `pipeline.ts` | 初回を含む3回、60秒を2回、失敗後の転記抑止、period 拒否、時刻ログ、処理段階別件数 |
 | `notifier.ts` | exporter と転記の通知要求、title、sound、実通知を使わない fake |
-| `status.ts` | period ごとの atomic write、対象日、成功時刻、結果、件数 |
+| `status.ts` | period ごとの atomic write、対象日、成功時刻、結果、対象file数、読取行数、window適用後件数、未計測と0の区別 |
 | `run-lease.ts` | raw `O_EXLOCK_DARWIN = 0x0020` と flag assertion、単一 owner、kernel 解放、real path 由来 namespace、ローカル filesystem allowlist、owner 固有 socket、token handshake、初期化窓の unknown、103バイト制限、runtime directory 検証、協調停止 |
 
 ### 隔離統合テスト
