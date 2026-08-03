@@ -31,8 +31,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 | `scale2sheet_innovator_claude` | claude-code | `claude-opus-5` / xhigh | 短命 | 目標の明確化（サクセスストーリー・合格条件・選択肢の追加） |
 | `scale2sheet_architect_codex` | codex | `gpt-5.6-sol` / xhigh | 短命 | 調査・検討書/設計書の起草（アーキテクチャ・外部・内部・テスト設計） |
 | `scale2sheet_programmer_codex` | codex | `gpt-5.6-terra` / medium | 常駐 | 実装・計測・スクリプト化（TypeScript / vitest） |
-| `scale2sheet_reviewer_claude` | claude-code | `claude-opus-5` / xhigh | 常駐 | **codex 系が作成した成果物**の敵対的検証（定量主張の独立再集計・決定前レビュー・PR レビュー） |
-| `scale2sheet_reviewer_codex` | codex | `gpt-5.6-terra` / medium（暫定） | 短命 | **Claude 系が作成した成果物**の敵対的検証・PR レビュー |
+| `scale2sheet_reviewer_claude` | claude-code | `claude-opus-5` / xhigh | 常駐 | 敵対的検証（定量主張の独立再集計・決定前レビュー・PR レビュー）。**作成者のベンダーを問わず本席が担当する** |
 | `scale2sheet_worker_codex` | codex | `gpt-5.6-luna` / low | 短命 | 設計判断を伴わない定型作業 |
 
 人格差分は `codex_monitor_agents/<派生名>/AGENT.md`、プロジェクト固有の差分と kaizen は同 `projects/scale2sheet/` に置く。
@@ -46,8 +45,10 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 - **決定権はユーザー**。pm は決定者ではなく提示者であり、**決定しない・起草しない・検証しない・案を出さない**
 - innovator → architect → programmer → reviewer の実務往復は当事者間で直接行い、pm を経由しない
-- 起草者は自分の起草物を検証しない。**生産者と検証者は必ず別ロールかつ別ベンダー**。検証者はベンダーを跨いで決まる（codex 作成物 → `reviewer_claude`、Claude 作成物 → `reviewer_codex`）
-- 短命セッション（innovator / architect / reviewer_codex / worker）は案件ごとに起動し、成果物の受け渡しでタブを閉じる
+- 起草者は自分の起草物を検証しない。**生産者と検証者は必ず別ロール**とする
+- **reviewer は `scale2sheet_reviewer_claude` の 1 席が既定**。作成者のベンダーを問わず本席が検証する
+- `scale2sheet_reviewer_codex` は**フォールバック専用**。Claude がトークン上限・利用上限・障害で利用不能な場合に限り、pm が代替不能を記録したうえで起動する。前提が解けたら閉じる。常設席ではない（2026-08-03 ユーザー決定）
+- 短命セッション（innovator / architect / worker）は案件ごとに起動し、成果物の受け渡しでタブを閉じる
 
 エージェント間の連絡は agmsg、起動・監視は herdr CLI を使う。詳細は「開発体制」を参照。
 
@@ -266,7 +267,7 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 | architect | scale2sheet_architect_codex | codex_monitor_agents/scale2sheet-architect | kappaseijin4codex |
 | programmer | scale2sheet_programmer_codex | codex_monitor_agents/scale2sheet-programmer | kappaseijin4codex |
 | reviewer（codex 作成物の検証） | scale2sheet_reviewer_claude | codex_monitor_agents/scale2sheet-reviewer-claude | kappaseijin4claude |
-| reviewer（Claude 作成物の検証） | scale2sheet_reviewer_codex | codex_monitor_agents/scale2sheet-reviewer-codex | kappaseijin4codex |
+| reviewer（フォールバック時のみ） | scale2sheet_reviewer_codex | codex_monitor_agents/scale2sheet-reviewer-codex | kappaseijin4codex |
 | worker | scale2sheet_worker_codex | codex_monitor_agents/scale2sheet-worker | kappaseijin4codex |
 
 ### herdr 配置（2026-08-02 改訂・1エージェント = 1専用タブ ＋ PMタブ監視pane）
@@ -324,7 +325,7 @@ $H agent start scale2sheet_architect_codex --cwd $AG/scale2sheet-architect \
 $H pane close <architect タブの root pane_id>
 ```
 
-- 常駐は **pm / programmer / reviewer_claude** のみ。innovator / architect / reviewer_codex / worker は案件ごとに起動し、受け渡し後にタブを閉じる
+- 常駐は **pm / programmer / reviewer_claude** のみ。innovator / architect / worker は案件ごとに起動し、受け渡し後にタブを閉じる。reviewer_codex はフォールバック時のみ起動する
 - タブの最後の pane を閉じるとタブごと消えるため、再起動は `tab create` からやり直す
 - 前提: 各エージェントディレクトリの agmsg delivery mode が `monitor` であること（`delivery.sh status <type> <dir>` で確認。off のまま起動するとブリッジ無しになる）
 - codex 側は `delivery.sh set monitor codex <dir>` 実行後に hooks の trust プロンプトが出るため、起動中のセッションは一度落として再 actas する
@@ -338,8 +339,8 @@ $H pane close <architect タブの root pane_id>
    | `scale2sheet_architect_codex`（設計書・検討書） | `scale2sheet_reviewer_claude` | kappaseijin4claude |
    | `scale2sheet_programmer_codex`（実装） | `scale2sheet_reviewer_claude` | kappaseijin4claude |
    | `scale2sheet_worker_codex`（定型作業） | `scale2sheet_reviewer_claude` | kappaseijin4claude |
-   | `scale2sheet_pm_claude`（PLAN / NOTES） | `scale2sheet_reviewer_codex` | kappaseijin4codex |
-   | `scale2sheet_innovator_claude`（目標定義） | `scale2sheet_reviewer_codex` | kappaseijin4codex |
+   | `scale2sheet_pm_claude`（PLAN / NOTES） | `scale2sheet_reviewer_claude` | kappaseijin4claude |
+   | `scale2sheet_innovator_claude`（目標定義） | `scale2sheet_reviewer_claude` | kappaseijin4claude |
 
    **レビューは常に reviewer が担う**（`~/.agents/rules/agent-role.rule.md`）。reviewer をベンダー別に
    2名（claude / codex）置くことで、「PR レビュー = reviewer」「生産者と検証者は別ロールかつ別ベンダー」
@@ -379,7 +380,7 @@ $H pane close <architect タブの root pane_id>
 
 - トークン制限に達した場合のフォールバック先は本書では定義しない。制限時の切替は**正本および各エージェントの人格設定（`AGENT.md` / `~/.codex/<role>.config.toml`）に従い、承認不要で実行する**。正本に定義が不足している場合は、正本側の更新をユーザー決定として起票する（本書で暫定値を定義しない）
 - reviewer のモデルは正本上「`claude-opus-5`、対抗案 `claude-sonnet-5` を A/B で確定」の段階にある。確定するまで対抗案を既定として扱わない
-- `scale2sheet_reviewer_codex` は正本に codex 側 reviewer の定義が無いため `gpt-5.6-terra` / medium を**暫定**とする。正本（`model-orchestration.rule.md`）への追記はユーザー決定事項として起票済み
+- `scale2sheet_reviewer_codex` は正本（`model-orchestration.rule.md`）の役割表に列挙されていない。2026-08-03 のユーザー決定により、常設席ではなくフォールバック専用と確定した。起動する場合のモデルは `gpt-5.6-terra` / medium とする
 - 制限解除の確認と復帰は承認不要で自動実行してよい
 
 ---
