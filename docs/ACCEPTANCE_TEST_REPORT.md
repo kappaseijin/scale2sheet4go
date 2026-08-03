@@ -113,8 +113,8 @@ tags: [acceptance-test, scale2sheet]
 | AC-24 | Slice 6 | 代理指標、手動 | — | — | — | read-only Sheets | PENDING | Slice 4 fake + Slice 6 real read-only |
 | AC-25 | Slice 4 | 自動 | — | — | — | no doctor network | PENDING | Slice 4 で判定 |
 | AC-26 | Slice 2 | 自動 | — | — | — | bounded stable snapshot | PENDING | fake clock/stat/delayで3attemptと読取前後一致を判定 |
-| AC-27 | Slice 6 | 代理指標、手動 | — | — | — | input integrity notification | PENDING | unstable/invalidは通知、missingは非通知を判定 |
-| AC-28 | Slice 6 | 代理指標、手動 | — | — | — | input-integrity / transfer notification | PENDING | 2段階を区別。実行体欠落は対象外 |
+| AC-27 | Slice 6 | 代理指標、手動 | — | — | — | input failure notification | PENDING | missing/unstable/invalidの要求をSlice 2、実通知をSlice 6で判定 |
+| AC-28 | Slice 6 | 代理指標、手動 | — | — | — | input / transfer notification | PENDING | 2段階を区別。実行体欠落は対象外 |
 | AC-29 | Slice 2 | 自動 | — | — | — | timestamp logs | PENDING | Slice 2 で判定 |
 | AC-30 | Slice 2 | 自動 | — | — | — | missing failure / present-zero no-op | PENDING | code 1/0と転記非呼出を判定 |
 | AC-31 | Slice 2 | 自動 | — | — | — | input snapshot ports | PENDING | 実時間5秒待機なしで判定 |

@@ -540,8 +540,8 @@ clock fake、stat fake、delay fakeを使い、実時間の5秒待機を自動�
 4. 設定から`scale-exporter-output-dir`と対象日を解決する。
 5. 後述のbounded stable snapshotを最大3回実行する。
 6. 安定したfile集合をmemoryへ読み、空行を除く全行をstrict parseする。
-7. 入力が無ければ`failed:input-missing`、終了コード1をstatusとlogへ記録し、Spreadsheet転記を呼ばない。現行producerにno-data公開契約がなく偽陽性が日常化しうるため、macOS通知は要求しない。
-8. 入力が不安定またはparse不能なら入力整合性段階のmacOS通知を1回要求し、statusを対応する`failed:input-*`にして終了コード1で終える。Spreadsheet転記は呼ばない。
+7. 入力が無い、不安定、またはparse不能なら入力段階のmacOS通知を1回要求し、statusを対応する`failed:input-*`にして終了コード1で終える。Spreadsheet転記は呼ばない。
+8. 入力失敗を記録した後はserviceとSpreadsheet adapterを起動しない。
 9. 安定した入力を指定periodへ適用し、対象readingが0件なら`completed:no-usable-reading`を記録して終了コード0で終える。Spreadsheet転記は呼ばない。
 10. readingがあれば`syncMeasurements`のSpreadsheet転記段階を実行する。
 11. 転記が失敗した場合はmacOS通知を要求し、statusを`failed:transfer`にして終了コード1で終える。
@@ -569,7 +569,7 @@ pipelineはsourceの値にかかわらずproducerを起動しない。
 
 | 条件 | outcome | 終了コード | macOS通知 | 転記 |
 | --- | --- | --- | --- | --- |
-| 対象日fileが最後まで無い | `failed:input-missing` | 1 | 要求しない | 実行しない |
+| 対象日fileが最後まで無い | `failed:input-missing` | 1 | 入力として1回 | 実行しない |
 | file集合または属性が安定しない | `failed:input-unstable` | 1 | 入力整合性として1回 | 実行しない |
 | 安定snapshotを全行parseできない | `failed:input-invalid-or-partial` | 1 | 入力整合性として1回 | 実行しない |
 | fileが存在し、安定し、parse可能だがperiod適用後0件 | `completed:no-usable-reading` | 0 | 要求しない | 実行しない |
@@ -580,9 +580,10 @@ pipelineはsourceの値にかかわらずproducerを起動しない。
 終了コード3は、前提失効したexit code検討で提案された値であり、Slice 2では使用しない。
 入力不在を失敗にする一方、producerには「正当なno-data日にもfileを公開する」合意済み契約がない。
 したがって正当なno-data日を`failed:input-missing`とする偽陽性を許容する暫定判断であり、producer失敗と利用者が測定しなかった状態を区別したとは記録しない。
-producerがno-data日にfileを公開する契約はなく、入力不在まで通知すると同じ未知原因に対してschedule上は最大4回/日の重複通知が起こりうる。
-設定済み出力ディレクトリでは2026-06-29から2026-08-03 JSTの36日間に対象日file不在は観測されておらず、実際の発火頻度は現時点で未知である。file存在は正当な測定を含むことを証明しない。
-原因を分類できず同じperiodの拾い直しでも重複しうる通知はactionableでないため、入力不在は非ゼロ終了とstatus/logだけでfail-closedにし、OS通知は入力不安定、parse不能、転記失敗へ限定する。
+producerがno-data日にfileを公開する契約はなく、入力不在の偽陽性頻度は現時点で未知である。
+一方、設定済み出力ディレクトリでは2026-06-29から2026-08-03 JSTの36日間に対象日file不在は観測されず、現時点の実データでは強い障害信号である。
+file存在は正当な測定を含むことを証明しないが、入力不在を非通知にするとproducer停止が無人運用で沈黙するため、入力段階通知を要求する。
+長期停止時はschedule上最大4回/日の通知が起こりうることを既知の運用上限とする。
 
 現行`reader.ts`が出力ディレクトリの`ENOENT`を空配列へ畳む挙動を、pipelineの成功判定へ使わない。
 pipeline用readerは`missing | unstable | invalid | ready`を区別するresultを返し、`ready`だけをserviceへ渡す。
@@ -611,7 +612,7 @@ H-2 では launchd がバイナリを直接起動するため、バイナリ自�
 欠落後の唯一の検出手段は、Spreadsheet の行が増えていないことに利用者が気づくことである。
 体重計に乗らなかった日の no-op と、pipeline が起動しなかった未実行は Spreadsheet 上で同じ見た目になる。
 この沈黙期間は、単体バイナリ直接起動を優先したユーザーが受容した既知のリスクである。
-例外は実行体が起動できない場合だけである。実行体が起動した後は、入力不安定、parse不能、転記失敗を通知し、入力不在はstatus/logだけへ記録する。
+例外は実行体が起動できない場合だけである。実行体が起動した後は、入力不在、不安定、parse不能、転記失敗を通知する。
 
 #### 暫定防御で検出できない競合
 
@@ -872,7 +873,7 @@ Retry:
 | `sheets-read.ts` | 認証、Spreadsheet 読取、当日行特定、write メソッドの不在 |
 | `input-snapshot.ts` | 3attempt、5秒間隔、file集合とdevice/inode/size/mtimeの前後一致、missing/unstable/invalid分類、読取後再stat |
 | `pipeline.ts` | 入力失敗後の転記抑止、present-but-zeroの正常no-op、period拒否、時刻ログ、処理段階別件数 |
-| `notifier.ts` | input-unstable、input-invalid-or-partial、転記の通知要求とinput-missingの非通知、title、sound、実通知を使わないfake |
+| `notifier.ts` | input-missing、input-unstable、input-invalid-or-partial、転記の通知要求、title、sound、実通知を使わないfake |
 | `status.ts` | period ごとの atomic write、対象日、成功時刻、結果、対象file数、読取行数、window適用後件数、未計測と0の区別 |
 | `run-lease.ts` | raw `O_EXLOCK_DARWIN = 0x0020` と flag assertion、単一 owner、kernel 解放、real path 由来 namespace、ローカル filesystem allowlist、owner 固有 socket、token handshake、初期化窓の unknown、103バイト制限、runtime directory 検証、協調停止 |
 
@@ -899,7 +900,7 @@ launchctlとosascriptは実行ファイルstubまたはprocess adapterのfakeを
 11. doctor の fake API は認証、Spreadsheet 読取、当日行特定を順に返し、write API の呼出回数がゼロである。
 12. active pipeline lease がある間は `bootout` と置換を行わず、無変更で中断する。
 13. `uninstalling` の各中断点とマニフェスト削除後のバイナリ削除失敗から同じ uninstall を再実行でき、バイナリ削除後は一時 receipt の後始末以外の変更操作が残らない。
-14. fake clock、stat、delayでmissing、更新中、parse不能を3attempt以内に再現し、転記を呼ばない。missingは通知0回、更新中とparse不能は入力整合性通知1回を記録する。実時間の5秒待機は行わない。
+14. fake clock、stat、delayでmissing、更新中、parse不能を3attempt以内に再現し、転記を呼ばず、入力通知1回を記録する。実時間の5秒待機は行わない。
 15. present-but-zeroは終了コード0で三つの件数を保存し、転記失敗は別の通知要求を記録する。
 16. plist、README、installer の fixture に `scripts/run-pipeline.sh` 参照が無い。
 17. `--force` 時だけ active pipeline の label を `bootout` し、処理停止と当日データ欠測の警告を記録する。manual pipeline と serve には owner token 付きの協調停止を要求する。
@@ -949,7 +950,7 @@ ACCEPTANCE_TEST_REPORT には各条件を「自動」「代理指標」「手動
 | AC-24 | 代理指標と手動 | 読取専用 fake API を自動検査し、実 Spreadsheet は手動確認 |
 | AC-25 | 自動 | install から doctor と network adapter を呼ばない境界 |
 | AC-26 | 自動 | clock、stat、delay fakeで3attempt、5,000ms、読取前後のfile集合と属性一致を決定論的に検査する |
-| AC-27、AC-28 | 代理指標と手動 | RecordingNotifierで入力整合性と転記の2段階要求、input-missingの非通知を自動検査し、実通知は手動確認する。H-2の実行体欠落は通知対象外 |
+| AC-27、AC-28 | 代理指標と手動 | RecordingNotifierで入力と転記の2段階要求を自動検査し、実通知は手動確認する。H-2の実行体欠落は通知対象外 |
 | AC-29、AC-30 | 自動 | timestamp log、period validation、missing/unstable/invalid後の転記非呼出、present-but-zeroを検査する |
 | AC-31 | 自動 | inputSnapshot、delay、clock、notifier、runLeaseのportを差し替え、実時間待機なしでAC-26〜30を検査する |
 | AC-32 | 自動 | plist、README、installer から `scripts/run-pipeline.sh` 参照がゼロである静的検査 |
@@ -972,6 +973,7 @@ ACCEPTANCE_TEST_REPORT には各条件を「自動」「代理指標」「手動
 7. 新経路を一時 prefix と一時 label で受け入れた後、本番 label へ適用する。
 8. README の旧手順を新 CLI へ置換するが、旧 script は観測期間中だけ repository に残す。
 9. 朝と夜の両periodについて、入力不在/不安定/invalidとpresent-but-zeroを観測日から除外し、安定入力から実測readingを確認できたrunだけを連続7日確認する。present-but-zeroはruntime上code 0でも、公開完了契約が無い間は`unverified`として日数を0へ戻す。失敗注入では入力整合性/転記2段階の通知要求も維持する。
+   公開完了契約が得られない間、連続7日を成立させるには7日間毎日、morningとevening双方でproducer供給を示す実測readingが必要である。
 10. 各 period で少なくとも一度は launchd 起動の成功証跡があり、観測期間を満たした後に静的 plist と `scripts/run-pipeline.sh` を削除する。
 11. rollback 経路を終了した同じ移行完了変更で、旧 process 一覧の補助検出を削除する。
 
