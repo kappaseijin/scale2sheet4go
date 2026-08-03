@@ -40,13 +40,14 @@ consumer は period ごとに次の順で判定する。
 
 1. 対象キーの atomic status を読む。
 2. status の契約/schema、対象日、period、source、`newUniqueRecordCount` を検証する。
-3. `newUniqueRecordCount = 0` なら `completed:no-data` とし、転記せず終了コード 0 とする。
-4. `newUniqueRecordCount > 0` なら JSONL を bounded stable snapshot で読み、period window と exact dedup 後の usable reading を得る。
-5. usable reading が 1 件以上なら転記へ進み、0 件なら `failed:input-contract` とする。status が新規を示すのに consumer が読めないためである。
+3. producer status が `completed` で、`periodUniqueRecordCount = 0` なら `completed:no-data` とし、転記せず終了コード 0 とする。`newUniqueRecordCount` は今回 publish の鮮度・生存確認に使い、再実行の転記ゲートには使わない。
+4. status の `periodUniqueRecordCount` を期待値として JSONL を bounded stable snapshot で読み、period window と exact dedup 後の usable reading を得る。
+5. usable reading が 1 件以上なら転記へ進む。`periodUniqueRecordCount > 0` なのに usable reading が 0 件なら `failed:input-contract` とする。status が period 内容を示すのに consumer が読めないためである。
 6. status が無い、atomic publish 前の不完全な status、キー不一致、schema 不正、または status と JSONL の整合が取れない場合は `failed:input-contract` とし、転記しない。
 
-`newUniqueRecordCount` は producer が計算した freshness の根拠であり、consumer が file の更新時刻から推測する値ではない。
-consumer は独自に period 内の unique reading 数を計算して status の値と照合するが、照合値は freshness の代替ではなく、公開内容の整合性検査である。
+`newUniqueRecordCount` は producer が今回 publish で増やした値であり、consumer が file の更新時刻から推測する値ではない。
+consumer は `periodUniqueRecordCount` と独自に計算した period 内 unique reading 数を照合する。これは公開内容の整合性検査であり、再実行を no-data と誤判定しないための判定ゲートである。
+同じ reading を再実行で転記しても、reader の exact dedup と Sheets 当日行の冪等な upsert により、転記結果を二重加算しない。
 
 ### status と当方 reading の4象限
 
@@ -84,7 +85,7 @@ snapshot は維持するが、契約上の責務を限定する。
 
 - 維持する責務: JSONL の列挙、読取前後の file 集合・path・device・inode・size・mtime の一致確認、strict parse、書きかけや部分公開の検出。
 - 廃止する責務: 「新しい測定が公開された」「対象 period が fresh である」「file 不在は producer 失敗である」という推論。
-- status が atomic でも JSONL 本体が atomic とは限らないため、`newUniqueRecordCount > 0` の後に JSONL の整合性を検査する必要がある。
+- status が atomic でも JSONL 本体が atomic とは限らないため、status の `periodUniqueRecordCount` と JSONL の整合性を検査する必要がある。
 - snapshot 不一致は `failed:input-unstable`、parse不能・statusとの不整合は `failed:input-contract` として記録する。
 
 従来の 3 回 × 5 秒は暫定の実装パラメータとして残すが、freshness の保証値とは文書化しない。
@@ -102,19 +103,21 @@ closed boundary による重複再出力は reader の exact dedup で転記結�
 
 | 状態 | outcome | 終了コード | 転記 | 入力段階通知 |
 | --- | --- | ---: | --- | --- |
-| status の `newUniqueRecordCount = 0` | `completed:no-data` | 0 | しない | しない |
-| status > 0、usable reading あり | `completed:input-ready` | 0 | 実施 | しない |
-| status > 0、JSONL が不安定 | `failed:input-unstable` | 1 | しない | する |
-| status > 0、JSONL parse不能/部分公開 | `failed:input-contract` | 1 | しない | する |
+| producer status が `completed`、`periodUniqueRecordCount = 0` | `completed:no-data` | 0 | しない | しない |
+| status が completed、usable reading あり | `completed:input-ready` | 0 | 実施 | しない |
+| status が completed、JSONL が不安定 | `failed:input-unstable` | 1 | しない | する |
+| status が completed、JSONL parse不能/部分公開 | `failed:input-contract` | 1 | しない | する |
 | status 欠落・不正・キー不一致 | `failed:input-contract` | 1 | しない | する |
 | status と JSONL の unique 件数不一致 | `failed:input-contract` | 1 | しない | する |
 
 producer が status を公開できない場合は、正常な no-data として黙って終了しない。
 status 不在は no-data の証明ではなく、producer の公開契約を検証できない状態だからである。
-これにより、file 不在を毎回通知する偽陽性を減らしつつ、producer 停止が長期間沈黙する問題も避ける。
+これにより、file 不在を毎回通知する偽陽性を減らしつつ、producer 停止を status の失敗状態・履歴・連続回数で検知するための前提を整える。
+実際に一定回数で別経路へ届くようにするエスカレーションは Slice 6 で実装する。
 
 連続観測では `completed:no-data` を正常な観測として記録する。
-これにより「実行され、測定が無かった」と「観測不能」を区別でき、10 日連続の失敗が誰にも届かない問題を再発させない。
+これにより「実行され、測定が無かった」と「観測不能」を区別でき、10 日連続の失敗を検知するための前提が整う。
+実際に一定回数で別経路へ届くようにする処理は Slice 6 で扱う。
 通知の抑制・集約は Slice 6 の通知実装で行い、Slice 2 は period ごとの outcome と status schema を欠落なく保存する。
 
 ## status 最小 schema 案
@@ -135,7 +138,7 @@ status 不在は no-data の証明ではなく、producer の公開契約を検�
 }
 ```
 
-`newUniqueRecordCount` は freshness 判定用、`periodUniqueRecordCount` は対象 period の公開内容との照合用である。
+`newUniqueRecordCount` は今回 publish の鮮度・生存確認用、`periodUniqueRecordCount` は対象 period の公開内容と再実行を含む consumer 判定用である。
 `publishId` と `files` は、consumer が status と JSONL の世代を照合するために必要である。
 status は一時 file へ書き、同一 filesystem 上の rename で atomic publish する。
 
@@ -193,6 +196,7 @@ status 契約が未実装の間は Slice 2 の consumer 実装を開始せず、
 2. status と JSONL の世代照合に digest を必須とするか。
 3. status 欠落を即時通知するか、連続回数による集約を Slice 6 で行うか。
 4. producer が `newUniqueRecordCount = 0` の status を毎回 publish することを先方契約へ含めるか。
+5. producer が取得・認証・公開に失敗した場合、status に `failed` 状態、失敗理由、発生時刻を含めることを契約へ含めるか。含めない場合、consumer は「取得できたが0件」と「取得失敗」を区別できず、#46 と同型の沈黙が残る。
 
 ## PR #50 の前提依存性の切り分け
 
@@ -221,6 +225,6 @@ AC-36 は直近成功時刻、連続失敗回数、直近 outcome の status his
 この結果、#38 の「producer の空出力を区別できない」積み残しは status 契約により部分的に閉じる。
 producer の実行自体を証明する status が無い場合、または status と JSONL の世代が一致しない場合は観測不能として失敗扱いになるため、公開契約の実装・運用が残課題である。
 
-目標定義、設計書、実装分割、受け入れ報告の4箇所を反映先とし、AC 定義元だけまたは検証方法だけを更新しない。
+目標定義、設計書、実装分割、受け入れ報告、責任境界監査書、連続観測/通知方針の6正本を反映先とし、AC 定義元だけまたは検証方法だけを更新しない。
 
 status: proposed のまま reviewer の判定基準を先に受け、ユーザー決定後に6正本へ反映する。
