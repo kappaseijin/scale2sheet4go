@@ -266,7 +266,7 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 | innovator | scale2sheet_innovator_claude | codex_monitor_agents/scale2sheet-innovator-claude | kappaseijin4claude |
 | architect | scale2sheet_architect_codex | codex_monitor_agents/scale2sheet-architect | kappaseijin4codex |
 | programmer | scale2sheet_programmer_codex | codex_monitor_agents/scale2sheet-programmer | kappaseijin4codex |
-| reviewer（codex 作成物の検証） | scale2sheet_reviewer_claude | codex_monitor_agents/scale2sheet-reviewer-claude | kappaseijin4claude |
+| reviewer（作成者のベンダーを問わず） | scale2sheet_reviewer_claude | codex_monitor_agents/scale2sheet-reviewer-claude | kappaseijin4claude |
 | reviewer（フォールバック時のみ） | scale2sheet_reviewer_codex | codex_monitor_agents/scale2sheet-reviewer-codex | kappaseijin4codex |
 | worker | scale2sheet_worker_codex | codex_monitor_agents/scale2sheet-worker | kappaseijin4codex |
 
