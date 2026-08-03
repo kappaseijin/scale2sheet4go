@@ -269,33 +269,33 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 | reviewer（Claude 作成物の検証） | scale2sheet_reviewer_codex | codex_monitor_agents/scale2sheet-reviewer-codex | kappaseijin4codex |
 | worker | scale2sheet_worker_codex | codex_monitor_agents/scale2sheet-worker | kappaseijin4codex |
 
-### herdr 配置（2026-07-30 改訂・1エージェント = 1タブ ＋ pm タブに監視 pane）
+### herdr 配置（2026-08-02 改訂・1エージェント = 1専用タブ ＋ PMタブ監視pane）
 
 旧 3-pane 分割レイアウトの検討経緯: [decisions/2026-07-05T224500_herdr_pane配置についての検討書.md](./decisions/2026-07-05T224500_herdr_pane配置についての検討書.md)（体制改編前の記録）
 
 default セッション内の workspace `scale2sheet`（ラベルで識別。workspace ID / pane ID は再作成で変わるため `herdr agent list` で都度取得する）。
-**1 エージェント = 1 タブ**とし、タブラベルは派生名をそのまま使う。
-ただし **pm のタブだけは 3 pane 構成**とし、右カラムに監視 pane を 2 枚置く（2026-07-30 ユーザー決定）。
+**1 エージェント = 1専用タブ**とし、タブラベルは派生名をそのまま使う。
+エージェントの pane は他エージェントのタブへ置かない。ただしPMタブだけは、PM本人のpaneに加えて監視用paneを2枚置く。
 
 ```text
-pm タブ                              他タブ（1エージェント = 1タブ）
+PMタブ                                各エージェント専用タブ
 ┌───────────┬──────────────────────┐  ┌──────────────┐
-│           │ watch:agmsg   (背高) │  │ programmer   │
+│           │ watch:agmsg           │  │ programmer   │
 │  pm       │  ← 新着が下端に出る  │  └──────────────┘
 │  (全高)   ├──────────────────────┤  ┌──────────────┐
-│           │ watch:agents  (約10行)│ │ reviewer     │
+│           │ watch:agents          │  │ reviewer     │
 └───────────┴──────────────────────┘  └──────────────┘
 ```
 
-- 右上 = `~/.agents/bin/agmsg-watch-stream.sh scale2sheet 10`（agmsg の往復を新着だけ 1 行ずつ追記）
-- 右下 = `~/.agents/bin/herdr-watch-agents.sh <wID> 5`（全席の稼働状況。`blocked` を赤で警告）
+- PMタブ右上 = `~/.agents/bin/agmsg-watch-stream.sh scale2sheet 10`（agmsg の往復を新着だけ 1 行ずつ追記）
+- PMタブ右下 = `~/.agents/bin/herdr-watch-agents.sh <wID> 5`（全席の稼働状況。`blocked` を赤で警告）
 - **上下を逆にしない**。メッセージ流は新着が pane 下端から上がるため、一覧を*下*に置くと
   最新メッセージと一覧が隣接し目線の移動が最小になる
-- 構築は `pane split <pm pane> --direction right --ratio 0.45` → `pane split <上pane> --direction down --ratio 0.76`
+- PMタブの構築は `pane split <pm pane> --direction right --ratio 0.45` → `pane split <上pane> --direction down --ratio 0.76`
 
 ```sh
-$H pane split <pm pane> --direction right --ratio 0.45 --no-focus   # → 上 pane
-$H pane split <上pane>  --direction down  --ratio 0.76 --no-focus   # → 下 pane
+$H pane split <pm pane> --direction right --ratio 0.45 --no-focus
+$H pane split <上pane>  --direction down  --ratio 0.76 --no-focus
 $H pane rename <上pane> watch:agmsg;  $H pane rename <下pane> watch:agents
 $H pane run <上pane> '~/.agents/bin/agmsg-watch-stream.sh scale2sheet 10'
 $H pane run <下pane> '~/.agents/bin/herdr-watch-agents.sh <wID> 5'
