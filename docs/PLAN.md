@@ -76,7 +76,7 @@ PRレビュー・approveの運用（作成者と別LLM・別GitHubアカウン�
 朝・夜の身体測定値（体重・体温・血圧上/下・脈拍）を [scale_exporter](https://github.com/kappaseijin/scale_exporter) の出力 JSONL（デフォルト・推奨）、Google Fit REST API、または Apple Health XML エクスポートから取得し、Google Spreadsheet の当日行へ転記する TypeScript / Node.js サービス。
 
 ```text
-[scale_exporter] --JSONL出力--> ~/Documents/scale_exporter/ --読込--> [scale2sheet] --> Google スプレッドシート
+[scale_exporter] --JSONL出力--> <入力フォルダ> --読込--> [scale2sheet] --> Google スプレッドシート
 ```
 
 Google Fit REST API は 2026 年末で終了するため非推奨。`scale-exporter` ソースを標準とする。
@@ -144,9 +144,25 @@ Bun compiled binary の2 process 試験でしか実証できない（AC-15、AC-
 - 連携は**公開 CLI と出力契約だけ**に限定する。相手側の設定・認証・導入を所有しない
 - scale2sheet の installer が scale_exporter を install しないことは当初からの非目標。維持する
 - 相手の LaunchAgent を重複管理しない
-- **未解決**: exporter が自身のスケジュールで動くと、当方 pipeline からの呼び出しと二重取得になる。
-  案A（pipeline は取得を呼ばず出力済み JSONL を消費）／案B（従来どおり pipeline が呼ぶ）のどちらを前提にするかを
-  先方へ照会中。Slice 2 の前提がこれに依存する
+- **決定済み（2026-08-03）**: 二重取得の論点は**当方案A で確定**した。
+  それぞれが自分のスケジュールで取得し、次工程の入力フォルダへ出力する。
+  Apple Health は iPhone のショートカットが、Google Fit は `scale_exporter` が出力する。
+  **当方 pipeline は exporter を同期起動せず、出力済みファイルを読んで転記する。**
+  呼び出し契約が「実行」から「出力の消費」へ変わった（先方ユーザー決定）。
+  これにより当方案B（pipeline が公開 CLI を同期起動する）と当方案C（`invoke` と `consume` を切り替える）は**不採用**
+- **決定済み（2026-08-03）**: 先方は自身の Issue #9 で**先方案B（暫定）を採り、先方案C（恒久）は採らない**。
+  先方案は当方の案A / 案B / 案C とは**別系列**であり、記号が重なるだけで内容は無関係。
+  先方案B は「iPhone ショートカット側の `source` を `apple_health` へ直す」、
+  先方案C は「raw staging から検証・正規化して原子的に公開する」を指す。
+  したがって先方の公開契約は当面変わらず、**排他なし・JSONL の公開は atomic でない・一括 atomicity なし**が残る。
+  当方ユーザーは**当方の consumer 側防御方針（案Z）**、すなわち
+  「受け入れたうえで、atomic 公開・完了判定を将来の公開契約として残す」を選択した。
+  当方は読み取り側に最小限の防御を入れる。防御は完全にはならない（#49）
+- **決定済み（2026-08-03）**: 欠測検知は**当方で完結**させる。
+  対象日の入力ファイルが存在しなければその日は失敗として扱い、転記しない。
+  「先方が失敗したのか、本当に測定が無かったのか」を当方が区別する必要はない。
+  先方に通知の責任を負わせる契約は求めない（当方ユーザー決定）
+- 上記の設計反映は PR #50（merge commit `52f472d`）で 6 正本へ着地済み
 
 ---
 
@@ -220,7 +236,7 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 |----|------|---------|---------|
 | AT-07 | `scale2sheet run --period morning` | 対象時間帯に体重測定値なし | Spreadsheet は更新せず正常終了（exit code 0） |
 | AT-08 | `scale2sheet run --period evening` | 対象時間帯に体重以外（体温等）はあるが体重なし | 転記しない（体重必須アンカーのため） |
-| AT-09 | `scale2sheet run --period morning` | `~/Documents/scale_exporter` にディレクトリ・当日ファイルなし | 空配列扱い、正常終了 |
+| AT-09 | `scale2sheet run --period morning` | 入力フォルダにディレクトリ・当日ファイルなし | 空配列扱い、正常終了（**`run` の挙動。`pipeline` は #49 の決定により `failed:input-missing` / 終了コード 1 で扱う。Slice 2 で実装**） |
 | AT-10 | scale_exporter出力に不正JSON行・スキーマ違反あり | 該当ファイル読込 | ファイル名・行番号つきエラーで失敗（黙って捨てない） |
 | AT-11 | 連番ファイル境界で同一測定値が重複 | `_001.jsonl` / `_002.jsonl` にまたがる重複あり | `(measuredAt, kind, value, source)` 完全一致で重複除去される |
 | AT-12 | `scale2sheet run --period invalid` | - | 引数エラー、exit code 非ゼロ |
