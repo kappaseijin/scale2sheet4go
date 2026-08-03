@@ -570,8 +570,8 @@ pipelineはsourceの値にかかわらずproducerを起動しない。
 | 条件 | outcome | 終了コード | macOS通知 | 転記 |
 | --- | --- | --- | --- | --- |
 | 対象日fileが最後まで無い | `failed:input-missing` | 1 | 入力として1回 | 実行しない |
-| file集合または属性が安定しない | `failed:input-unstable` | 1 | 入力整合性として1回 | 実行しない |
-| 安定snapshotを全行parseできない | `failed:input-invalid-or-partial` | 1 | 入力整合性として1回 | 実行しない |
+| file集合または属性が安定しない | `failed:input-unstable` | 1 | 入力として1回 | 実行しない |
+| 安定snapshotを全行parseできない | `failed:input-invalid-or-partial` | 1 | 入力として1回 | 実行しない |
 | fileが存在し、安定し、parse可能だがperiod適用後0件 | `completed:no-usable-reading` | 0 | 要求しない | 実行しない |
 | 転記成功 | `completed:transferred` | 0 | 要求しない | 実行する |
 | 転記失敗 | `failed:transfer` | 1 | 転記として1回 | 失敗 |
@@ -581,7 +581,7 @@ pipelineはsourceの値にかかわらずproducerを起動しない。
 入力不在を失敗にする一方、producerには「正当なno-data日にもfileを公開する」合意済み契約がない。
 したがって正当なno-data日を`failed:input-missing`とする偽陽性を許容する暫定判断であり、producer失敗と利用者が測定しなかった状態を区別したとは記録しない。
 producerがno-data日にfileを公開する契約はなく、入力不在の偽陽性頻度は現時点で未知である。
-一方、設定済み出力ディレクトリでは2026-06-29から2026-08-03 JSTの36日間に対象日file不在は観測されず、現時点の実データでは強い障害信号である。
+一方、設定済み出力ディレクトリでは2026-06-29から2026-08-03 JSTの36日間に対象日file不在は観測されず、平常運用で日常的に発火する兆候は無い。ただし一度も発火していないため、発火時にそれがproducer停止を示すかどうかは実測されていない。
 file存在は正当な測定を含むことを証明しないが、入力不在を非通知にするとproducer停止が無人運用で沈黙するため、入力段階通知を要求する。
 長期停止時はschedule上最大4回/日の通知が起こりうることを既知の運用上限とする。
 
@@ -972,7 +972,7 @@ ACCEPTANCE_TEST_REPORT には各条件を「自動」「代理指標」「手動
 6. 現行 revision、plist、`run-pipeline.sh` を rollback ディレクトリへ保存する。
 7. 新経路を一時 prefix と一時 label で受け入れた後、本番 label へ適用する。
 8. README の旧手順を新 CLI へ置換するが、旧 script は観測期間中だけ repository に残す。
-9. 朝と夜の両periodについて、入力不在/不安定/invalidとpresent-but-zeroを観測日から除外し、安定入力から実測readingを確認できたrunだけを連続7日確認する。present-but-zeroはruntime上code 0でも、公開完了契約が無い間は`unverified`として日数を0へ戻す。失敗注入では入力整合性/転記2段階の通知要求も維持する。
+9. 朝と夜の両periodについて、入力不在/不安定/invalidとpresent-but-zeroを観測日から除外し、安定入力から実測readingを確認できたrunだけを連続7日確認する。present-but-zeroはruntime上code 0でも、公開完了契約が無い間は`unverified`として日数を0へ戻す。失敗注入では入力/転記2段階の通知要求も維持する。
    公開完了契約が得られない間、連続7日を成立させるには7日間毎日、morningとevening双方でproducer供給を示す実測readingが必要である。
 10. 各 period で少なくとも一度は launchd 起動の成功証跡があり、観測期間を満たした後に静的 plist と `scripts/run-pipeline.sh` を削除する。
 11. rollback 経路を終了した同じ移行完了変更で、旧 process 一覧の補助検出を削除する。
