@@ -50,7 +50,7 @@ consumer は period ごとに次の順で判定する。
 consumer は自前の `periodUniqueRecordCount` を再実行を含む転記判定のゲートにする。
 この値は producer status と比較しない。`newUniqueRecordCount` は今回 publish の差分、`periodUniqueRecordCount` は period 全体の量であり、拾い直し run では差分0・総量Nが正常になり得るためである。
 producer 公開内容との整合性は、status に `publishId` と `files[].digest` が含まれる場合、その世代照合で検査する。
-先方から明言されているのは `newUniqueRecordCount` のみであり、`publishId` / `files[].digest` は既存契約と断定しない。これらを status 契約の追加必須項目として照会し、先方が受諾して契約が確定するまで Slice 2 を開始しない。受諾されない場合は世代照合の通知行を削除し、producer の公開内容と当方の読取のずれを検出できない限界をユーザーへ再提示する。
+先方から明言されているのは `newUniqueRecordCount` のみであり、`publishId` / `files[].digest` は既存契約と断定しない。これらは精度を高める optional な追加契約として照会するが、先方の受諾を Slice 2 の開始条件にはしない。受諾されない場合は世代照合の通知行を実装せず、consumer 側の bounded stable snapshot、mtime、内容ハッシュで検出できる範囲を使い、producer の公開世代との対応を検出できない限界を status と受け入れ報告へ記録する。
 同じ reading を再実行で転記しても、reader の exact dedup と Sheets 当日行の冪等な upsert により、転記結果を二重加算しない。
 
 ### status と当方 reading の4象限
@@ -112,7 +112,7 @@ closed boundary による重複再出力は reader の exact dedup で転記結�
 | status が completed、JSONL が不安定 | `failed:input-unstable` | 1 | しない | する |
 | status が completed、JSONL parse不能/部分公開 | `failed:input-contract` | 1 | しない | する |
 | status 欠落・不正・キー不一致 | `failed:input-contract` | 1 | しない | する |
-| status の `publishId` / `files[].digest` と JSONL 世代の不一致 | `failed:input-contract` | 1 | しない | する |
+| status の `publishId` / `files[].digest` と JSONL 世代の不一致（項目が提供される場合） | `failed:input-contract` | 1 | しない | する |
 
 producer が status を公開できない場合は、正常な no-data として黙って終了しない。
 status 不在は no-data の証明ではなく、producer の公開契約を検証できない状態だからである。
@@ -148,9 +148,9 @@ status は一時 file へ書き、同一 filesystem 上の rename で atomic pub
 
 ## status と JSONL の読取順序・競合
 
-consumer は status を先に読み、その `publishId` と file manifest を入力 snapshot の期待世代として保持する。
+consumer は status を先に読み、`publishId` と file manifest が提供されていれば入力 snapshot の期待世代として保持する。未提供の場合は世代照合を省略し、当方 snapshot の安定性だけを検査する。
 次に JSONL を bounded stable snapshot で読み、period window と exact dedup を適用する。
-最後に同じ status key を再読し、`publishId`、`newUniqueRecordCount`、manifest が初回読取と一致することを確認する。
+最後に同じ status key を再読し、`newUniqueRecordCount` と、提供されている場合の `publishId` / manifest が初回読取と一致することを確認する。
 
 - 初回 status と再読 status が一致し、JSONL の file manifest と reading 件数が整合すれば処理を確定する。
 - 読取中に status が更新された場合は、古い JSONL と新しい status を混ぜず、snapshot attempt を失敗として最大3回再試行する。
@@ -182,14 +182,14 @@ Slice 2 の実装と同時に次の順序を守る。
 7. scheduled 再開
 
 逆順の再開および二重 producer は禁止する。
-`newUniqueRecordCount`、`publishId`、`files[].digest` を含む status 契約が未実装または未受諾の間は Slice 2 の consumer 実装を開始せず、既存の file 不在判定を新契約として扱わない。
+`newUniqueRecordCount` を含む最低限の status 契約が未実装の間は Slice 2 の consumer 実装を開始しない。`publishId` / `files[].digest` が未受諾でも Slice 2 は開始でき、その場合は世代照合を実装せず、検出限界を記録する。既存の file 不在判定は新契約として扱わない。
 
 ### 移行期間の consumer 挙動
 
 手順2で当方の同期 exporter 起動を除去してから手順5で先方 LaunchAgent を有効化するまで、producer が意図的に存在しない期間が生じる。
 この期間は両 job を停止したまま pipeline の scheduled 実行も停止し、consumer を起動しない。
 したがって移行中に `input-missing` 相当の通知は発火しない。
-手順6の手動確認で status の atomic publish、JSONL 世代照合、no-data/reading の4象限を確認してから、手順7で scheduled を再開する。
+手順6の手動確認で status の atomic publish、提供される場合の JSONL 世代照合、no-data/reading の4象限を確認してから、手順7で scheduled を再開する。
 移行期間の長さは実施担当が両 job 停止から手動確認完了まで計測し、status history に記録する。
 
 ## 未決定事項
