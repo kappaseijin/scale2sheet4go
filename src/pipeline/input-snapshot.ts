@@ -32,6 +32,7 @@ export interface ReadStableInputSnapshotOptions {
   readonly outputDir: string;
   readonly targetDate: string;
   readonly delay: (milliseconds: number) => Promise<void>;
+  readonly afterReadSnapshot?: () => Promise<void>;
 }
 
 export interface StableInputSnapshot {
@@ -55,6 +56,15 @@ interface InputSnapshotFiles {
   readonly inputAnomalyCandidates: readonly InputAnomalyCandidate[];
 }
 
+type InputFailureOutcome = InputSnapshotError["outcome"];
+
+interface InputFailureObservation {
+  readonly outcome: InputFailureOutcome;
+  readonly diagnostic: string;
+  readonly counts: InputSnapshotCounts;
+  readonly inputAnomalyCandidates: readonly InputAnomalyCandidate[];
+}
+
 class SnapshotParseError extends Error {
   constructor(readonly readLineCount: number, message: string, options: ErrorOptions) {
     super(message, options);
@@ -64,31 +74,39 @@ class SnapshotParseError extends Error {
 export async function readStableInputSnapshot(
   options: ReadStableInputSnapshotOptions,
 ): Promise<StableInputSnapshot> {
-  let lastOutcome: InputSnapshotError["outcome"] = "input-missing";
-  let lastDiagnostic: string | undefined;
-  let lastCounts: InputSnapshotCounts = {};
-  let lastInputAnomalyCandidates: readonly InputAnomalyCandidate[] = [];
+  let strongestFailure: InputFailureObservation | undefined;
+  const recordFailure = (observation: InputFailureObservation) => {
+    if (
+      strongestFailure === undefined
+      || failureStrength(observation.outcome) >= failureStrength(strongestFailure.outcome)
+    ) {
+      strongestFailure = observation;
+    }
+  };
   for (let attempt = 1; attempt <= INPUT_READ_ATTEMPTS; attempt += 1) {
     const before = await snapshotTargetFiles(options.outputDir, options.targetDate);
-    lastCounts = { matchedFileCount: before.files.length };
-    lastInputAnomalyCandidates = before.inputAnomalyCandidates;
     if (before.files.length === 0) {
-      lastOutcome = "input-missing";
-      lastDiagnostic = `no target-date files found for ${options.targetDate}`;
+      recordFailure({
+        outcome: "input-missing",
+        diagnostic: `no target-date files found for ${options.targetDate}`,
+        counts: { matchedFileCount: 0 },
+        inputAnomalyCandidates: before.inputAnomalyCandidates,
+      });
     } else {
       await options.delay(INPUT_STABILITY_INTERVAL_MS);
       const afterDelay = await snapshotTargetFiles(options.outputDir, options.targetDate);
-      lastCounts = { matchedFileCount: afterDelay.files.length };
-      lastInputAnomalyCandidates = afterDelay.inputAnomalyCandidates;
       if (!sameSnapshot(before.files, afterDelay.files)) {
-        lastOutcome = "input-unstable";
-        lastDiagnostic = "input file metadata changed during stability window";
+        recordFailure({
+          outcome: "input-unstable",
+          diagnostic: "input file metadata changed during stability window",
+          counts: { matchedFileCount: afterDelay.files.length },
+          inputAnomalyCandidates: afterDelay.inputAnomalyCandidates,
+        });
       } else {
         try {
           const parsed = await readSnapshot(afterDelay.files);
+          await options.afterReadSnapshot?.();
           const afterRead = await snapshotTargetFiles(options.outputDir, options.targetDate);
-          lastCounts = { matchedFileCount: afterRead.files.length };
-          lastInputAnomalyCandidates = afterRead.inputAnomalyCandidates;
           if (sameSnapshot(afterDelay.files, afterRead.files)) {
             return {
               matchedFileCount: afterRead.files.length,
@@ -99,16 +117,24 @@ export async function readStableInputSnapshot(
                 : {}),
             };
           }
-          lastOutcome = "input-unstable";
+          recordFailure({
+            outcome: "input-unstable",
+            diagnostic: "input file metadata changed after reading snapshot",
+            counts: { matchedFileCount: afterRead.files.length },
+            inputAnomalyCandidates: afterRead.inputAnomalyCandidates,
+          });
         } catch (error) {
-          lastOutcome = "input-invalid-or-partial";
-          lastDiagnostic = error instanceof Error ? error.message : String(error);
-          lastCounts = {
-            matchedFileCount: afterDelay.files.length,
-            ...(error instanceof SnapshotParseError
-              ? { readLineCount: error.readLineCount }
-              : {}),
-          };
+          recordFailure({
+            outcome: "input-invalid-or-partial",
+            diagnostic: error instanceof Error ? error.message : String(error),
+            counts: {
+              matchedFileCount: afterDelay.files.length,
+              ...(error instanceof SnapshotParseError
+                ? { readLineCount: error.readLineCount }
+                : {}),
+            },
+            inputAnomalyCandidates: afterDelay.inputAnomalyCandidates,
+          });
         }
       }
     }
@@ -116,12 +142,26 @@ export async function readStableInputSnapshot(
       await options.delay(INPUT_STABILITY_INTERVAL_MS);
     }
   }
+  if (strongestFailure === undefined) {
+    throw new Error("input snapshot did not produce a result");
+  }
   throw new InputSnapshotError(
-    lastOutcome,
-    lastDiagnostic,
-    lastCounts,
-    lastInputAnomalyCandidates,
+    strongestFailure.outcome,
+    strongestFailure.diagnostic,
+    strongestFailure.counts,
+    strongestFailure.inputAnomalyCandidates,
   );
+}
+
+function failureStrength(outcome: InputFailureOutcome): number {
+  switch (outcome) {
+    case "input-invalid-or-partial":
+      return 3;
+    case "input-unstable":
+      return 2;
+    case "input-missing":
+      return 1;
+  }
 }
 
 async function snapshotTargetFiles(
