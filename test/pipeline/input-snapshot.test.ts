@@ -171,6 +171,151 @@ describe("readStableInputSnapshot", () => {
       counts: { matchedFileCount: 1, readLineCount: 2 },
     });
   });
+
+  it("keeps an invalid-reading observation after the target file disappears", async () => {
+    const outputDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-input-"));
+    directories.push(outputDir);
+    const fileName = "scale_exporter_2026-08-03_google-fit_001.jsonl";
+    const filePath = path.join(outputDir, fileName);
+    await writeFile(filePath, "not-json\n");
+    let delayCalls = 0;
+
+    await expect(
+      readStableInputSnapshot({
+        outputDir,
+        targetDate: "2026-08-03",
+        delay: async () => {
+          delayCalls += 1;
+          if (delayCalls === 2) {
+            await rm(filePath);
+          }
+        },
+      }),
+    ).rejects.toMatchObject<InputSnapshotError>({
+      outcome: "input-invalid-or-partial",
+      diagnostic: `invalid JSON in ${fileName}:1`,
+      counts: { matchedFileCount: 1, readLineCount: 1 },
+    });
+  });
+
+  it("keeps an invalid-reading observation after a later post-read instability", async () => {
+    const outputDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-input-"));
+    directories.push(outputDir);
+    const fileName = "scale_exporter_2026-08-03_google-fit_001.jsonl";
+    const filePath = path.join(outputDir, fileName);
+    await writeFile(filePath, "not-json\n");
+    let delayCalls = 0;
+    let afterReadCalls = 0;
+    const options: Parameters<typeof readStableInputSnapshot>[0] & {
+      readonly afterReadSnapshot: () => Promise<void>;
+    } = {
+      outputDir,
+      targetDate: "2026-08-03",
+      delay: async () => {
+        delayCalls += 1;
+        if (delayCalls === 2) {
+          await writeFile(filePath, validReading());
+        }
+        if (delayCalls === 4) {
+          await rm(filePath);
+        }
+      },
+      afterReadSnapshot: async () => {
+        afterReadCalls += 1;
+        await writeFile(filePath, validReading() + "\n");
+      },
+    };
+
+    await expect(readStableInputSnapshot(options)).rejects.toMatchObject<InputSnapshotError>({
+      outcome: "input-invalid-or-partial",
+      diagnostic: `invalid JSON in ${fileName}:1`,
+      counts: { matchedFileCount: 1, readLineCount: 1 },
+    });
+    expect(afterReadCalls).toBe(1);
+  });
+
+  it("uses the later invalid observation when failures have the same strength", async () => {
+    const outputDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-input-"));
+    directories.push(outputDir);
+    const fileName = "scale_exporter_2026-08-03_google-fit_001.jsonl";
+    const filePath = path.join(outputDir, fileName);
+    await writeFile(filePath, `${validReading()}\nnot-json\n`);
+    let delayCalls = 0;
+
+    await expect(
+      readStableInputSnapshot({
+        outputDir,
+        targetDate: "2026-08-03",
+        delay: async () => {
+          delayCalls += 1;
+          if (delayCalls === 2) {
+            await writeFile(filePath, "not-json\n");
+          }
+          if (delayCalls === 4) {
+            await rm(filePath);
+          }
+        },
+      }),
+    ).rejects.toMatchObject<InputSnapshotError>({
+      outcome: "input-invalid-or-partial",
+      diagnostic: `invalid JSON in ${fileName}:1`,
+      counts: { matchedFileCount: 1, readLineCount: 1 },
+    });
+  });
+
+  it("keeps an unstable observation and its matching diagnostic over later missing input", async () => {
+    const outputDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-input-"));
+    directories.push(outputDir);
+    const filePath = path.join(outputDir, "scale_exporter_2026-08-03_google-fit_001.jsonl");
+    let delayCalls = 0;
+
+    await expect(
+      readStableInputSnapshot({
+        outputDir,
+        targetDate: "2026-08-03",
+        delay: async () => {
+          delayCalls += 1;
+          if (delayCalls === 1) {
+            await writeFile(filePath, validReading());
+          }
+          if (delayCalls === 2) {
+            await writeFile(filePath, validReading() + "\n");
+          }
+          if (delayCalls === 3) {
+            await rm(filePath);
+          }
+        },
+      }),
+    ).rejects.toMatchObject<InputSnapshotError>({
+      outcome: "input-unstable",
+      diagnostic: "input file metadata changed during stability window",
+      counts: { matchedFileCount: 1 },
+    });
+  });
+
+  it("returns a later stable snapshot after an earlier missing observation", async () => {
+    const outputDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-input-"));
+    directories.push(outputDir);
+    const filePath = path.join(outputDir, "scale_exporter_2026-08-03_google-fit_001.jsonl");
+    let delayCalls = 0;
+
+    await expect(
+      readStableInputSnapshot({
+        outputDir,
+        targetDate: "2026-08-03",
+        delay: async () => {
+          delayCalls += 1;
+          if (delayCalls === 1) {
+            await writeFile(filePath, validReading());
+          }
+        },
+      }),
+    ).resolves.toMatchObject({
+      matchedFileCount: 1,
+      readLineCount: 1,
+      readings: [{ kind: "weight", value: 68.4 }],
+    });
+  });
 });
 
 function validReading(): string {
