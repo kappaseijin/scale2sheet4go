@@ -18,6 +18,7 @@ describe("buildPipelinePlist", () => {
     expect(plist).toContain("<string>pipeline</string>");
     expect(plist).toContain("<key>StandardOutPath</key>");
     expect(plist).toContain("<key>StandardErrorPath</key>");
+    expect(plist).toContain("<string>/tmp/morning.err.log</string>");
     expect(plist).not.toContain("scripts/run-pipeline.sh");
   });
 
@@ -31,5 +32,15 @@ describe("buildPipelinePlist", () => {
       hour: 21,
       minute: 0,
     })).toContain("a&amp;b");
+
+    expect(buildPipelinePlist({
+      label: "jp.seijin.kappa.scale-pipeline.evening",
+      binaryPath: "/Applications/scale2sheet",
+      period: "evening",
+      stdoutPath: "/tmp/evening.log",
+      stderrPath: "/tmp/evening.err.log",
+      hour: 21,
+      minute: 0,
+    })).toContain("<string>/tmp/evening.err.log</string>");
   });
 });
