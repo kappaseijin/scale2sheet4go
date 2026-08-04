@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  classifyScaleExporterFileNames,
   readScaleExporterMeasurements,
   ScaleExporterFileError,
 } from "../../src/sources/scale-exporter/index.js";
@@ -199,6 +200,28 @@ describe("readScaleExporterMeasurements", () => {
     );
 
     expect(readings).toHaveLength(1);
+  });
+});
+
+describe("classifyScaleExporterFileNames", () => {
+  it("normalizes Finder copies for comparison and returns unique raw anomaly names in order", () => {
+    const anomaly = "scale_exporter_2026-06-18_apple-health-file_001.jsonl";
+
+    expect(
+      classifyScaleExporterFileNames([
+        anomaly,
+        "scale_exporter_2026-06-18_google-fit_001.jsonlのコピー2".normalize("NFD"),
+        "scale_exporter_2026-06-18_google-fit_001.jsonl",
+        anomaly,
+        "scale_exporter_2026-06-18_google-fit_001.jsonlのコピー".normalize("NFD"),
+        ".DS_Store",
+      ], "2026-06-18"),
+    ).toEqual({
+      targetFileNames: ["scale_exporter_2026-06-18_google-fit_001.jsonl"],
+      inputAnomalyCandidates: [
+        { name: anomaly, reason: "file-name-pattern-mismatch" },
+      ],
+    });
   });
 });
 

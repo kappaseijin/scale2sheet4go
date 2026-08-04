@@ -6,6 +6,7 @@ import {
   type StableInputSnapshot,
 } from "./input-snapshot.js";
 import type { PipelineStatusWriter } from "./status.js";
+import type { InputAnomalyCandidate } from "../sources/scale-exporter/index.js";
 
 export type PipelineOutcome =
   | "completed:no-data"
@@ -28,6 +29,7 @@ export interface RunPipelineOptions {
   readonly readInput: () => Promise<StableInputSnapshot>;
   readonly transfer: (readings: readonly MeasurementReading[]) => Promise<void>;
   readonly notifier?: { notify(stage: "input" | "transfer", period: MeasurementPeriod): Promise<void> };
+  readonly logger?: Pick<Console, "log">;
   readonly statusWriter?: PipelineStatusWriter;
   readonly clock?: () => Date;
   readonly targetDate?: string;
@@ -35,18 +37,35 @@ export interface RunPipelineOptions {
 
 export async function runPipeline(options: RunPipelineOptions): Promise<PipelineResult> {
   const startedAt = (options.clock ?? (() => new Date()))().toISOString();
-  const writeStatus = async (outcome: PipelineOutcome | "running", counts: Parameters<PipelineStatusWriter["write"]>[0]["counts"], diagnostic?: string) => {
+  const writeStatus = async (
+    outcome: PipelineOutcome | "running",
+    counts: Parameters<PipelineStatusWriter["write"]>[0]["counts"],
+    diagnostic?: string,
+    inputAnomalyCandidates: readonly InputAnomalyCandidate[] = [],
+  ) => {
+    const completedAt = outcome === "running"
+      ? undefined
+      : (options.clock ?? (() => new Date()))().toISOString();
     await options.statusWriter?.write({
       period: options.period,
       outcome,
       startedAt,
-      ...(outcome === "running"
-        ? {}
-        : { completedAt: (options.clock ?? (() => new Date()))().toISOString() }),
+      ...(completedAt ? { completedAt } : {}),
       ...(options.targetDate ? { targetDate: options.targetDate } : {}),
       counts,
       ...(diagnostic ? { diagnostic } : {}),
+      ...(inputAnomalyCandidates.length > 0
+        ? { inputAnomalyCandidates }
+        : {}),
     });
+    if (completedAt && options.targetDate && inputAnomalyCandidates.length > 0) {
+      (options.logger ?? console).log(JSON.stringify({
+        at: completedAt,
+        event: "input-anomaly-candidates",
+        targetDate: options.targetDate,
+        inputAnomalyCandidates,
+      }));
+    }
   };
   await writeStatus("running", {});
   let input: StableInputSnapshot;
@@ -55,7 +74,12 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
   } catch (error) {
     if (error instanceof InputSnapshotError) {
       await options.notifier?.notify("input", options.period);
-      await writeStatus(`failed:${error.outcome}`, error.counts, error.diagnostic);
+      await writeStatus(
+        `failed:${error.outcome}`,
+        error.counts,
+        error.diagnostic,
+        error.inputAnomalyCandidates,
+      );
       return { exitCode: 1, outcome: `failed:${error.outcome}` };
     }
     throw error;
@@ -73,7 +97,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
       matchedFileCount: input.matchedFileCount,
       readLineCount: input.readLineCount,
       windowedReadingCount: 0,
-    });
+    }, undefined, input.inputAnomalyCandidates);
     return { exitCode: 0, outcome: "completed:no-data" };
   }
 
@@ -85,14 +109,14 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
       matchedFileCount: input.matchedFileCount,
       readLineCount: input.readLineCount,
       windowedReadingCount: deduplicatedReadings.length,
-    }, error instanceof Error ? error.message : String(error));
+    }, error instanceof Error ? error.message : String(error), input.inputAnomalyCandidates);
     return { exitCode: 1, outcome: "failed:transfer" };
   }
   await writeStatus("completed:transferred", {
     matchedFileCount: input.matchedFileCount,
     readLineCount: input.readLineCount,
     windowedReadingCount: deduplicatedReadings.length,
-  });
+  }, undefined, input.inputAnomalyCandidates);
   return { exitCode: 0, outcome: "completed:transferred" };
 }
 

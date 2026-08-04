@@ -57,6 +57,76 @@ describe("readStableInputSnapshot", () => {
     });
   });
 
+  it("keeps valid input while reporting only a near-miss filename", async () => {
+    const outputDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-input-"));
+    directories.push(outputDir);
+    await writeFile(
+      path.join(outputDir, "scale_exporter_2026-08-03_google-fit_001.jsonl"),
+      validReading(),
+    );
+    await writeFile(
+      path.join(outputDir, "scale_exporter_2026-08-03_apple-health-file_001.jsonl"),
+      validReading(),
+    );
+    await writeFile(
+      path.join(
+        outputDir,
+        "scale_exporter_2026-08-03_google-fit_001.jsonlのコピー".normalize("NFD"),
+      ),
+      validReading(),
+    );
+    await writeFile(
+      path.join(
+        outputDir,
+        "scale_exporter_2026-08-03_google-fit_001.jsonlのコピー2".normalize("NFD"),
+      ),
+      validReading(),
+    );
+
+    await expect(
+      readStableInputSnapshot({
+        outputDir,
+        targetDate: "2026-08-03",
+        delay: async () => {},
+      }),
+    ).resolves.toMatchObject({
+      matchedFileCount: 1,
+      readLineCount: 1,
+      inputAnomalyCandidates: [
+        {
+          name: "scale_exporter_2026-08-03_apple-health-file_001.jsonl",
+          reason: "file-name-pattern-mismatch",
+        },
+      ],
+    });
+  });
+
+  it("keeps near-miss candidates when no valid target file exists", async () => {
+    const outputDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-input-"));
+    directories.push(outputDir);
+    await writeFile(
+      path.join(outputDir, "scale_exporter_2026-08-03_apple-health-file_001.jsonl"),
+      validReading(),
+    );
+
+    await expect(
+      readStableInputSnapshot({
+        outputDir,
+        targetDate: "2026-08-03",
+        delay: async () => {},
+      }),
+    ).rejects.toMatchObject<InputSnapshotError>({
+      outcome: "input-missing",
+      counts: { matchedFileCount: 0 },
+      inputAnomalyCandidates: [
+        {
+          name: "scale_exporter_2026-08-03_apple-health-file_001.jsonl",
+          reason: "file-name-pattern-mismatch",
+        },
+      ],
+    });
+  });
+
   it("rejects files that change during all three stability attempts", async () => {
     const outputDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-input-"));
     directories.push(outputDir);
