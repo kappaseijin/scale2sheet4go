@@ -340,3 +340,62 @@ HERDR_WORKSPACE_ID=<ws> ~/.agents/skills/agmsg/scripts/spawn.sh \
 
 - 席を落とす前に、引き継ぎメモの**存在を `ls -l` で確認してから**落とす
 - 落とした後に新セッションへ、メモのパスと待っている仕事を明示して渡す
+## two-dot diff を「マージしたら消える」と読み違えた（2026-08-04）
+
+起草者から受け取ったブランチを PR にする前に、pm が差分を確認して
+「このままマージすると別 PR の成果物 613 行が削除される」と判断し、rebase してから PR を作った。
+
+**判断が誤っていた。** マージしても何も削除されなかった。
+
+```
+git diff --stat origin/main d071524      → 4 files, 30 insertions(+), 613 deletions(-)
+git diff --stat origin/main...d071524    → 2 files, 30 insertions(+)
+```
+
+two-dot（`A B`）は **2 つの状態の差**を出すので、`main` にあって branch に無いものが
+削除として現れる。branch の base が古ければ必ず出る。
+マージが何をするかを表すのは three-dot（`A...B`＝マージベースからの差）の方。
+
+### より悪かったのは、誤った手順を配ろうとしたこと
+
+pm は起草者へこう指示していた。
+
+> 出す前に `git diff --stat origin/main HEAD` を実行し、意図していない削除が無いことを確認してから SHA を送ってください
+
+**two-dot なので、base が古いだけで毎回 削除差分が出る。** そのまま手順になっていたら、
+**存在しない危険を毎回報告させる**ことになっていた。起草者の指摘で撤回した。
+
+個別の誤りは 1 回で終わるが、**誤った手順は毎回再生産される。**
+手順として配る前に、その手順が偽陽性を出さないかを確かめる。
+
+### 使い分け
+
+**前提: 表の 3 行はいずれも `origin/main` を基準にする。`origin/main` はローカルの
+remote-tracking ref であり、`git fetch` するまで更新されない。** 実行前に必ず fetch する。
+
+```sh
+git fetch origin --prune
+```
+
+fetch を怠ると、**19 commit 遅れている base を「古くない」と報告する**（実測）。
+
+```
+origin/main = ab02483（fetch 前）  → HEAD..origin/main は 0 commits  → 「base は古くない」
+origin/main = d214648（fetch 後）  → HEAD..origin/main は 19 commits → 「base は古い」
+```
+
+two-dot の誤りは偽陽性（無い危険を報告する）だったが、**こちらは偽陰性**でより危険である。
+読み手は「確認した」と思って古い base のまま進む。
+**今回の事故の出発点（古い base で作業していた）を検出するための行が、その状況で沈黙する。**
+
+| 知りたいこと | コマンド |
+| --- | --- |
+| マージで何が変わるか | `git diff --stat origin/main...HEAD`（three-dot） |
+| 自分が何を変えたか | `git log --stat origin/main..HEAD` |
+| base が古いか | `git log --oneline HEAD..origin/main` |
+
+**GitHub の PR の "Files changed" タブは three-dot** である。
+`git diff origin/main...HEAD` と同じものを表示している。
+
+これを知っていると、「PR 画面では 30 行の追加なのに、手元で見たら 613 行削除」という
+食い違いに出会ったとき、どちらが正しいかを迷わず判定できる。今回の混乱の実体はこの食い違いだった。
