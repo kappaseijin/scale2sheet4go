@@ -85,8 +85,11 @@ if ! [ -f "$receipt" ] \
   exit 1
 fi
 
-if ! [ -f "$status" ] || ! grep -Eq '"outcome": "running"' "$status"; then
-  echo 'pipeline holder did not write running status before reading input' >&2
+if ! [ -f "$status" ] \
+  || ! grep -Eq '"outcome": "running"' "$status" \
+  || ! grep -Eq '"startedAt":' "$status" \
+  || grep -Eq '"completedAt"|"(matchedFileCount|readLineCount|windowedReadingCount)"' "$status"; then
+  echo 'pipeline holder did not write an incomplete running status before reading input' >&2
   exit 1
 fi
 before_inode=$(stat -f '%i' "$status")
@@ -157,9 +160,7 @@ if [ "$negative_status" -ne 1 ] \
   || ! grep -Eq '"outcome": "failed:input-missing"' "$negative_pipeline_status" \
   || ! grep -Eq '"startedAt":' "$negative_pipeline_status" \
   || ! grep -Eq '"completedAt":' "$negative_pipeline_status" \
-  || ! grep -Eq '"matchedFileCount": 0' "$negative_pipeline_status" \
-  || ! grep -Eq '"readLineCount": 0' "$negative_pipeline_status" \
-  || ! grep -Eq '"windowedReadingCount": 0' "$negative_pipeline_status" \
+  || grep -Eq '"(matchedFileCount|readLineCount|windowedReadingCount)"' "$negative_pipeline_status" \
   || [ "$(stat -f '%Lp' "$negative_pipeline_status")" != '600' ]; then
   echo 'missing-input negative control did not produce bounded exit 1 and failed:input-missing status' >&2
   cat "$root/negative.log" >&2

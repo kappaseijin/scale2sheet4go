@@ -33,21 +33,14 @@ describe("runPipeline", () => {
     expect(statuses).toEqual([
       expect.objectContaining({
         outcome: "running",
-        counts: {
-          matchedFileCount: 0,
-          readLineCount: 0,
-          windowedReadingCount: 0,
-        },
+        counts: {},
       }),
       expect.objectContaining({
         outcome: "failed:input-invalid-or-partial",
-        counts: {
-          matchedFileCount: 0,
-          readLineCount: 0,
-          windowedReadingCount: 0,
-        },
+        counts: {},
       }),
     ]);
+    expect(statuses[0]).not.toHaveProperty("completedAt");
   });
 
   it("returns completed:no-data without calling the transfer port for no usable readings", async () => {
