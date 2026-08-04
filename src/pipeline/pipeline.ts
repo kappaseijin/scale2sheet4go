@@ -35,7 +35,12 @@ export interface RunPipelineOptions {
 
 export async function runPipeline(options: RunPipelineOptions): Promise<PipelineResult> {
   const startedAt = (options.clock ?? (() => new Date()))().toISOString();
-  const writeStatus = async (outcome: PipelineOutcome, counts: Parameters<PipelineStatusWriter["write"]>[0]["counts"], diagnostic?: string) => {
+  const emptyCounts = {
+    matchedFileCount: 0,
+    readLineCount: 0,
+    windowedReadingCount: 0,
+  };
+  const writeStatus = async (outcome: PipelineOutcome | "running", counts: Parameters<PipelineStatusWriter["write"]>[0]["counts"], diagnostic?: string) => {
     await options.statusWriter?.write({
       period: options.period,
       outcome,
@@ -46,13 +51,14 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
       ...(diagnostic ? { diagnostic } : {}),
     });
   };
+  await writeStatus("running", emptyCounts);
   let input: StableInputSnapshot;
   try {
     input = await options.readInput();
   } catch (error) {
     if (error instanceof InputSnapshotError) {
       await options.notifier?.notify("input", options.period);
-      await writeStatus(`failed:${error.outcome}`, {}, error.diagnostic);
+      await writeStatus(`failed:${error.outcome}`, emptyCounts, error.diagnostic);
       return { exitCode: 1, outcome: `failed:${error.outcome}` };
     }
     throw error;

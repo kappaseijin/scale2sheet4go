@@ -10,6 +10,7 @@
   "scripts": {
     "build:node": "tsc -p tsconfig.json",
     "build:bun": "bun build ./src/index.ts --compile --outfile dist/scale2sheet",
+    "acceptance:pipeline-shadow": "bash scripts/run-pipeline-shadow-acceptance.sh",
     "acceptance:runtime-safety": "bash scripts/run-runtime-safety-acceptance.sh",
     "dev": "tsx src/index.ts",
     "test": "vitest run",

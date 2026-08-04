@@ -1,5 +1,7 @@
 import { Command, InvalidArgumentError } from "commander";
 import { DateTime } from "luxon";
+import os from "node:os";
+import path from "node:path";
 
 import {
   ConfigError,
@@ -11,8 +13,10 @@ import { runGoogleFitAuthFlow } from "../auth/index.js";
 import type { MeasurementPeriod } from "../domain/index.js";
 import type { MeasurementSourceOption } from "../sources/index.js";
 import { readStableInputSnapshot } from "../pipeline/input-snapshot.js";
+import { MacOsNotifier } from "../pipeline/notifier.js";
 import { resolvePipelineSettings } from "../pipeline/settings.js";
 import { runPipeline } from "../pipeline/pipeline.js";
+import { AtomicPipelineStatusWriter } from "../pipeline/status.js";
 import { acquireRunLease, startScheduler } from "../scheduler/index.js";
 import {
   buildLatestMeasurementSet,
@@ -55,6 +59,10 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
         zone: pipelineSettings.timeZone,
       }).toFormat("yyyy-MM-dd");
       const config = loadConfig();
+      const statusWriter = new AtomicPipelineStatusWriter(
+        path.join(os.homedir(), ".config", "scale2sheet", "pipeline-status.json"),
+      );
+      const notifier = new MacOsNotifier();
       const lease = await acquireRunLease({ kind: "pipeline", period });
       try {
         const result = await runPipeline({
@@ -62,6 +70,8 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
           timeZone: pipelineSettings.timeZone,
           referenceTime,
           targetDate,
+          notifier,
+          statusWriter,
           readInput: () =>
             readStableInputSnapshot({
               outputDir: pipelineSettings.outputDir,

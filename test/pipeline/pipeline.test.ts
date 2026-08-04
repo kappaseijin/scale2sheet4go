@@ -9,6 +9,7 @@ const referenceTime = new Date("2026-08-03T03:00:00.000Z");
 describe("runPipeline", () => {
   it("does not call the transfer port when the input snapshot fails", async () => {
     let transfers = 0;
+    const statuses: unknown[] = [];
 
     await expect(
       runPipeline({
@@ -21,9 +22,32 @@ describe("runPipeline", () => {
         transfer: async () => {
           transfers += 1;
         },
+        statusWriter: {
+          write: async (status) => {
+            statuses.push(status);
+          },
+        },
       }),
     ).resolves.toEqual({ exitCode: 1, outcome: "failed:input-invalid-or-partial" });
     expect(transfers).toBe(0);
+    expect(statuses).toEqual([
+      expect.objectContaining({
+        outcome: "running",
+        counts: {
+          matchedFileCount: 0,
+          readLineCount: 0,
+          windowedReadingCount: 0,
+        },
+      }),
+      expect.objectContaining({
+        outcome: "failed:input-invalid-or-partial",
+        counts: {
+          matchedFileCount: 0,
+          readLineCount: 0,
+          windowedReadingCount: 0,
+        },
+      }),
+    ]);
   });
 
   it("returns completed:no-data without calling the transfer port for no usable readings", async () => {
