@@ -12,6 +12,7 @@ export type PipelineOutcome =
   | "failed:input-missing"
   | "failed:input-unstable"
   | "failed:input-invalid-or-partial"
+  | "failed:transfer"
   | "failed:invalid-arguments";
 
 export interface PipelineResult {
@@ -25,6 +26,7 @@ export interface RunPipelineOptions {
   readonly referenceTime: Date;
   readonly readInput: () => Promise<StableInputSnapshot>;
   readonly transfer: (readings: readonly MeasurementReading[]) => Promise<void>;
+  readonly notifier?: { notify(stage: "input" | "transfer", period: MeasurementPeriod): Promise<void> };
 }
 
 export async function runPipeline(options: RunPipelineOptions): Promise<PipelineResult> {
@@ -33,6 +35,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     input = await options.readInput();
   } catch (error) {
     if (error instanceof InputSnapshotError) {
+      await options.notifier?.notify("input", options.period);
       return { exitCode: 1, outcome: `failed:${error.outcome}` };
     }
     throw error;
@@ -49,7 +52,12 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     return { exitCode: 0, outcome: "completed:no-data" };
   }
 
-  await options.transfer(deduplicatedReadings);
+  try {
+    await options.transfer(deduplicatedReadings);
+  } catch (error) {
+    await options.notifier?.notify("transfer", options.period);
+    return { exitCode: 1, outcome: "failed:transfer" };
+  }
   return { exitCode: 0, outcome: "completed:transferred" };
 }
 
