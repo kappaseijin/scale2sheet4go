@@ -14,7 +14,11 @@ scale-exporter-output-dir を読む。
   - ファイル数・行数・parse 不能行数（F-1）
   - source の値域（AC-50 の根拠）
   - 日ごとの体重件数（朝 window / 夜 window / 全体）（F-3）
-  - 連続 no-data の最長（B-3 の閾値 N の根拠）
+  - 連続 no-data の**分布**と最長、および N ごとの空振り見積もり（B-3 の閾値 N の根拠）
+
+閾値 N を決めるときは最長ではなく分布を見ること。
+2026-08-04 の起草では最長だけを見て「2 連続は 1 回・他は単発」と誤り、
+実際には 2 連続が 4 回起きていた（reviewer_claude の独立再集計で判明）。
 
 period window は src/service/measurements.ts の
 measurementPeriodWindowMinutes と同じ値を使う（morning 05:00-12:00 / evening 20:00-23:30）。
@@ -125,6 +129,7 @@ def main():
     totals = collections.Counter()
     no_evening_streak = 0
     max_no_evening_streak = 0
+    evening_streaks = []
     for day in sorted(days):
         bucket = days[day]
         totals["days"] += 1
@@ -138,6 +143,8 @@ def main():
             no_evening_streak += 1
             max_no_evening_streak = max(max_no_evening_streak, no_evening_streak)
         else:
+            if no_evening_streak:
+                evening_streaks.append(no_evening_streak)
             no_evening_streak = 0
         print(
             f"{day:12} {bucket['files']:5} {bucket['lines']:6} {bucket['bad']:4} "
@@ -145,15 +152,31 @@ def main():
             f"  {dict(bucket['platforms'])}"
         )
 
+    if no_evening_streak:
+        evening_streaks.append(no_evening_streak)
+
     print()
     print("TOTALS:", dict(totals))
     print("source の値域:", dict(sources))
-    print("夜 window に体重が無い日の最長連続:", max_no_evening_streak)
+    print()
+    print("夜 window に体重が無い日の連続長の分布:",
+          dict(sorted(collections.Counter(evening_streaks).items())))
+    print("同 最長:", max_no_evening_streak)
     print()
     print("判定:")
     print(f"  parse 不能行が 0 か: {'YES' if totals['bad'] == 0 else 'NO'}"
           "（NO の場合、目標定義の A-2〈行単位スキップ〉を再検討すること）")
-    print(f"  B-3 の閾値 N は最長連続 + 1 = {max_no_evening_streak + 1} 以上であれば誤検知 0")
+
+    total_days = max(totals["days"], 1)
+    p = totals["days_without_evening_weight"] / total_days
+    print(f"  夜 0 件率 p = {p:.3f}（{totals['days_without_evening_weight']}/{total_days} 日）")
+    print("  B-3 の閾値 N ごとの空振り見積もり（各日が独立という粗い仮定。相関があれば実際はもっと早い）:")
+    print(f"    {'N':>3} {'N連続の確率':>12} {'30日あたり期待空振り':>22} {'#46相当の検知まで':>18}")
+    for n in range(2, 8):
+        prob = p ** n
+        per_month = prob * max(30 - n + 1, 0)
+        print(f"    {n:>3} {prob:>12.4f} {per_month:>22.2f} {str(n) + ' 日':>18}")
+    print("  ※ 最長連続 + 1 で N を決めないこと。標本に余裕ゼロで貼り付くため、次の N 連続で必ず空振りする")
 
 
 if __name__ == "__main__":
