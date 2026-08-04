@@ -59,7 +59,7 @@ describe("readScaleExporterMeasurements", () => {
       "weight",
     ]);
     const weight = readings.find((reading) => reading.kind === "weight");
-    expect(weight?.source).toBe("apple_health_export");
+    expect(weight?.source).toBe("apple_health");
     const pulse = readings.find((reading) => reading.kind === "pulse");
     expect(pulse?.source).toBe("google_fit");
   });
@@ -104,6 +104,17 @@ describe("readScaleExporterMeasurements", () => {
     );
 
     expect(readings).toHaveLength(2);
+  });
+
+  it("preserves a non-platform device name from the JSONL record", async () => {
+    await writeFile(
+      path.join(outputDir, "scale_exporter_2026-06-18_apple-health_001.jsonl"),
+      line("2026-06-18T06:50:00+09:00", "weight", 68.6, "kg", "Xiaomi Home") + "\n",
+    );
+
+    await expect(
+      readScaleExporterMeasurements({ outputDir }, referenceTime, timeZone),
+    ).resolves.toMatchObject([{ source: "Xiaomi Home" }]);
   });
 
   it("returns empty array when the output directory does not exist", async () => {

@@ -18,7 +18,11 @@ export const measurementSources = [
   "mixed",
 ] as const;
 
-export type MeasurementSource = (typeof measurementSources)[number];
+/**
+ * Exporter records the physical measurement device name. The historical
+ * google_fit and apple_health_export values remain accepted API values.
+ */
+export type MeasurementSource = string;
 
 export const measurementPeriods = ["morning", "evening"] as const;
 
@@ -34,7 +38,7 @@ export interface MeasurementReading {
   readonly value: number;
   readonly unit: MeasurementUnit;
   readonly measuredAt: string;
-  readonly source: Exclude<MeasurementSource, "mixed">;
+  readonly source: string;
   readonly sourceRecordId?: string;
 }
 
@@ -48,7 +52,7 @@ export interface LatestMeasurementSet {
   readonly bloodPressureDiastolicMmHg?: number;
   readonly pulseBpm?: number;
   readonly sourcesByKind: Partial<
-    Record<MeasurementKind, Exclude<MeasurementSource, "mixed">>
+    Record<MeasurementKind, string>
   >;
 }
 

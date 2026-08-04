@@ -8,7 +8,6 @@ import type { ScaleExporterConfig } from "../../config/index.js";
 import type {
   MeasurementKind,
   MeasurementReading,
-  MeasurementSource,
   MeasurementUnit,
 } from "../../domain/index.js";
 
@@ -28,17 +27,12 @@ const exporterKindToDomainKind = {
   heartRate: "pulse",
 } as const satisfies Record<(typeof exporterKinds)[number], MeasurementKind>;
 
-const exporterSourceToDomainSource = {
-  apple_health: "apple_health_export",
-  google_fit: "google_fit",
-} as const satisfies Record<string, Exclude<MeasurementSource, "mixed">>;
-
 const readingLineSchema = z.object({
   measuredAt: z.string().min(1),
   kind: z.enum(exporterKinds),
   value: z.number(),
   unit: z.enum(["kg", "celsius", "mmHg", "bpm"]),
-  source: z.enum(["apple_health", "google_fit"]),
+  source: z.string().trim().min(1),
 });
 
 const fileNamePattern =
@@ -140,6 +134,6 @@ function parseReadingLine(
     value: parsed.data.value,
     unit: parsed.data.unit as MeasurementUnit,
     measuredAt: parsed.data.measuredAt,
-    source: exporterSourceToDomainSource[parsed.data.source],
+    source: parsed.data.source,
   };
 }
