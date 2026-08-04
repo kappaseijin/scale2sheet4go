@@ -117,6 +117,29 @@ describe("readScaleExporterMeasurements", () => {
     ).resolves.toMatchObject([{ source: "Xiaomi Home" }]);
   });
 
+  it("preserves multiple device names from one platform file", async () => {
+    await writeFile(
+      path.join(outputDir, "scale_exporter_2026-06-18_apple-health_001.jsonl"),
+      [
+        line("2026-06-18T06:50:00+09:00", "weight", 68.6, "kg", "Xiaomi Home"),
+        line("2026-06-18T06:51:00+09:00", "bodyTemperature", 36.4, "celsius", "kappa-AppleWatchSeries11"),
+        line("2026-06-18T06:52:00+09:00", "heartRate", 62, "bpm", "omron connect"),
+      ].join("\n") + "\n",
+    );
+
+    const readings = await readScaleExporterMeasurements(
+      { outputDir },
+      referenceTime,
+      timeZone,
+    );
+
+    expect(readings.map((reading) => reading.source).sort()).toEqual([
+      "Xiaomi Home",
+      "kappa-AppleWatchSeries11",
+      "omron connect",
+    ]);
+  });
+
   it("returns empty array when the output directory does not exist", async () => {
     const readings = await readScaleExporterMeasurements(
       { outputDir: path.join(outputDir, "missing") },
@@ -143,6 +166,17 @@ describe("readScaleExporterMeasurements", () => {
     await writeFile(
       path.join(outputDir, "scale_exporter_2026-06-18_apple-health_001.jsonl"),
       '{"measuredAt":"2026-06-18T06:50:00+09:00","kind":"steps","value":100,"unit":"kg","source":"apple_health"}\n',
+    );
+
+    await expect(
+      readScaleExporterMeasurements({ outputDir }, referenceTime, timeZone),
+    ).rejects.toThrow(ScaleExporterFileError);
+  });
+
+  it.each(["", "   "])("rejects an empty device source %j", async (source) => {
+    await writeFile(
+      path.join(outputDir, "scale_exporter_2026-06-18_apple-health_001.jsonl"),
+      line("2026-06-18T06:50:00+09:00", "weight", 68.6, "kg", source) + "\n",
     );
 
     await expect(
