@@ -108,7 +108,7 @@ closed boundary による重複再出力は reader の exact dedup で転記結�
 | 状態 | outcome | 終了コード | 転記 | 入力段階通知 |
 | --- | --- | ---: | --- | --- |
 | producer status が `completed`、`periodUniqueRecordCount = 0` | `completed:no-data` | 0 | しない | しない |
-| status が completed、usable reading あり | `completed:input-ready` | 0 | 実施 | しない |
+| status が completed、usable reading あり | `completed:transferred` | 0 | 実施 | しない |
 | status が completed、JSONL が不安定 | `failed:input-unstable` | 1 | しない | する |
 | status が completed、JSONL parse不能/部分公開 | `failed:input-contract` | 1 | しない | する |
 | status 欠落・不正・キー不一致 | `failed:input-contract` | 1 | しない | する |
@@ -117,6 +117,7 @@ closed boundary による重複再出力は reader の exact dedup で転記結�
 producer が status を公開できない場合は、正常な no-data として黙って終了しない。
 status 不在は no-data の証明ではなく、producer の公開契約を検証できない状態だからである。
 これにより、file 不在を毎回通知する偽陽性を減らしつつ、producer 停止を status の失敗状態・履歴・連続回数で検知するための前提を整える。
+`input-ready` は入力検証が完了し転記へ進める内部段階であり、永続化する終端 outcome ではない。usable reading の転記が完了した場合だけ、終端 outcome として `completed:transferred` を記録する。
 実際に一定回数で別経路へ届くようにするエスカレーションは Slice 6 で実装する。
 
 連続観測では `completed:no-data` を正常な観測として記録する。

@@ -542,10 +542,10 @@ clock fake、stat fake、delay fakeを使い、実時間の5秒待機を自動�
 6. 安定したfile集合をmemoryへ読み、空行を除く全行をstrict parseする。
 7. 入力が無い、不安定、またはparse不能なら入力段階のmacOS通知を1回要求し、statusを対応する`failed:input-*`にして終了コード1で終える。Spreadsheet転記は呼ばない。
 8. 入力失敗を記録した後はserviceとSpreadsheet adapterを起動しない。
-9. 安定した入力を指定periodへ適用し、対象readingが0件なら`completed:no-usable-reading`を記録して終了コード0で終える。Spreadsheet転記は呼ばない。
-10. readingがあれば`syncMeasurements`のSpreadsheet転記段階を実行する。
+9. 安定した入力を指定periodへ適用し、対象readingが0件なら`completed:no-data`を記録して終了コード0で終える。Spreadsheet転記は呼ばない。
+10. readingがあれば転記専用APIでSpreadsheet転記を実行する。
 11. 転記が失敗した場合はmacOS通知を要求し、statusを`failed:transfer`にして終了コード1で終える。
-12. 成功時は転記件数またはno-usable-reading、readerの処理段階別件数、完了時刻をstatusとログへ記録する。
+12. 成功時は転記件数またはno-data、readerの処理段階別件数、完了時刻をstatusとログへ記録する。
 13. `finally`でpollingとlistenerを止め、owner tokenが一致するreceipt、固有socket file、lock file descriptorを順に解放する。
 
 pipelineはsourceの値にかかわらずproducerを起動しない。
@@ -572,7 +572,7 @@ pipelineはsourceの値にかかわらずproducerを起動しない。
 | 対象日fileが最後まで無い | `failed:input-missing` | 1 | 入力として1回 | 実行しない |
 | file集合または属性が安定しない | `failed:input-unstable` | 1 | 入力として1回 | 実行しない |
 | 安定snapshotを全行parseできない | `failed:input-invalid-or-partial` | 1 | 入力として1回 | 実行しない |
-| fileが存在し、安定し、parse可能だがperiod適用後0件 | `completed:no-usable-reading` | 0 | 要求しない | 実行しない |
+| fileが存在し、安定し、parse可能だがperiod適用後0件 | `completed:no-data` | 0 | 要求しない | 実行しない |
 | 転記成功 | `completed:transferred` | 0 | 要求しない | 実行する |
 | 転記失敗 | `failed:transfer` | 1 | 転記として1回 | 失敗 |
 | period不正 | `failed:invalid-arguments` | 2 | 要求しない | 実行しない |
