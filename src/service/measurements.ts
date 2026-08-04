@@ -81,13 +81,34 @@ export async function syncMeasurements(
     return undefined;
   }
 
-  const row = toSpreadsheetRow(latestSet, options.config.timeZone);
+  return transferLatestMeasurementSet({
+    latestSet,
+    sheetsConfig: options.sheetsConfig ?? requireGoogleSheetsConfig(options.config),
+    timeZone: options.config.timeZone,
+    logger,
+  });
+}
+
+export interface TransferLatestMeasurementSetOptions {
+  readonly latestSet: LatestMeasurementSet;
+  readonly sheetsConfig: GoogleSheetsAuthConfig;
+  readonly timeZone: string;
+  readonly logger?: Logger;
+}
+
+/** Transfers a prepared set without reading, windowing, or no-data classification. */
+export async function transferLatestMeasurementSet({
+  latestSet,
+  sheetsConfig,
+  timeZone,
+  logger = console,
+}: TransferLatestMeasurementSetOptions): Promise<SpreadsheetRow | undefined> {
+  const row = toSpreadsheetRow(latestSet, timeZone);
 
   const updated = await updateSpreadsheetMeasurements({
-    config:
-      options.sheetsConfig ?? requireGoogleSheetsConfig(options.config),
+    config: sheetsConfig,
     latestSet,
-    timeZone: options.config.timeZone,
+    timeZone,
     logger,
   });
 
