@@ -94,7 +94,7 @@ tags: [acceptance-test, scale2sheet]
 | AC-04 | Slice 3 | 自動 | — | — | — | credential failure | PENDING | Slice 3 で判定 |
 | AC-05 | Slice 3 | 自動 | — | — | — | launchd opt-in | PENDING | Slice 3 で判定 |
 | AC-06 | Slice 6 | 代理指標、手動 | — | — | — | temporary label | PENDING | Slice 6 で判定 |
-| AC-07 | Slice 2 | 自動 | `npm test -- --run test/installation/plist.test.ts` | ee89df3 | 2026-08-04 17:28 JST | pure plist | PASS | direct pipeline arguments と shell 非参照を検査 |
+| AC-07 | Slice 2 | 自動 | `npm test -- --run test/installation/plist.test.ts` | 9a3741b, f87ea12 | 2026-08-04 17:28 JST | pure plist | PASS | direct pipeline arguments と shell 非参照を検査 |
 | AC-08 | Slice 3 | 自動 | — | — | — | fake launchctl | PENDING | Slice 3 で判定 |
 | AC-09 | Slice 3 | 自動 | — | — | — | default uninstall | PENDING | Slice 3 で判定 |
 | AC-10 | Slice 3 | 自動 | — | — | — | manifest prefix | PENDING | Slice 3 で判定 |
@@ -116,12 +116,12 @@ tags: [acceptance-test, scale2sheet]
 | AC-26 | Slice 2 | 自動 | `npm test -- --run test/pipeline/input-snapshot.test.ts` | ee89df3 | 2026-08-04 17:28 JST | bounded stable snapshot | PASS | fake delay で3 attempt・metadata 一致・missing/unstable/invalid を検査 |
 | AC-27 | Slice 6 | 代理指標、手動 | — | — | — | input failure notification | PENDING | missing/unstable/invalidの要求をSlice 2、実通知をSlice 6で判定 |
 | AC-28 | Slice 6 | 代理指標、手動 | — | — | — | input / transfer notification | PENDING | 2段階を区別。実行体欠落は対象外 |
-| AC-29 | Slice 2 | 自動 | `npm run acceptance:pipeline-shadow` | ee89df3 | 2026-08-04 17:28 JST | isolated compiled status | PASS | running→terminal の timestamp、3 counts、0600、atomic replacement を観測 |
+| AC-29 | Slice 2 | 自動 | `npm run acceptance:pipeline-shadow` | ee89df3, e7d3b8a | 2026-08-04 17:28 JST | isolated compiled status | PASS | running の `startedAt` と terminal の `completedAt`、到達済み counts、未到達 count key 欠落、0600、atomic replacement を観測 |
 | AC-30 | Slice 2 | 自動 | `npm test -- --run test/pipeline/pipeline.test.ts`、`npm run acceptance:pipeline-shadow` | ee89df3 | 2026-08-04 17:28 JST | no-data / missing input | PASS | present-but-zero は exit 0・転記なし、missing は bounded exit 1 を検査 |
 | AC-31 | Slice 2 | 自動 | `npm test -- --run test/pipeline/input-snapshot.test.ts test/pipeline/pipeline.test.ts test/cli/serve-lease.test.ts` | ee89df3 | 2026-08-04 17:28 JST | input/status/notifier/lease ports | PASS | snapshot・status・notifier・lease の差替えと3件数を検査。#63/#65 の未決契約は対象外 |
 | AC-32 | Slice 7 | 自動 | — | — | — | legacy reference removal | PENDING | Slice 7 で判定 |
 | AC-33 | Slice 4 | 自動 | — | — | — | doctor diagnostics | PENDING | Slice 4 で判定 |
-| AC-34 | Slice 2 | 自動 | `npm test -- --run test/installation/plist.test.ts` | ee89df3 | 2026-08-04 17:28 JST | plist stderr | PASS | period 別 `StandardErrorPath` を生成値で検査。spawn failure は対象外 |
+| AC-34 | Slice 2 | 自動 | `npm test -- --run test/installation/plist.test.ts` | 9a3741b, f87ea12 | 2026-08-04 17:28 JST | plist stderr | PASS | period 別 `StandardErrorPath` を生成値で検査。spawn failure は対象外 |
 | AC-35 | Slice 6 | 自動、手動 | — | — | — | registration check | PENDING | Slice 6 で判定 |
 | AC-36 | Slice 6 | 自動、手動 | — | — | — | status history | PENDING | Slice 6 で判定 |
 | AC-37 | Slice 6 | 代理指標、手動 | — | — | — | normal active pipeline | PENDING | Slice 6 で判定 |
