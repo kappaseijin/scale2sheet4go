@@ -32,8 +32,11 @@ import os
 import re
 import sys
 
+# src/sources/scale-exporter/reader.ts の fileNamePattern と同一にすること。
+# 当方が読まないファイルを数えると、集計が実装の挙動から乖離する
+# （2026-08-04: 旧命名 apple-health-file を含めていたため 1 ファイル・1 行多く数えていた）。
 FILE_NAME_PATTERN = re.compile(
-    r"^scale_exporter_(\d{4}-\d{2}-\d{2})_(apple-health|apple-health-file|google-fit)_(\d{3})\.jsonl$"
+    r"^scale_exporter_(\d{4}-\d{2}-\d{2})_(apple-health|google-fit)_(\d{3})\.jsonl$"
 )
 JST = datetime.timezone(datetime.timedelta(hours=9))
 MORNING = (5 * 60, 12 * 60)
