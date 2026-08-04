@@ -67,7 +67,7 @@ export async function readScaleExporterMeasurements(
         continue;
       }
 
-      const reading = parseReadingLine(line, fileName, index + 1);
+      const reading = parseScaleExporterReadingLine(line, fileName, index + 1);
       const dedupKey = [
         reading.measuredAt,
         reading.kind,
@@ -108,7 +108,7 @@ async function listTargetFiles(
     .sort();
 }
 
-function parseReadingLine(
+export function parseScaleExporterReadingLine(
   line: string,
   fileName: string,
   lineNumber: number,

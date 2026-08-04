@@ -1,16 +1,28 @@
 import { Command, InvalidArgumentError } from "commander";
 import { DateTime } from "luxon";
+import os from "node:os";
+import path from "node:path";
 
 import {
   ConfigError,
   loadConfig,
+  requireGoogleSheetsConfig,
   requireGoogleFitConfig,
 } from "../config/index.js";
 import { runGoogleFitAuthFlow } from "../auth/index.js";
 import type { MeasurementPeriod } from "../domain/index.js";
 import type { MeasurementSourceOption } from "../sources/index.js";
+import { readStableInputSnapshot } from "../pipeline/input-snapshot.js";
+import { MacOsNotifier } from "../pipeline/notifier.js";
+import { resolvePipelineSettings } from "../pipeline/settings.js";
+import { runPipeline } from "../pipeline/pipeline.js";
+import { AtomicPipelineStatusWriter } from "../pipeline/status.js";
 import { acquireRunLease, startScheduler } from "../scheduler/index.js";
-import { syncMeasurements } from "../service/index.js";
+import {
+  buildLatestMeasurementSet,
+  syncMeasurements,
+  transferLatestMeasurementSet,
+} from "../service/index.js";
 import { APP_VERSION } from "../version.js";
 
 export async function runCli(argv: readonly string[] = process.argv): Promise<void> {
@@ -27,6 +39,63 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     .action(async () => {
       const config = loadConfig();
       await runGoogleFitAuthFlow(requireGoogleFitConfig(config));
+    });
+
+  program
+    .command("pipeline")
+    .description("Read a stable scale-exporter snapshot and transfer it.")
+    .requiredOption("--period <period>", "measurement period: morning or evening")
+    .action(async (options: { readonly period: string }) => {
+      const period = parsePipelinePeriod(options.period);
+      if (!period) {
+        console.error("failed:invalid-arguments");
+        process.exitCode = 2;
+        return;
+      }
+
+      const pipelineSettings = resolvePipelineSettings();
+      const referenceTime = new Date();
+      const targetDate = DateTime.fromJSDate(referenceTime, {
+        zone: pipelineSettings.timeZone,
+      }).toFormat("yyyy-MM-dd");
+      const config = loadConfig();
+      const statusWriter = new AtomicPipelineStatusWriter(
+        path.join(os.homedir(), ".config", "scale2sheet", "pipeline-status.json"),
+      );
+      const notifier = new MacOsNotifier();
+      const lease = await acquireRunLease({ kind: "pipeline", period });
+      try {
+        const result = await runPipeline({
+          period,
+          timeZone: pipelineSettings.timeZone,
+          referenceTime,
+          targetDate,
+          notifier,
+          statusWriter,
+          readInput: () =>
+            readStableInputSnapshot({
+              outputDir: pipelineSettings.outputDir,
+              targetDate,
+              delay: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+            }),
+          transfer: async (readings) => {
+            const latestSet = buildLatestMeasurementSet({
+              readings,
+              period,
+              capturedAt: referenceTime.toISOString(),
+            });
+            await transferLatestMeasurementSet({
+              latestSet,
+              sheetsConfig: requireGoogleSheetsConfig(config),
+              timeZone: pipelineSettings.timeZone,
+            });
+          },
+        });
+        console.log(result.outcome);
+        process.exitCode = result.exitCode;
+      } finally {
+        await lease.release();
+      }
     });
 
   program
@@ -109,6 +178,10 @@ function parsePeriod(value: string): MeasurementPeriod {
   }
 
   throw new InvalidArgumentError("period must be morning or evening");
+}
+
+function parsePipelinePeriod(value: string): MeasurementPeriod | undefined {
+  return value === "morning" || value === "evening" ? value : undefined;
 }
 
 function parseSource(value: string): MeasurementSourceOption {

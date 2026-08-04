@@ -9,6 +9,7 @@ export * from "./cli/index.js";
 export * from "./config/index.js";
 export * from "./domain/index.js";
 export * from "./scheduler/index.js";
+export * from "./installation/plist.js";
 export * from "./service/index.js";
 export * from "./sheets/index.js";
 export * from "./sources/index.js";
