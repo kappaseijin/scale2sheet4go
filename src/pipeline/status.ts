@@ -1,5 +1,7 @@
 import { chmod, rename, writeFile } from "node:fs/promises";
 
+import type { InputAnomalyCandidate } from "../sources/scale-exporter/index.js";
+
 export interface PipelineCounts {
   readonly matchedFileCount?: number;
   readonly readLineCount?: number;
@@ -14,6 +16,7 @@ export interface PipelineStatus {
   readonly targetDate?: string;
   readonly counts: PipelineCounts;
   readonly diagnostic?: string;
+  readonly inputAnomalyCandidates?: readonly InputAnomalyCandidate[];
 }
 
 export interface PipelineStatusWriter {

@@ -37,6 +37,20 @@ const readingLineSchema = z.object({
 
 const fileNamePattern =
   /^scale_exporter_(\d{4}-\d{2}-\d{2})_(apple-health|google-fit)_(\d{3})\.jsonl$/;
+const nearMissFileNamePattern = /^scale_exporter_(\d{4}-\d{2}-\d{2})_.+\.jsonl$/;
+const finderCopyPattern = /^(.+\.jsonl)のコピー\d*$/;
+
+export type InputAnomalyReason = "file-name-pattern-mismatch";
+
+export interface InputAnomalyCandidate {
+  readonly name: string;
+  readonly reason: InputAnomalyReason;
+}
+
+export interface ScaleExporterFileClassification {
+  readonly targetFileNames: readonly string[];
+  readonly inputAnomalyCandidates: readonly InputAnomalyCandidate[];
+}
 
 export class ScaleExporterFileError extends Error {
   constructor(message: string) {
@@ -89,7 +103,7 @@ export async function readScaleExporterMeasurements(
 async function listTargetFiles(
   outputDir: string,
   targetDate: string,
-): Promise<string[]> {
+): Promise<readonly string[]> {
   let entries: string[];
   try {
     entries = await readdir(outputDir);
@@ -100,12 +114,51 @@ async function listTargetFiles(
     throw error;
   }
 
-  return entries
-    .filter((name) => {
-      const match = fileNamePattern.exec(name);
-      return match !== null && match[1] === targetDate;
-    })
-    .sort();
+  return classifyScaleExporterFileNames(entries, targetDate).targetFileNames;
+}
+
+export function isScaleExporterTargetFile(name: string, targetDate: string): boolean {
+  const match = fileNamePattern.exec(name.normalize("NFC"));
+  return match !== null && match[1] === targetDate;
+}
+
+export function classifyScaleExporterFileNames(
+  names: readonly string[],
+  targetDate: string,
+): ScaleExporterFileClassification {
+  const targetFileNames: string[] = [];
+  const inputAnomalyCandidates: InputAnomalyCandidate[] = [];
+  const anomalyCandidateKeys = new Set<string>();
+  for (const name of names) {
+    const comparisonName = name.normalize("NFC");
+    if (isScaleExporterTargetFile(comparisonName, targetDate)) {
+      targetFileNames.push(name);
+      continue;
+    }
+    const copiedName = finderCopyPattern.exec(comparisonName)?.[1];
+    if (copiedName !== undefined && isScaleExporterTargetFile(copiedName, targetDate)) {
+      continue;
+    }
+    const nearMiss = nearMissFileNamePattern.exec(comparisonName);
+    if (nearMiss?.[1] === targetDate) {
+      const reason: InputAnomalyReason = "file-name-pattern-mismatch";
+      const key = `${name}\u0000${reason}`;
+      if (anomalyCandidateKeys.has(key)) {
+        continue;
+      }
+      anomalyCandidateKeys.add(key);
+      inputAnomalyCandidates.push({
+        name,
+        reason,
+      });
+    }
+  }
+  return {
+    targetFileNames: targetFileNames.sort(),
+    inputAnomalyCandidates: inputAnomalyCandidates.sort((left, right) =>
+      left.name.localeCompare(right.name),
+    ),
+  };
 }
 
 export function parseScaleExporterReadingLine(

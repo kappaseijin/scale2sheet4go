@@ -2,7 +2,11 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { MeasurementReading } from "../domain/index.js";
-import { parseScaleExporterReadingLine } from "../sources/scale-exporter/index.js";
+import {
+  classifyScaleExporterFileNames,
+  parseScaleExporterReadingLine,
+  type InputAnomalyCandidate,
+} from "../sources/scale-exporter/index.js";
 
 export const INPUT_READ_ATTEMPTS = 3;
 export const INPUT_STABILITY_INTERVAL_MS = 5_000;
@@ -12,6 +16,7 @@ export class InputSnapshotError extends Error {
     readonly outcome: "input-missing" | "input-unstable" | "input-invalid-or-partial",
     readonly diagnostic?: string,
     readonly counts: InputSnapshotCounts = {},
+    readonly inputAnomalyCandidates: readonly InputAnomalyCandidate[] = [],
   ) {
     super(diagnostic ? `pipeline input ${outcome}: ${diagnostic}` : `pipeline input ${outcome}`);
     this.name = "InputSnapshotError";
@@ -33,6 +38,7 @@ export interface StableInputSnapshot {
   readonly matchedFileCount: number;
   readonly readLineCount: number;
   readonly readings: readonly MeasurementReading[];
+  readonly inputAnomalyCandidates?: readonly InputAnomalyCandidate[];
 }
 
 interface SnapshotFile {
@@ -42,6 +48,11 @@ interface SnapshotFile {
   readonly inode: number;
   readonly size: number;
   readonly mtimeMs: number;
+}
+
+interface InputSnapshotFiles {
+  readonly files: readonly SnapshotFile[];
+  readonly inputAnomalyCandidates: readonly InputAnomalyCandidate[];
 }
 
 class SnapshotParseError extends Error {
@@ -56,27 +67,36 @@ export async function readStableInputSnapshot(
   let lastOutcome: InputSnapshotError["outcome"] = "input-missing";
   let lastDiagnostic: string | undefined;
   let lastCounts: InputSnapshotCounts = {};
+  let lastInputAnomalyCandidates: readonly InputAnomalyCandidate[] = [];
   for (let attempt = 1; attempt <= INPUT_READ_ATTEMPTS; attempt += 1) {
     const before = await snapshotTargetFiles(options.outputDir, options.targetDate);
-    lastCounts = { matchedFileCount: before.length };
-    if (before.length === 0) {
+    lastCounts = { matchedFileCount: before.files.length };
+    lastInputAnomalyCandidates = before.inputAnomalyCandidates;
+    if (before.files.length === 0) {
       lastOutcome = "input-missing";
       lastDiagnostic = `no target-date files found for ${options.targetDate}`;
     } else {
       await options.delay(INPUT_STABILITY_INTERVAL_MS);
       const afterDelay = await snapshotTargetFiles(options.outputDir, options.targetDate);
-      if (!sameSnapshot(before, afterDelay)) {
+      lastCounts = { matchedFileCount: afterDelay.files.length };
+      lastInputAnomalyCandidates = afterDelay.inputAnomalyCandidates;
+      if (!sameSnapshot(before.files, afterDelay.files)) {
         lastOutcome = "input-unstable";
         lastDiagnostic = "input file metadata changed during stability window";
       } else {
         try {
-          const parsed = await readSnapshot(afterDelay);
+          const parsed = await readSnapshot(afterDelay.files);
           const afterRead = await snapshotTargetFiles(options.outputDir, options.targetDate);
-          if (sameSnapshot(afterDelay, afterRead)) {
+          lastCounts = { matchedFileCount: afterRead.files.length };
+          lastInputAnomalyCandidates = afterRead.inputAnomalyCandidates;
+          if (sameSnapshot(afterDelay.files, afterRead.files)) {
             return {
-              matchedFileCount: afterRead.length,
+              matchedFileCount: afterRead.files.length,
               readLineCount: parsed.readLineCount,
               readings: parsed.readings,
+              ...(afterRead.inputAnomalyCandidates.length > 0
+                ? { inputAnomalyCandidates: afterRead.inputAnomalyCandidates }
+                : {}),
             };
           }
           lastOutcome = "input-unstable";
@@ -84,7 +104,7 @@ export async function readStableInputSnapshot(
           lastOutcome = "input-invalid-or-partial";
           lastDiagnostic = error instanceof Error ? error.message : String(error);
           lastCounts = {
-            matchedFileCount: afterDelay.length,
+            matchedFileCount: afterDelay.files.length,
             ...(error instanceof SnapshotParseError
               ? { readLineCount: error.readLineCount }
               : {}),
@@ -96,19 +116,25 @@ export async function readStableInputSnapshot(
       await options.delay(INPUT_STABILITY_INTERVAL_MS);
     }
   }
-  throw new InputSnapshotError(lastOutcome, lastDiagnostic, lastCounts);
+  throw new InputSnapshotError(
+    lastOutcome,
+    lastDiagnostic,
+    lastCounts,
+    lastInputAnomalyCandidates,
+  );
 }
 
 async function snapshotTargetFiles(
   outputDir: string,
   targetDate: string,
-): Promise<SnapshotFile[]> {
+): Promise<InputSnapshotFiles> {
   try {
-    const names = (await readdir(outputDir))
-      .filter((name) => isTargetFile(name, targetDate))
-      .sort();
-    return Promise.all(
-      names.map(async (name) => {
+    const classification = classifyScaleExporterFileNames(
+      await readdir(outputDir),
+      targetDate,
+    );
+    const files = await Promise.all(
+      classification.targetFileNames.map(async (name) => {
         const filePath = path.join(outputDir, name);
         const fileStat = await stat(filePath);
         return {
@@ -121,18 +147,16 @@ async function snapshotTargetFiles(
         };
       }),
     );
+    return {
+      files,
+      inputAnomalyCandidates: classification.inputAnomalyCandidates,
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return [];
+      return { files: [], inputAnomalyCandidates: [] };
     }
     throw error;
   }
-}
-
-function isTargetFile(name: string, targetDate: string): boolean {
-  return new RegExp(
-    `^scale_exporter_${targetDate}_(apple-health|google-fit)_\\d{3}\\.jsonl$`,
-  ).test(name);
 }
 
 function sameSnapshot(left: readonly SnapshotFile[], right: readonly SnapshotFile[]): boolean {
