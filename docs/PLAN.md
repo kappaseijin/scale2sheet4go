@@ -238,6 +238,7 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 | AT-08 | `scale2sheet run --period evening` | 対象時間帯に体重以外（体温等）はあるが体重なし | 転記しない（体重必須アンカーのため） |
 | AT-09 | `scale2sheet run --period morning` | 入力フォルダにディレクトリ・当日ファイルなし | 空配列扱い、正常終了（**`run` の挙動。`pipeline` は #49 の決定により `failed:input-missing` / 終了コード 1 で扱う。Slice 2 で実装**） |
 | AT-10 | scale_exporter出力に不正JSON行・スキーマ違反あり | 該当ファイル読込 | ファイル名・行番号つきエラーで失敗（黙って捨てない） |
+| AT-10a | scale_exporter出力に不正JSON行・スキーマ違反あり | 一部ファイル読込 | 不正ファイルを単位として除外し、正常ファイルを処理する。除外ファイル名・最初の失敗行番号・除外行数を log と status に記録し、全ファイル不正時は転記しない（AC-39〜42）。三つの件数の重複単位は Issue #63 の決定後に確定する |
 | AT-11 | 連番ファイル境界で同一測定値が重複 | `_001.jsonl` / `_002.jsonl` にまたがる重複あり | `(measuredAt, kind, value, source)` 完全一致で重複除去される |
 | AT-12 | `scale2sheet run --period invalid` | - | 引数エラー、exit code 非ゼロ |
 | AT-13 | Sheets の対象日行が見つからない | `月日` 列に当日行なし | エラーログ出力、書き込みなし、`false` を返す |

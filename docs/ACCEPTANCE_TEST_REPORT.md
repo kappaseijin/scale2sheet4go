@@ -44,6 +44,7 @@ tags: [acceptance-test, scale2sheet]
 | AT-08 | 夜の対象時間帯に体重以外はあるが体重なし→転記しない | **COVERED_BY_AUTOMATED_TEST** | `test/service/measurements.test.ts`「体重がない場合は値が空」 |
 | AT-09 | scale_exporter出力ディレクトリ・当日ファイル不存在 | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/scale-exporter/reader.test.ts`「ディレクトリ不存在時は空配列」 / `./scripts/run-bun-binary-smoke.sh` `empty-scale-exporter` |
 | AT-10 | scale_exporter出力の不正行 | **COVERED_BY_AUTOMATED_TEST** / **COMPILED_BINARY_SMOKE** | `test/scale-exporter/reader.test.ts`「不正JSON行/スキーマ違反行でエラー」 / `./scripts/run-bun-binary-smoke.sh` `invalid-scale-exporter-reading` |
+| AT-10a | scale_exporter出力の不正行（ファイル単位スキップ） | PENDING | Slice 2でAC-39〜42を検証。AT-10の全損条件をファイル単位スキップへ改訂する決定（2026-08-04、Issue #56）を反映。三つの件数の重複単位はIssue #63の決定後に確定 |
 | AT-11 | 連番ファイル境界での重複除去 | **COVERED_BY_AUTOMATED_TEST** | `test/scale-exporter/reader.test.ts`「ファイル境界の重複除去」 |
 | AT-12 | 不正な`--period`引数 | **PARTIAL** | `test/cli/index.test.ts`は日付オプションの検証のみをカバー。`--period`自体のcommander検証は自動テスト未整備 |
 | AT-13 | Spreadsheetに当日行がない | **PARTIAL** | `test/sheets/adapter.test.ts`「対応日付形式からの当日行検索」は該当ありケースのみ。当日行が見つからず`undefined`になるケースは未テスト |
@@ -81,7 +82,7 @@ tags: [acceptance-test, scale2sheet]
 - AT-13（Spreadsheetに当日行がない場合に`undefined`を返すこと）もユニットテストの追加候補（`test/sheets/adapter.test.ts`の`findTodayRowNumber`に該当なしケースを足す）。
 - secret / token の実値はレポートに含めない。
 
-## Installer AC（AC-01〜AC-38）
+## Installer AC（AC-01〜AC-49）
 
 各 AC は最終 owner Slice が完了するまで `PENDING` とする。Slice 1 は run lease の基盤のみを提供するため、本表の最終判定を閉じない。
 
@@ -125,3 +126,15 @@ tags: [acceptance-test, scale2sheet]
 | AC-36 | Slice 6 | 自動、手動 | — | — | — | status history | PENDING | Slice 6 で判定 |
 | AC-37 | Slice 6 | 代理指標、手動 | — | — | — | normal active pipeline | PENDING | Slice 6 で判定 |
 | AC-38 | Slice 6 | 代理指標、手動 | — | — | — | force stop warning | PENDING | Slice 6 で判定 |
+| AC-39 | Slice 2 | 自動 | — | — | — | file-level skip | PENDING | Slice 2 で判定 |
+| AC-40 | Slice 2 | 自動 | — | — | — | excluded file diagnostics | PENDING | Slice 2 で判定 |
+| AC-41 | Slice 2 | 自動 | — | — | — | partial input status/doctor | PENDING | Slice 2/4 で判定 |
+| AC-42 | Slice 2 | 自動 | — | — | — | all-invalid fail-closed | PENDING | Slice 2 で判定 |
+| AC-42a | Slice 2 | 自動 | 544c59a | — | — | invalid diagnostic | **PASS** | reviewer end-to-end 確認済み |
+| AC-43 | Slice 2 | 自動 | — | — | — | no-data counter | PENDING | Slice 2 で判定 |
+| AC-44 | Slice 2 | 自動 | — | — | — | N=4 notification | PENDING | 案件A §5.3.1 の2軸表を根拠に判定 |
+| AC-45 | Slice 2 | 自動 | — | — | — | missing vs no-data | PENDING | Slice 2 で判定 |
+| AC-46 | Slice 7 | 自動 | — | — | — | no-data observation exclusion | PENDING | Slice 7 で判定 |
+| AC-47 | Slice 2 | 自動 | — | — | — | status fields | PENDING | Slice 2 で判定 |
+| AC-48 | Slice 4 | 自動 | — | — | — | doctor build identifier | PENDING | Slice 4 で判定 |
+| AC-49 | Slice 2 | 自動 | — | — | — | threshold notification distinction | PENDING | Slice 2 で判定 |

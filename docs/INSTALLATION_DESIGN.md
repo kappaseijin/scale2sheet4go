@@ -542,7 +542,7 @@ clock fake、stat fake、delay fakeを使い、実時間の5秒待機を自動�
 6. 安定したfile集合をmemoryへ読み、空行を除く全行をstrict parseする。
 7. 入力が無い、不安定、またはparse不能なら入力段階のmacOS通知を1回要求し、statusを対応する`failed:input-*`にして終了コード1で終える。Spreadsheet転記は呼ばない。
 8. 入力失敗を記録した後はserviceとSpreadsheet adapterを起動しない。
-9. 安定した入力を指定periodへ適用し、対象readingが0件なら`completed:no-data`を記録して終了コード0で終える。Spreadsheet転記は呼ばない。
+9. 安定した入力を指定periodへ適用し、対象readingが0件なら`completed:no-data`を記録して終了コード0で終える。Spreadsheet転記は呼ばない。連続 no-data の閾値は N=4 とし、三つの件数の重複単位は Issue #63 の決定後に確定する。
 10. readingがあれば転記専用APIでSpreadsheet転記を実行する。
 11. 転記が失敗した場合はmacOS通知を要求し、statusを`failed:transfer`にして終了コード1で終える。
 12. 成功時は転記件数またはno-data、readerの処理段階別件数、完了時刻をstatusとログへ記録する。
@@ -682,7 +682,7 @@ Google Fit OAuth の再認証も開始しない。
 - `LAST_RUN_FAILED`：直近の pipeline が失敗した
 
 診断結果には最後に成功した対象日、直近開始時刻、直近完了時刻、outcome、転記件数、launchd stderr のパスを出す。
-AC-36 は直近の成功履歴を表示するだけであり、期待どおりか、期待時刻を超過しているかを判定しない。
+AC-36 は直近の成功履歴を表示するだけであり、期待どおりか、期待時刻を超過しているかを判定しない。C-1 + C-3 により status の再構成と `doctor` への照会は可能になるが、通知を見逃し誰も照会しない場合を含め、Issue #46 の「届かなかった」問題を完全に解決するものではない。
 その判断は表示を見た利用者が行う。
 配置先、実行権限、version の不整合では、再ビルドと `scripts/install.sh --launchd` による復旧手順を表示する。
 ただし、欠落した実行体と `doctor` は同じバイナリである。
@@ -901,7 +901,7 @@ launchctlとosascriptは実行ファイルstubまたはprocess adapterのfakeを
 12. active pipeline lease がある間は `bootout` と置換を行わず、無変更で中断する。
 13. `uninstalling` の各中断点とマニフェスト削除後のバイナリ削除失敗から同じ uninstall を再実行でき、バイナリ削除後は一時 receipt の後始末以外の変更操作が残らない。
 14. fake clock、stat、delayでmissing、更新中、parse不能を3attempt以内に再現し、転記を呼ばず、入力通知1回を記録する。実時間の5秒待機は行わない。
-15. present-but-zeroは終了コード0で三つの件数を保存し、転記失敗は別の通知要求を記録する。
+15. present-but-zeroは終了コード0で三つの件数を保存し、転記失敗は別の通知要求を記録する。三つの件数の重複単位は Issue #63 の決定後に確定する。
 16. plist、README、installer の fixture に `scripts/run-pipeline.sh` 参照が無い。
 17. `--force` 時だけ active pipeline の label を `bootout` し、処理停止と当日データ欠測の警告を記録する。manual pipeline と serve には owner token 付きの協調停止を要求する。
 18. Node 実行と Bun 単体バイナリのそれぞれで、別 process が同時に lease を取得しても `O_EXLOCK` の owner は一つだけであり、owner の sleep 中は競合側が `EAGAIN` または `EWOULDBLOCK`、SIGKILL 後は次の取得者が成功する。少なくとも Bun 単体バイナリの2 process 競合と SIGKILL 解放を受け入れ試験で実行し、単一 process の取得成功だけで代替しない。
@@ -959,6 +959,9 @@ ACCEPTANCE_TEST_REPORT には各条件を「自動」「代理指標」「手動
 | AC-35 | 自動と手動 | 登録直後の存在、実行権限、version 検査を自動化し、一時 label で手動確認 |
 | AC-36 | 自動と手動 | status fixture の対象日、成功時刻、結果の表示を自動検査し、実 run 後に表示を手動確認する。期待どおりか、期待時刻を超過したかは利用者が判断し、doctor は判定しない |
 | AC-37、AC-38 | 代理指標と手動 | run lease adapter で通常中断と force 停止警告を自動検査し、一時 label の実 job で手動確認 |
+| AC-39〜AC-42 | 自動 | ファイル単位スキップ、除外ファイルの名前・行番号・行数、`partialInput`、全ファイル不正時の転記抑止を検査する。AC-42a（失敗ファイル名・行番号のlog記録）は `544c59a` で実装済み |
+| AC-43〜AC-46 | 自動 | `completed:no-data` の連続回数、N=4通知、file不在とのstatus区別、7日観測からの除外を検査する。件数の重複単位は Issue #63 の決定後に確定する |
+| AC-47〜AC-49 | 自動 | status の実行情報と `APP_VERSION` を doctor が報告し、単発失敗と閾値到達通知を区別することを検査する |
 
 ## 移行
 
