@@ -55,31 +55,37 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
         zone: pipelineSettings.timeZone,
       }).toFormat("yyyy-MM-dd");
       const config = loadConfig();
-      const result = await runPipeline({
-        period,
-        timeZone: pipelineSettings.timeZone,
-        referenceTime,
-        readInput: () =>
-          readStableInputSnapshot({
-            outputDir: pipelineSettings.outputDir,
-            targetDate,
-            delay: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-          }),
-        transfer: async (readings) => {
-          const latestSet = buildLatestMeasurementSet({
-            readings,
-            period,
-            capturedAt: referenceTime.toISOString(),
-          });
-          await transferLatestMeasurementSet({
-            latestSet,
-            sheetsConfig: requireGoogleSheetsConfig(config),
-            timeZone: pipelineSettings.timeZone,
-          });
-        },
-      });
-      console.log(result.outcome);
-      process.exitCode = result.exitCode;
+      const lease = await acquireRunLease({ kind: "pipeline", period });
+      try {
+        const result = await runPipeline({
+          period,
+          timeZone: pipelineSettings.timeZone,
+          referenceTime,
+          targetDate,
+          readInput: () =>
+            readStableInputSnapshot({
+              outputDir: pipelineSettings.outputDir,
+              targetDate,
+              delay: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+            }),
+          transfer: async (readings) => {
+            const latestSet = buildLatestMeasurementSet({
+              readings,
+              period,
+              capturedAt: referenceTime.toISOString(),
+            });
+            await transferLatestMeasurementSet({
+              latestSet,
+              sheetsConfig: requireGoogleSheetsConfig(config),
+              timeZone: pipelineSettings.timeZone,
+            });
+          },
+        });
+        console.log(result.outcome);
+        process.exitCode = result.exitCode;
+      } finally {
+        await lease.release();
+      }
     });
 
   program
