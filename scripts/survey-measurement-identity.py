@@ -16,8 +16,10 @@ scale-exporter-output-dir を読む。
     R  apple 側のレコード数
     P  値ペア（経路をまたぐ組み合わせ、または経路内の隣接値ペア）
 
-旧命名 `apple-health-file`（2026-07-09 のみ）を apple 経路に含めるかで
-weight の K が 6 と 5 に分かれる。本スクリプトは含める（--exclude-legacy で除外できる）。
+基数は **当方の reader が実際に読むファイル**に合わせる。
+src/sources/scale-exporter/reader.ts の fileNamePattern は (apple-health|google-fit) しか
+受け付けないので、旧命名 `apple-health-file`（2026-07-09 のみ）は既定で除外する。
+`--include-legacy` で含めた数も出せるが、それは当方が読まないレコードを含む数である。
 """
 
 import collections
@@ -70,10 +72,11 @@ def relative_difference(a, b):
 
 
 def main():
-    include_legacy = "--exclude-legacy" not in sys.argv
+    include_legacy = "--include-legacy" in sys.argv
     output_dir = resolve_output_dir(sys.argv)
     print(f"# 対象: {output_dir}")
-    print(f"# 旧命名 apple-health-file を含める: {include_legacy}")
+    print(f"# 旧命名 apple-health-file を含める: {include_legacy}"
+          "（既定は除外。reader が読まないため）")
 
     by_platform = {"apple": collections.defaultdict(list), "google": collections.defaultdict(list)}
     for platform, day, record in load(output_dir, include_legacy):
