@@ -194,3 +194,49 @@ reviewer_codex が挙げた 3 点とは異なる欠陥であり、単独 LLM 検
   （エージェントの再起動は不要）。
   なお `spawn.sh` の usage には「`--window` は tmux 専用」と書かれているが、実装は herdr にも対応している。
   ドキュメントと実装が食い違っている
+
+## main への直接 push の禁止（2026-08-04）
+
+ユーザー決定により、`main` への直接 push を禁止した。変更は PR を経由する。
+
+### GitHub 側では強制できない
+
+`branches/main/protection`（classic）と `rulesets`（新 API）のいずれも、本リポジトリでは
+HTTP 403 で拒否される。
+
+```
+gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)
+```
+
+private リポジトリでこれらを使うには GitHub Pro が必要で、無料プランでは
+public 化しない限りサーバ側で強制できない。課金と公開範囲の変更はどちらもユーザーの判断領域。
+
+### クライアント側フックで担保する
+
+各作業クローンの `.git/hooks/pre-push` で `refs/heads/main` 宛の push を exit 1 で拒否する。
+設置先は 8 クローン（プロジェクト本体 + `codex_monitor_agents/scale2sheet-*` 7 件）。
+設置対象は列挙せず glob で回すこと。初回は明示リストで回したため 1 クローン
+（`scale2sheet-installer-slicing-update`）を取りこぼした。
+
+- topic ブランチの push は通る
+- `gh pr merge` はサーバ側処理なのでフックの影響を受けない（マージは pm が行う）
+- `.git/hooks` は git 管理外のため、**クローンを作り直すと消える**。
+  新しいクローンを作ったら再設置すること
+- `--no-verify` で迂回できる。これは規約で禁止する（技術的には防げない）
+- **`core.hooksPath` が設定されているとフックごと無効になる。** git はこの設定があると
+  `.git/hooks` を参照しない。`--global` でも効くため、**別プロジェクトのために設定した値が
+  このリポジトリのフックを黙って無効化する**。`--no-verify` と違い意図せず踏む。
+  `git config --get core.hooksPath` が空であることを確認する（2026-08-04 時点で
+  global・8 クローンすべて未設定）
+
+### フックが拾う経路（実測）
+
+`refs/heads/main` を stdin の `remote_ref` で照合しているため、refspec の書き方に依存しない。
+`HEAD:main` 形式・`--all`・`--mirror`・別名リモート経由・worktree からの push は
+いずれも拒否される（worktree は `.git` を共有するのでフックも共有される）。
+
+### 経緯
+
+architect が `6683ee1` を PR を経由せず main へ直接 push した（内容は事後レビューで問題なし）。
+根本原因は、pm が sandbox 制約による代理コミットを廃止したときに
+「PR 経由を維持すること」を明示しなかったこと。個人の注意ではなく工程で塞ぐ形にした。
