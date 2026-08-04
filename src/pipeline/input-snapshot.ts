@@ -10,8 +10,9 @@ export const INPUT_STABILITY_INTERVAL_MS = 5_000;
 export class InputSnapshotError extends Error {
   constructor(
     readonly outcome: "input-missing" | "input-unstable" | "input-invalid-or-partial",
+    readonly diagnostic?: string,
   ) {
-    super(`pipeline input ${outcome}`);
+    super(diagnostic ? `pipeline input ${outcome}: ${diagnostic}` : `pipeline input ${outcome}`);
     this.name = "InputSnapshotError";
   }
 }
@@ -41,15 +42,18 @@ export async function readStableInputSnapshot(
   options: ReadStableInputSnapshotOptions,
 ): Promise<StableInputSnapshot> {
   let lastOutcome: InputSnapshotError["outcome"] = "input-missing";
+  let lastDiagnostic: string | undefined;
   for (let attempt = 1; attempt <= INPUT_READ_ATTEMPTS; attempt += 1) {
     const before = await snapshotTargetFiles(options.outputDir, options.targetDate);
     if (before.length === 0) {
       lastOutcome = "input-missing";
+      lastDiagnostic = `no target-date files found for ${options.targetDate}`;
     } else {
       await options.delay(INPUT_STABILITY_INTERVAL_MS);
       const afterDelay = await snapshotTargetFiles(options.outputDir, options.targetDate);
       if (!sameSnapshot(before, afterDelay)) {
         lastOutcome = "input-unstable";
+        lastDiagnostic = "input file metadata changed during stability window";
       } else {
         try {
           const parsed = await readSnapshot(afterDelay);
@@ -62,8 +66,9 @@ export async function readStableInputSnapshot(
             };
           }
           lastOutcome = "input-unstable";
-        } catch {
+        } catch (error) {
           lastOutcome = "input-invalid-or-partial";
+          lastDiagnostic = error instanceof Error ? error.message : String(error);
         }
       }
     }
@@ -71,7 +76,7 @@ export async function readStableInputSnapshot(
       await options.delay(INPUT_STABILITY_INTERVAL_MS);
     }
   }
-  throw new InputSnapshotError(lastOutcome);
+  throw new InputSnapshotError(lastOutcome, lastDiagnostic);
 }
 
 async function snapshotTargetFiles(

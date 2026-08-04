@@ -5,6 +5,7 @@ import {
   InputSnapshotError,
   type StableInputSnapshot,
 } from "./input-snapshot.js";
+import type { PipelineStatusWriter } from "./status.js";
 
 export type PipelineOutcome =
   | "completed:no-data"
@@ -27,15 +28,31 @@ export interface RunPipelineOptions {
   readonly readInput: () => Promise<StableInputSnapshot>;
   readonly transfer: (readings: readonly MeasurementReading[]) => Promise<void>;
   readonly notifier?: { notify(stage: "input" | "transfer", period: MeasurementPeriod): Promise<void> };
+  readonly statusWriter?: PipelineStatusWriter;
+  readonly clock?: () => Date;
+  readonly targetDate?: string;
 }
 
 export async function runPipeline(options: RunPipelineOptions): Promise<PipelineResult> {
+  const startedAt = (options.clock ?? (() => new Date()))().toISOString();
+  const writeStatus = async (outcome: PipelineOutcome, counts: Parameters<PipelineStatusWriter["write"]>[0]["counts"], diagnostic?: string) => {
+    await options.statusWriter?.write({
+      period: options.period,
+      outcome,
+      startedAt,
+      completedAt: (options.clock ?? (() => new Date()))().toISOString(),
+      ...(options.targetDate ? { targetDate: options.targetDate } : {}),
+      counts,
+      ...(diagnostic ? { diagnostic } : {}),
+    });
+  };
   let input: StableInputSnapshot;
   try {
     input = await options.readInput();
   } catch (error) {
     if (error instanceof InputSnapshotError) {
       await options.notifier?.notify("input", options.period);
+      await writeStatus(`failed:${error.outcome}`, {}, error.diagnostic);
       return { exitCode: 1, outcome: `failed:${error.outcome}` };
     }
     throw error;
@@ -49,6 +66,11 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
   });
   const deduplicatedReadings = deduplicateReadings(windowedReadings);
   if (deduplicatedReadings.length === 0) {
+    await writeStatus("completed:no-data", {
+      matchedFileCount: input.matchedFileCount,
+      readLineCount: input.readLineCount,
+      windowedReadingCount: 0,
+    });
     return { exitCode: 0, outcome: "completed:no-data" };
   }
 
@@ -56,8 +78,18 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     await options.transfer(deduplicatedReadings);
   } catch (error) {
     await options.notifier?.notify("transfer", options.period);
+    await writeStatus("failed:transfer", {
+      matchedFileCount: input.matchedFileCount,
+      readLineCount: input.readLineCount,
+      windowedReadingCount: deduplicatedReadings.length,
+    }, error instanceof Error ? error.message : String(error));
     return { exitCode: 1, outcome: "failed:transfer" };
   }
+  await writeStatus("completed:transferred", {
+    matchedFileCount: input.matchedFileCount,
+    readLineCount: input.readLineCount,
+    windowedReadingCount: deduplicatedReadings.length,
+  });
   return { exitCode: 0, outcome: "completed:transferred" };
 }
 

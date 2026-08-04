@@ -13,6 +13,7 @@ export interface PipelineStatus {
   readonly completedAt?: string;
   readonly targetDate?: string;
   readonly counts: PipelineCounts;
+  readonly diagnostic?: string;
 }
 
 export interface PipelineStatusWriter {
