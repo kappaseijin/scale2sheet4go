@@ -399,3 +399,99 @@ two-dot の誤りは偽陽性（無い危険を報告する）だったが、**�
 
 これを知っていると、「PR 画面では 30 行の追加なのに、手元で見たら 613 行削除」という
 食い違いに出会ったとき、どちらが正しいかを迷わず判定できる。今回の混乱の実体はこの食い違いだった。
+
+## rebase 競合を握り潰して commit し、detached HEAD のまま push した（2026-08-04）
+
+`git rebase origin/main` が競合した状態で作業を続け、競合マーカーを含んだ commit を作り、
+さらにブランチ ref が動かないまま「push した」と報告した。
+
+### git は黙っていない。沈黙させたのはこちら
+
+当初この事象を「競合は後続コマンドを止めない」と記述したが、**誤りだった**（検証者が
+使い捨てリポジトリで再現）。git は 2 つの経路で知らせている。
+
+| 当初の記述 | 実測 |
+| --- | --- |
+| 競合は後続を止めない | `git rebase` は競合で **exit 1**。`git rebase … && 次の処理` は**止まる** |
+| `git status` は正常に見える | 競合中は **`UU <path>`**。clean ではない（clean になるのは commit した後） |
+
+沈黙させたのは次の 2 つ。
+
+1. **exit code を握り潰した** — `git rebase … 2>&1 | tail -1` のようにパイプへ流すと、
+   パイプライン全体の終了状態は最後のコマンドのものになり、rebase の失敗が消える
+2. **競合したファイルをそのまま `git add` し、`git rebase --continue` ではなく
+   `git commit` した** — マーカーごと commit され、detached HEAD に積まれる
+
+### 効く防御と、効かない防御
+
+`grep -c '^<<<<<<<'` は**どちらの根本原因にも効かない**。マーカーが commit された後に
+気づくための後追いである。効くのは:
+
+- **exit code を握り潰さない。** `&&` で繋ぎ、出力の tail を読む
+- **競合時に `git add` で一括 stage しない**
+
+原因を「git が黙る」と書くと、次の人は「git は当てにならないから毎回 grep する」という
+防御を組む。**実際には exit code を見れば止まる。**
+
+### 成立する事実（実測で確認済み）
+
+- **競合中は detached HEAD。** `git branch --show-current` は空
+- **`git push -f origin <branch>` は exit 0 で成功する。** detached HEAD 側の commit ではなく、
+  動いていないブランチ ref を押す。エラーも警告も出ない
+
+このため「push した」「`git log` で確認した」の 2 つを踏んでも気づけない。
+どちらも detached HEAD 側を見ている。検証者が `git ls-remote` で照合して発覚した。
+
+### 復帰手順
+
+**`git rebase --quit` を最初に実行する。** rebase 状態が残っている限り、branch ref は
+worktree に使用中として保護され、switch も拒否される（実測）。
+
+```
+git branch -f side <SHA>   → fatal: cannot force update the branch 'side' used by worktree at …
+git switch side            → fatal: cannot switch branch while rebasing
+```
+
+正しい順序:
+
+```sh
+git rebase --quit             # 先にこれ。rebase 状態だけ捨てる（commit は残る）
+git branch -f <branch> <SHA>  # detached HEAD の SHA を指すよう branch ref を動かす
+git switch <branch>
+```
+
+`git rebase --abort` は競合前の状態へ戻すので、**detached HEAD に積んだ commit ごと失う**。
+
+### push 後の確認
+
+自分の `git log` ではなく、remote と PR の head で照合する。
+
+```sh
+git branch --show-current                        # 空でないこと
+git ls-remote origin refs/heads/<branch>
+gh pr view <PR> --json headRefOid -q .headRefOid
+```
+
+## agmsg の本文にバッククォートを含めると実行される（2026-08-04）
+
+`send.sh` へ本文を二重引用符で渡すと、**バッククォートが bash のコマンド置換として実行される。**
+
+実際に起きたこと: 検証者が本文で git コマンドを引用した結果、本文の一部が消えたうえ、
+**検証者の作業クローンで意図しない `git rebase` が走った**（共有物への影響は無し。
+クローンを origin/main へ戻し、remote の ref が 1 つも動いていないことを確認済み）。
+
+git コマンドを引用しながら連絡する場面が多いので、踏みやすい。
+
+### 手順
+
+本文は必ずファイルへ書いてから渡す。
+
+```sh
+cat > /tmp/msg.txt <<'MSG'
+...本文（バッククォートを含んでよい）...
+MSG
+send.sh <team> <from> <to> "$(< /tmp/msg.txt)"
+```
+
+ヒアドキュメントの区切り語を **`'MSG'` とクォートする**こと。クォートしないと
+ヒアドキュメント内でも置換が走る。
