@@ -3,7 +3,7 @@ type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）と AC 番号予約台帳
 timestamp: "2026-07-05T00:00:00+09:00"
-updated: "2026-08-04T19:57:14+09:00"
+updated: "2026-08-04T20:56:20+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
@@ -114,7 +114,8 @@ AC 番号の採番正本は、この節の予約台帳である。
 | AC-85 | AC-92 | #77 | 8 | 8 | 8 | `CONFIRMED` | PR #85 | [入力診断の観測強度と上書き規則](decisions/2026-08-04T184538_入力診断の観測強度と上書き規則の検討書.md) | なし |
 | AC-93 | AC-95 | なし | 0 | 3 | 0 | `UNUSED` | #46 で未使用を明記 | なし | 予約済みではない。予定件数が3以下の案件は使用できる |
 | AC-96 | AC-109 | #46 | 14 | 14 | 14 | `CONFIRMED` | #46 の目標定義 PR | [連続失敗に人が気づくための目標定義](decisions/2026-08-04T184244_連続失敗に人が気づくための目標定義.md) | なし |
-| AC-110 | AC-123 | #46 | 14 | 14 | 14 | `CONFIRMED` | PR #91 | [デスクトップとメニューバーへの常設状態表示](decisions/2026-08-04T194632_デスクトップとメニューバーへの常設状態表示の検討書.md) | U-1 のデスクトップ／メニューバー経路設計 |
+| AC-110 | AC-117 | #46 | 8 | 8 | 8 | `CONFIRMED` | PR #91 | [常設状態表示の検討結果と通知のみの構成](decisions/2026-08-04T194632_デスクトップとメニューバーへの常設状態表示の検討書.md) | 当初14件を予約。ユーザー最終決定により notification-only の8件で確定 |
+| AC-118 | AC-123 | なし | 0 | 6 | 0 | `UNUSED` | PR #91 で #46 が予約 | なし | 本文確定前に M-1 が不採用となり、予約末尾6件を解放。再割当できる |
 
 AC-66〜69 と AC-70〜71 の重複は、この台帳の導入前に main へ入った legacy overlap である。
 これらの番号を新しい案件へ割り当てず、既存文書も本件では振り直さない。
@@ -252,5 +253,5 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-45 | Slice 2 | 自動 | — | — | — | missing vs no-data | PENDING | Slice 2 で判定 |
 | AC-46 | Slice 7 | 自動 | — | — | — | no-data observation exclusion | PENDING | Slice 7 で判定 |
 | AC-47 | Slice 2 | 自動 | — | — | — | status fields | PENDING | Slice 2 で判定 |
-| AC-48 | Slice 4 / 6 | 自動 | — | — | — | doctor build identifier / done・実転記・異常の経過時間 | PENDING | Slice 4 / 6 で判定 |
+| AC-48 | Slice 4 / 6 | 自動 | — | — | — | doctor build identifier / done・実転記・異常の経過日数 | PENDING | Slice 4 / 6 で判定 |
 | AC-49 | Slice 2 | 自動 | — | — | — | threshold notification distinction | PENDING | Slice 2 で判定 |
