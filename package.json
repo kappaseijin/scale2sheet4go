@@ -1,11 +1,11 @@
 {
-  "name": "cale2sheet",
+  "name": "scale2sheet",
   "version": "0.1.0",
   "description": "Sync morning and evening body measurements from Google Fit or Apple Health XML to Google Sheets.",
   "type": "module",
   "private": true,
   "bin": {
-    "cale2sheet": "./dist/index.js"
+    "scale2sheet": "./dist/index.js"
   },
   "scripts": {
     "build:node": "tsc -p tsconfig.json",
