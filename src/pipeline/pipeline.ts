@@ -55,7 +55,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
   } catch (error) {
     if (error instanceof InputSnapshotError) {
       await options.notifier?.notify("input", options.period);
-      await writeStatus(`failed:${error.outcome}`, {}, error.diagnostic);
+      await writeStatus(`failed:${error.outcome}`, error.counts, error.diagnostic);
       return { exitCode: 1, outcome: `failed:${error.outcome}` };
     }
     throw error;

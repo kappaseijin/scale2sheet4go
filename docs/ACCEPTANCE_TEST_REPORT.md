@@ -116,7 +116,7 @@ tags: [acceptance-test, scale2sheet]
 | AC-26 | Slice 2 | 自動 | `npm test -- --run test/pipeline/input-snapshot.test.ts` | ee89df3 | 2026-08-04 17:28 JST | bounded stable snapshot | PASS | fake delay で3 attempt・metadata 一致・missing/unstable/invalid を検査 |
 | AC-27 | Slice 6 | 代理指標、手動 | — | — | — | input failure notification | PENDING | missing/unstable/invalidの要求をSlice 2、実通知をSlice 6で判定 |
 | AC-28 | Slice 6 | 代理指標、手動 | — | — | — | input / transfer notification | PENDING | 2段階を区別。実行体欠落は対象外 |
-| AC-29 | Slice 2 | 自動 | `npm run acceptance:pipeline-shadow` | ee89df3, e7d3b8a | 2026-08-04 17:28 JST | isolated compiled status | PASS | running の `startedAt` と terminal の `completedAt`、到達済み counts、未到達 count key 欠落、0600、atomic replacement を観測 |
+| AC-29 | Slice 2 | 自動 | `npm run acceptance:pipeline-shadow` | ee89df3, e7d3b8a | 2026-08-04 17:28 JST | isolated compiled status | PASS | running の `startedAt` と terminal の `completedAt`、input-missing の `matchedFileCount=0` と未到達 count key 欠落、0600、atomic replacement を観測。transfer 未到達のため network deny は未検証 |
 | AC-30 | Slice 2 | 自動 | `npm test -- --run test/pipeline/pipeline.test.ts`、`npm run acceptance:pipeline-shadow` | ee89df3 | 2026-08-04 17:28 JST | no-data / missing input | PASS | present-but-zero は exit 0・転記なし、missing は bounded exit 1 を検査 |
 | AC-31 | Slice 2 | 自動 | `npm test -- --run test/pipeline/input-snapshot.test.ts test/pipeline/pipeline.test.ts test/cli/serve-lease.test.ts` | ee89df3 | 2026-08-04 17:28 JST | input/status/notifier/lease ports | PASS | snapshot・status・notifier・lease の差替えと3件数を検査。#63/#65 の未決契約は対象外 |
 | AC-32 | Slice 7 | 自動 | — | — | — | legacy reference removal | PENDING | Slice 7 で判定 |

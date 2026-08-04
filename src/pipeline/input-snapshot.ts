@@ -11,10 +11,16 @@ export class InputSnapshotError extends Error {
   constructor(
     readonly outcome: "input-missing" | "input-unstable" | "input-invalid-or-partial",
     readonly diagnostic?: string,
+    readonly counts: InputSnapshotCounts = {},
   ) {
     super(diagnostic ? `pipeline input ${outcome}: ${diagnostic}` : `pipeline input ${outcome}`);
     this.name = "InputSnapshotError";
   }
+}
+
+export interface InputSnapshotCounts {
+  readonly matchedFileCount?: number;
+  readonly readLineCount?: number;
 }
 
 export interface ReadStableInputSnapshotOptions {
@@ -38,13 +44,21 @@ interface SnapshotFile {
   readonly mtimeMs: number;
 }
 
+class SnapshotParseError extends Error {
+  constructor(readonly readLineCount: number, message: string, options: ErrorOptions) {
+    super(message, options);
+  }
+}
+
 export async function readStableInputSnapshot(
   options: ReadStableInputSnapshotOptions,
 ): Promise<StableInputSnapshot> {
   let lastOutcome: InputSnapshotError["outcome"] = "input-missing";
   let lastDiagnostic: string | undefined;
+  let lastCounts: InputSnapshotCounts = {};
   for (let attempt = 1; attempt <= INPUT_READ_ATTEMPTS; attempt += 1) {
     const before = await snapshotTargetFiles(options.outputDir, options.targetDate);
+    lastCounts = { matchedFileCount: before.length };
     if (before.length === 0) {
       lastOutcome = "input-missing";
       lastDiagnostic = `no target-date files found for ${options.targetDate}`;
@@ -69,6 +83,12 @@ export async function readStableInputSnapshot(
         } catch (error) {
           lastOutcome = "input-invalid-or-partial";
           lastDiagnostic = error instanceof Error ? error.message : String(error);
+          lastCounts = {
+            matchedFileCount: afterDelay.length,
+            ...(error instanceof SnapshotParseError
+              ? { readLineCount: error.readLineCount }
+              : {}),
+          };
         }
       }
     }
@@ -76,7 +96,7 @@ export async function readStableInputSnapshot(
       await options.delay(INPUT_STABILITY_INTERVAL_MS);
     }
   }
-  throw new InputSnapshotError(lastOutcome, lastDiagnostic);
+  throw new InputSnapshotError(lastOutcome, lastDiagnostic, lastCounts);
 }
 
 async function snapshotTargetFiles(
@@ -145,7 +165,13 @@ async function readSnapshot(files: readonly SnapshotFile[]): Promise<{
         continue;
       }
       readLineCount += 1;
-      readings.push(parseScaleExporterReadingLine(line, file.name, index + 1));
+      try {
+        readings.push(parseScaleExporterReadingLine(line, file.name, index + 1));
+      } catch (error) {
+        throw new SnapshotParseError(readLineCount, error instanceof Error ? error.message : String(error), {
+          cause: error,
+        });
+      }
     }
   }
   return { readings, readLineCount };

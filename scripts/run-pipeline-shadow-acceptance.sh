@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Compiled-Bun acceptance for the pipeline shadow path.  It uses only an
 # isolated HOME, published fixture JSONL, a poison producer, and denied proxies.
+# The exercised paths do not transfer, so this harness does not prove network denial.
 
 root=$(mktemp -d /private/tmp/scale2sheet-pipeline-shadow.XXXXXX)
 holder_pid=""
@@ -160,11 +161,12 @@ if [ "$negative_status" -ne 1 ] \
   || ! grep -Eq '"outcome": "failed:input-missing"' "$negative_pipeline_status" \
   || ! grep -Eq '"startedAt":' "$negative_pipeline_status" \
   || ! grep -Eq '"completedAt":' "$negative_pipeline_status" \
-  || grep -Eq '"(matchedFileCount|readLineCount|windowedReadingCount)"' "$negative_pipeline_status" \
+  || ! grep -Eq '"matchedFileCount": 0' "$negative_pipeline_status" \
+  || grep -Eq '"(readLineCount|windowedReadingCount)"' "$negative_pipeline_status" \
   || [ "$(stat -f '%Lp' "$negative_pipeline_status")" != '600' ]; then
   echo 'missing-input negative control did not produce bounded exit 1 and failed:input-missing status' >&2
   cat "$root/negative.log" >&2
   exit 1
 fi
 
-echo 'PASS: compiled pipeline shadow path rejects producer/network, recovers a SIGKILL lease, and records statuses'
+echo 'PASS: compiled pipeline shadow path rejects producer invocation, recovers a SIGKILL lease, and records statuses'

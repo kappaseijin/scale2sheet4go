@@ -17,7 +17,11 @@ describe("runPipeline", () => {
         timeZone: "Asia/Tokyo",
         referenceTime,
         readInput: async () => {
-          throw new InputSnapshotError("input-invalid-or-partial");
+          throw new InputSnapshotError(
+            "input-invalid-or-partial",
+            undefined,
+            { matchedFileCount: 1, readLineCount: 2 },
+          );
         },
         transfer: async () => {
           transfers += 1;
@@ -37,7 +41,7 @@ describe("runPipeline", () => {
       }),
       expect.objectContaining({
         outcome: "failed:input-invalid-or-partial",
-        counts: {},
+        counts: { matchedFileCount: 1, readLineCount: 2 },
       }),
     ]);
     expect(statuses[0]).not.toHaveProperty("completedAt");

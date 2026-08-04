@@ -30,7 +30,10 @@ describe("readStableInputSnapshot", () => {
         targetDate: "2026-08-03",
         delay: async () => {},
       }),
-    ).rejects.toMatchObject<InputSnapshotError>({ outcome: "input-missing" });
+    ).rejects.toMatchObject<InputSnapshotError>({
+      outcome: "input-missing",
+      counts: { matchedFileCount: 0 },
+    });
   });
 
   it("reads a stable target-date JSONL and records its input counts", async () => {
@@ -72,7 +75,10 @@ describe("readStableInputSnapshot", () => {
           }
         },
       }),
-    ).rejects.toMatchObject<InputSnapshotError>({ outcome: "input-unstable" });
+    ).rejects.toMatchObject<InputSnapshotError>({
+      outcome: "input-unstable",
+      counts: { matchedFileCount: 1 },
+    });
     expect(delayCall).toBe(5);
   });
 
@@ -92,6 +98,7 @@ describe("readStableInputSnapshot", () => {
       }),
     ).rejects.toMatchObject<InputSnapshotError>({
       outcome: "input-invalid-or-partial",
+      counts: { matchedFileCount: 1, readLineCount: 2 },
     });
   });
 });
