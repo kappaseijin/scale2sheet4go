@@ -240,3 +240,53 @@ public 化しない限りサーバ側で強制できない。課金と公開範�
 architect が `6683ee1` を PR を経由せず main へ直接 push した（内容は事後レビューで問題なし）。
 根本原因は、pm が sandbox 制約による代理コミットを廃止したときに
 「PR 経由を維持すること」を明示しなかったこと。個人の注意ではなく工程で塞ぐ形にした。
+## codex 席が役割別 config を一度も適用していなかった（2026-08-04）
+
+全 codex 席（architect / programmer / worker）が **base 既定の `gpt-5.6-luna` / effort `low`**
+で動いていた。`~/.codex/<role>.config.toml` にはモデルと effort が正しく書かれていたが、
+**agmsg の `spawn.sh` が codex 起動時に `-p <profile>` を渡さない**ため一度も適用されていない。
+
+```
+規定                                   実際
+architect  gpt-5.6-sol   xhigh    →   gpt-5.6-luna low
+programmer gpt-5.6-terra medium   →   gpt-5.6-luna low
+worker     gpt-5.6-luna  low      →   gpt-5.6-luna low（偶然一致）
+```
+
+worker だけ規定と一致していたため、**モデル表示を見ても異常に見えなかった**。
+
+### 発見の経緯
+
+architect へ #66 の起点依頼を出した直後、`herdr pane read` で受領確認をした際に
+画面下部のモデル表示が `gpt-5.6-luna low` になっているのを見つけた。
+受領確認という別目的の操作から出た。
+
+なお、この事実（`spawn.sh` が `-p` を渡さない）は 2026-08-02 の sandbox 設定調査で
+既に判明しており、pm 自身が agmsg でそう説明していた。**判明していたが、
+モデル配置への影響として扱っていなかった。** 当時は sandbox の話としてのみ読んでいた。
+
+### 対処
+
+各 pane で `/quit` してから明示フラグで起動し直す。
+
+```sh
+codex -m gpt-5.6-sol   -c model_reasoning_effort=xhigh    # architect
+codex -m gpt-5.6-terra -c model_reasoning_effort=medium   # programmer
+codex -m gpt-5.6-luna  -c model_reasoning_effort=low      # worker
+```
+
+起動後に `$agmsg actas <エージェント名>` を実行する（`/agmsg` ではない。codex では
+スラッシュ始まりは組込みコマンド扱いになり `Unrecognized command` になる）。
+
+セッションを落とすので文脈は失われる。ブランチと commit は残る。
+
+### 残る問題
+
+`spawn.sh` 経由で起動し直すと再び base 既定に戻る。**恒久対処は agmsg 側**にあり、
+本プロジェクトの範囲外。所有チームの manager へ連携する。
+
+### 手順に足すこと
+
+- 席を起動したら、**モデルと effort の表示を規定と照合する**。
+  各エージェントの起動時セルフチェックにも入れる（`git status` の可否と同じ扱い）
+- Claude 席（reviewer / innovator）は Opus 5 で規定どおりだった。同時に確認した
