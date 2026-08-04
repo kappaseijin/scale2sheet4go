@@ -290,3 +290,53 @@ codex -m gpt-5.6-luna  -c model_reasoning_effort=low      # worker
 - 席を起動したら、**モデルと effort の表示を規定と照合する**。
   各エージェントの起動時セルフチェックにも入れる（`git status` の可否と同じ扱い）
 - Claude 席（reviewer / innovator）は Opus 5 で規定どおりだった。同時に確認した
+
+## 席の入れ替えで踏んだ落とし穴（2026-08-04）
+
+reviewer の ctx が 93% に達したため席を入れ替えた際に、3 つ踏んだ。
+
+### アンダースコアとハイフンで別のディレクトリを指す
+
+```
+codex_monitor_agents/scale2sheet_reviewer_claude/   ← 人格定義（AGENT.md, projects/<チーム>/）
+codex_monitor_agents/scale2sheet-reviewer-claude/   ← 作業クローン（git リポジトリ）
+```
+
+pm が引き継ぎメモの保存先として**作業クローン配下**を指定したが、`agent-role.rule.md` が
+定めているのは**人格ディレクトリの `projects/<チーム名>/`** である。指定が規約から外れていた。
+
+さらに pm は作業クローン側を検索して「メモが無い」と判断し、差し戻した。
+**両方のディレクトリが実在し、名前が 1 文字違い（区切り文字）でしか区別できない**ため、
+検索先を取り違えても異常に見えない。
+
+### 差し戻す直前に測り直していなかった
+
+```
+メモの mtime          : 17:27
+pm の 2 回目の find   : 約 17:26  ← 書き込みより前
+```
+
+1 回目の測定は正しかったが、それを 2 回目の差し戻しにも流用した。
+**タイムスタンプに依存する主張は、主張する直前に測り直す。**
+
+### `/exit` は pane ごと落ちる
+
+claude-code のセッションで `/exit` を送ると、セッションだけでなく **pane そのものが消える**
+（シェルも残らない。`herdr pane read` が空を返し、`send-text` にも無反応になる）。
+pane 一覧には残るので、生きているように見える。
+
+復旧は pane を close してから spawn し直す。
+
+```sh
+herdr pane close <pane_id>
+HERDR_WORKSPACE_ID=<ws> ~/.agents/skills/agmsg/scripts/spawn.sh \
+  claude-code <エージェント名> --fresh --window --team <チーム名>
+```
+
+**引数の順序は `<agent-type> <name>`** である。`spawn.sh <チーム名> <エージェント名>` と
+書くと `unknown agent type` になる。`--team` はオプションで渡す。
+
+### 手順
+
+- 席を落とす前に、引き継ぎメモの**存在を `ls -l` で確認してから**落とす
+- 落とした後に新セッションへ、メモのパスと待っている仕事を明示して渡す
