@@ -25,7 +25,15 @@ binary="$PWD/dist/scale2sheet"
 home="$root/home"
 output_dir="$root/published"
 poison_bin="$root/bin"
+fake_osascript="$root/fake-osascript"
+osascript_log="$root/osascript.log"
 mkdir -p "$home" "$output_dir" "$poison_bin"
+
+cat >"$fake_osascript" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$SCALE2SHEET_OSASCRIPT_LOG"
+EOF
+chmod 700 "$fake_osascript"
 
 cat >"$poison_bin/scale_exporter" <<'EOF'
 #!/usr/bin/env bash
@@ -43,6 +51,7 @@ run_pipeline() {
   env -i HOME="$1" PATH="$poison_bin:/usr/bin:/bin" \
     TIME_ZONE="Asia/Tokyo" SCALE_EXPORTER_OUTPUT_DIR="$2" \
     SCALE2SHEET_PRODUCER_MARKER="$root/producer-invoked" \
+    SCALE2SHEET_OSASCRIPT_PATH="$fake_osascript" SCALE2SHEET_OSASCRIPT_LOG="$osascript_log" \
     http_proxy="http://127.0.0.1:9" https_proxy="http://127.0.0.1:9" \
     "$binary" pipeline --period morning
 }
@@ -51,6 +60,7 @@ start_pipeline() {
   env -i HOME="$1" PATH="$poison_bin:/usr/bin:/bin" \
     TIME_ZONE="Asia/Tokyo" SCALE_EXPORTER_OUTPUT_DIR="$2" \
     SCALE2SHEET_PRODUCER_MARKER="$root/producer-invoked" \
+    SCALE2SHEET_OSASCRIPT_PATH="$fake_osascript" SCALE2SHEET_OSASCRIPT_LOG="$osascript_log" \
     http_proxy="http://127.0.0.1:9" https_proxy="http://127.0.0.1:9" \
     "$binary" pipeline --period morning >"$3" 2>&1 &
   started_pid=$!
@@ -166,6 +176,12 @@ if [ "$negative_status" -ne 1 ] \
   || [ "$(stat -f '%Lp' "$negative_pipeline_status")" != '600' ]; then
   echo 'missing-input negative control did not produce bounded exit 1 and failed:input-missing status' >&2
   cat "$root/negative.log" >&2
+  exit 1
+fi
+if [ "$(wc -l <"$osascript_log" 2>/dev/null || true)" -ne 1 ] \
+  || ! grep -Fq '入力に失敗しました（period=morning）' "$osascript_log"; then
+  echo 'missing-input negative control did not invoke the fake osascript notification exactly once' >&2
+  [ -f "$osascript_log" ] && cat "$osascript_log" >&2
   exit 1
 fi
 
