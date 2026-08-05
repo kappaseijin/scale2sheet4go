@@ -62,7 +62,9 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
       const statusWriter = new AtomicPipelineStatusWriter(
         path.join(os.homedir(), ".config", "scale2sheet", "pipeline-status.json"),
       );
-      const notifier = new MacOsNotifier();
+      const notifier = new MacOsNotifier(
+        process.env.SCALE2SHEET_OSASCRIPT_PATH ?? "/usr/bin/osascript",
+      );
       const lease = await acquireRunLease({ kind: "pipeline", period });
       try {
         const result = await runPipeline({

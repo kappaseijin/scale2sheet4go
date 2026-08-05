@@ -75,7 +75,7 @@ describe("serve command", () => {
     expect(mocks.statusWriter).toHaveBeenCalledWith(
       expect.stringMatching(/pipeline-status\.json$/),
     );
-    expect(mocks.notifier).toHaveBeenCalledWith();
+    expect(mocks.notifier).toHaveBeenCalledWith("/usr/bin/osascript");
     expect(mocks.runPipeline).toHaveBeenCalledWith(
       expect.objectContaining({ notifier, period: "morning", statusWriter }),
     );

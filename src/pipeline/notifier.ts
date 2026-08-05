@@ -7,10 +7,12 @@ export interface Notifier {
 }
 
 export class MacOsNotifier implements Notifier {
+  constructor(private readonly executablePath = "/usr/bin/osascript") {}
+
   async notify(stage: PipelineFailureStage, period: "morning" | "evening"): Promise<void> {
     const message = `${stage === "input" ? "入力" : "転記"}に失敗しました（period=${period}）`;
     await new Promise<void>((resolve) => {
-      const child = spawn("/usr/bin/osascript", [
+      const child = spawn(this.executablePath, [
         "-e",
         `display notification ${JSON.stringify(message)} with title "scale-pipeline" sound name "Basso"`,
       ], { stdio: "ignore" });
