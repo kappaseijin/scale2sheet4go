@@ -37,7 +37,31 @@ Spreadsheet は既存行を更新します。1行目の `月日` 列で当日行
 
 ## セットアップ
 
-設定は scale_exporter と同じ `~/.config/scale2sheet/` 構造が標準です（詳細: [EXTERNAL_DESIGN.md](./docs/EXTERNAL_DESIGN.md#設定ファイル)）。
+設定ファイルは `~/.config/scale2sheet/settings.json` です。環境変数（`.env` 含む） > `settings.json` > 組み込み既定値の順で解決します。
+
+### 組み込み既定値
+
+| 設定 | 未指定時の既定値 | 注意 |
+| --- | --- | --- |
+| `sheet-id` | ソースの `defaultGoogleSheetId` | 利用者本人の本番スプレッドシートを指します。値そのものは `src/config/env.ts` を参照してください。 |
+| `scale-exporter-output-dir` | `~/Documents/scale_exporter` | この環境では2026-07-09で更新が止まった旧出力先です。環境によって停止時期は異なります。設定せずに使うと古い入力を読み続ける可能性があります。 |
+
+`sheet-id` の実値はREADMEに掲載しません。共有されたREADMEから本番スプレッドシートを特定できる状態を避け、値の正本をソースに一元化します。
+
+設定ファイルの主なキーは次のとおりです。
+
+| キー | 用途 |
+| --- | --- |
+| `time-zone` | 日付・時間帯の解釈（既定 `Asia/Tokyo`） |
+| `source` | `scale-exporter` / `google-fit` / `apple-health` |
+| `sheet-id` / `sheet-name` | 転記先Spreadsheetとシート名 |
+| `sheets-credentials` | Google Sheetsサービスアカウント鍵のパス |
+| `scale-exporter-output-dir` | scale_exporter JSONL入力フォルダ |
+| `apple-health-export-xml` | Apple Health XML入力パス |
+| `google-fit-token-path` / `google-fit-lookback-days` | Google Fit OAuthトークンと検索期間 |
+| `morning-cron` / `evening-cron` | `serve` の実行時刻 |
+
+認証情報は設定ファイルへ値を直接書かず、`~/.config/scale2sheet/google-sheets-service-account.json`（Sheets）または `google-fit-credentials.json`（Google Fit）へ配置します。詳細は [EXTERNAL_DESIGN.md](./docs/EXTERNAL_DESIGN.md#設定ファイル) を参照してください。
 
 ### Bun バイナリの作成と実行
 
@@ -191,3 +215,15 @@ rm -rf ~/.config/scale2sheet/           # settings.json・認証情報（scale_e
 リポジトリのクローン（`node_modules/` / `dist/` を含む）を削除すればアプリ本体も完全にアンインストールされます。
 
 注意: 常駐モード（`serve`）と併用すると二重書き込みになるため、launchd 運用時は `serve` を起動しないでください。
+
+### 実行状態と検知の限界
+
+`pipeline` サブコマンドで実行したパイプラインの状態は `~/.config/scale2sheet/pipeline-status.json` に記録されます。現行のv1文書は `schemaVersion`、`definitionsVersion`、`definitionsLabel`、`updatedAt`、`periods`（`morning` / `evening`）を持ち、各期間の `lastTerminal` 以下に outcome・開始/完了時刻・対象日・入力件数・診断情報など、期間単位に連続失敗回数・連続no-data回数・healthを保持します。Spreadsheetの値そのものではなく、パイプラインがどこまで到達したかを確認するために使います。
+
+なお、READMEのlaunchd手順が呼び出す `run` サブコマンドは現在このファイルを書きません。したがって、launchdの起動状態をこのファイルだけで監視することはできません。
+
+次の制約があります。
+
+- パイプライン自体が起動しない期間は、`pipeline-status.json` を更新できないため検知できません（READMEのlaunchd手順では `run` がこのファイルを書かないため、なおさら対象外です）。
+- macOS通知が表示・到達したことは記録できますが、利用者が通知を既読にしたことは証明できません。
+- シートの空欄だけでは転記失敗を検知できません。Issue #46 の実測では、2026-07-18〜27のパイプライン未到達期間でも、夜の値は07-20を除く9日分が人手で埋まっていました。
