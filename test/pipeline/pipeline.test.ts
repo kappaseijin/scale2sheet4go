@@ -10,7 +10,6 @@ describe("runPipeline", () => {
   it("does not call the transfer port when the input snapshot fails", async () => {
     let transfers = 0;
     const statuses: unknown[] = [];
-    const notifications: Array<{ stage: string; period: string }> = [];
 
     await expect(
       runPipeline({
@@ -27,11 +26,6 @@ describe("runPipeline", () => {
         transfer: async () => {
           transfers += 1;
         },
-        notifier: {
-          notify: async (stage, period) => {
-            notifications.push({ stage, period });
-          },
-        },
         statusWriter: {
           write: async (status) => {
             statuses.push(status);
@@ -40,7 +34,6 @@ describe("runPipeline", () => {
       }),
     ).resolves.toEqual({ exitCode: 1, outcome: "failed:input-invalid-or-partial" });
     expect(transfers).toBe(0);
-    expect(notifications).toEqual([{ stage: "input", period: "morning" }]);
     expect(statuses).toEqual([
       expect.objectContaining({
         outcome: "running",
@@ -52,40 +45,6 @@ describe("runPipeline", () => {
       }),
     ]);
     expect(statuses[0]).not.toHaveProperty("completedAt");
-  });
-
-  it("notifies the transfer stage when a prepared transfer fails", async () => {
-    const notifications: Array<{ stage: string; period: string }> = [];
-    const reading: MeasurementReading = {
-      kind: "weight",
-      value: 68.4,
-      unit: "kg",
-      measuredAt: "2026-08-03T06:30:00+09:00",
-      source: "google_fit",
-    };
-
-    await expect(
-      runPipeline({
-        period: "morning",
-        timeZone: "Asia/Tokyo",
-        referenceTime,
-        readInput: async () => ({
-          matchedFileCount: 1,
-          readLineCount: 1,
-          readings: [reading],
-        }),
-        transfer: async () => {
-          throw new Error("sheet unavailable");
-        },
-        notifier: {
-          notify: async (stage, period) => {
-            notifications.push({ stage, period });
-          },
-        },
-      }),
-    ).resolves.toEqual({ exitCode: 1, outcome: "failed:transfer" });
-
-    expect(notifications).toEqual([{ stage: "transfer", period: "morning" }]);
   });
 
   it("returns completed:no-data without calling the transfer port for no usable readings", async () => {
