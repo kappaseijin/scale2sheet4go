@@ -34,7 +34,7 @@ import { runCli } from "../../src/cli/index.js";
 
 describe("serve command", () => {
   it("acquires the shared serve lease before scheduling", async () => {
-    const lease = { release: vi.fn(), startStopPolling: vi.fn() };
+    const lease = { ownerToken: "pipeline-run-token", release: vi.fn(), startStopPolling: vi.fn() };
     const config = {
       timeZone: "Asia/Tokyo",
       defaultSource: "scale-exporter" as const,
@@ -53,7 +53,7 @@ describe("serve command", () => {
   });
 
   it("wires status and notification ports into a pipeline run", async () => {
-    const lease = { release: vi.fn(), startStopPolling: vi.fn() };
+    const lease = { ownerToken: "pipeline-run-token", release: vi.fn(), startStopPolling: vi.fn() };
     const statusWriter = { write: vi.fn() };
     const notifier = { notify: vi.fn() };
     mocks.loadConfig.mockReturnValue({ timeZone: "Asia/Tokyo" });
@@ -74,6 +74,7 @@ describe("serve command", () => {
 
     expect(mocks.statusWriter).toHaveBeenCalledWith(
       expect.stringMatching(/pipeline-status\.json$/),
+      lease.ownerToken,
     );
     expect(mocks.notifier).toHaveBeenCalledWith("/usr/bin/osascript");
     expect(mocks.runPipeline).toHaveBeenCalledWith(
