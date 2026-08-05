@@ -3,7 +3,7 @@ type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）と AC 番号予約台帳
 timestamp: "2026-07-05T00:00:00+09:00"
-updated: "2026-08-04T20:56:20+09:00"
+updated: "2026-08-05T10:50:33+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
@@ -115,7 +115,7 @@ AC 番号の採番正本は、この節の予約台帳である。
 | AC-93 | AC-95 | なし | 0 | 3 | 0 | `UNUSED` | #46 で未使用を明記 | なし | 予約済みではない。予定件数が3以下の案件は使用できる |
 | AC-96 | AC-109 | #46 | 14 | 14 | 14 | `CONFIRMED` | #46 の目標定義 PR | [連続失敗に人が気づくための目標定義](decisions/2026-08-04T184244_連続失敗に人が気づくための目標定義.md) | なし |
 | AC-110 | AC-117 | #46 | 8 | 8 | 8 | `CONFIRMED` | PR #91 | [常設状態表示の検討結果と通知のみの構成](decisions/2026-08-04T194632_デスクトップとメニューバーへの常設状態表示の検討書.md) | 当初14件を予約。ユーザー最終決定により notification-only の8件で確定 |
-| AC-118 | AC-123 | #46 | 6 | 6 | 0 | `PENDING` | PR #98 | 未起草 | status schema 設計の6条件。PR #91 で一度解放した範囲を再予約 |
+| AC-118 | AC-123 | #46 | 6 | 6 | 6 | `CONFIRMED` | PR #98 | [pipeline status の永続 schema と更新規則](decisions/2026-08-05T102852_pipeline_statusの永続schemaと更新規則の設計.md) | PR #91 で一度解放した範囲を、同じ Issue #46 の schema 設計へ再予約 |
 
 AC-66〜69 と AC-70〜71 の重複は、この台帳の導入前に main へ入った legacy overlap である。
 これらの番号を新しい案件へ割り当てず、既存文書も本件では振り直さない。

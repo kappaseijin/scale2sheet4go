@@ -9,6 +9,7 @@ tags:
   - scale2sheet
 status: accepted
 timestamp: "2026-08-02T12:08:00+09:00"
+updated: "2026-08-05T11:04:44+09:00"
 ---
 
 # scale2sheet インストール設計
@@ -590,8 +591,11 @@ pipeline用readerは`missing | unstable | invalid | ready`を区別するresult�
 既存`syncMeasurements`の`Nothing was written.`経路は、fileが存在し、stableかつparse可能で、usable rowが0件だった場合だけ到達できる。
 Issue #37は「producer失敗と正当な未測定の完全識別」までは閉じず、file不在をfail-closedにする範囲だけをAC-30で検証する。
 
-`pipeline-status.json` は mode `0600` で atomic replacement する。
-period ごとに `last-started-at`、`last-completed-at`、`target-date`、`outcome`、`transferred-count`、`version` を保持する。
+`pipeline-status.json` は、[pipeline status の永続 schema と更新規則](decisions/2026-08-05T102852_pipeline_statusの永続schemaと更新規則の設計.md)を正本とする。
+構造は `schemaVersion: 1` から始め、観測値の意味を表す `definitionsVersion` と分離する。
+top level の `periods` に morning と evening の両方を置き、各 period の active run、最新 terminal、連続値、最後の `done`、最後の実転記、health、最新 notification diagnostic、最後の notification attempt を保持する。
+時系列の全 terminal history は status に持たせず、既存 log が担う。
+pipeline と将来の書込み command は共通 run lease の取得後に document 全体を read-modify-write し、mode `0600` の同一 directory の一時 fileから rename で atomic replacement する。
 認証情報、Spreadsheet ID、測定値は書かない。
 
 Issue #38のうち当方単独で閉じられる観測として、statusとtimestamp logへ対象日に一致したfile数、空行を除く読取対象行数、period window適用後のreading数を記録する。
