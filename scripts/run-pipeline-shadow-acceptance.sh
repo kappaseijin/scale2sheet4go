@@ -66,6 +66,55 @@ start_pipeline() {
   started_pid=$!
 }
 
+assert_status_shape() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import json
+import sys
+
+status_path, phase, expected_outcome = sys.argv[1:]
+with open(status_path, encoding="utf-8") as handle:
+    document = json.load(handle)
+
+periods = document["periods"]
+morning = periods["morning"]
+evening = periods["evening"]
+
+if phase == "running":
+    if not isinstance(morning.get("activeRun"), dict):
+        raise SystemExit("morning.activeRun is missing")
+    if "lastTerminal" in morning or "activeRun" in evening or "lastTerminal" in evening:
+        raise SystemExit("running status was recorded under the wrong terminal/period")
+    if "completedAt" in morning["activeRun"] or "counts" in morning["activeRun"]:
+        raise SystemExit("running status contains terminal fields")
+elif phase == "terminal":
+    terminal = morning.get("lastTerminal")
+    if not isinstance(terminal, dict) or terminal.get("outcome") != expected_outcome:
+        raise SystemExit("morning.lastTerminal outcome is incorrect")
+    if "activeRun" in morning or "activeRun" in evening or "lastTerminal" in evening:
+        raise SystemExit("terminal status was recorded under the wrong period")
+    if evening["consecutiveFailureCount"] != 0 or evening["consecutiveNoDataCount"] != 0:
+        raise SystemExit("opposite period counters changed")
+    if evening["health"] != {"state": "unobserved", "causes": []}:
+        raise SystemExit("opposite period health changed")
+else:
+    raise SystemExit(f"unknown status phase: {phase}")
+PY
+}
+
+assert_missing_input_status() {
+  python3 - "$1" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    terminal = json.load(handle)["periods"]["morning"]["lastTerminal"]
+if terminal.get("startedAt") is None or terminal.get("completedAt") is None:
+    raise SystemExit("negative terminal timestamps missing")
+if terminal.get("counts") != {"matchedFileCount": 0}:
+    raise SystemExit("negative terminal counts missing or incorrect")
+PY
+}
+
 start_pipeline "$home" "$output_dir" "$root/holder.log"
 holder_pid=$started_pid
 receipt="$home/.config/scale2sheet/active-run.json"
@@ -97,9 +146,7 @@ if ! [ -f "$receipt" ] \
 fi
 
 if ! [ -f "$status" ] \
-  || ! grep -Eq '"outcome": "running"' "$status" \
-  || ! grep -Eq '"startedAt":' "$status" \
-  || grep -Eq '"completedAt"|"(matchedFileCount|readLineCount|windowedReadingCount)"' "$status"; then
+  || ! assert_status_shape "$status" running unused; then
   echo 'pipeline holder did not write an incomplete running status before reading input' >&2
   exit 1
 fi
@@ -115,15 +162,21 @@ if ! grep -qx 'completed:no-data' "$root/reacquired.log"; then
   cat "$root/reacquired.log" >&2
   exit 1
 fi
-if ! grep -Eq '"outcome": "completed:no-data"' "$status"; then
+if ! assert_status_shape "$status" terminal completed:no-data; then
   echo 'completed pipeline did not persist completed:no-data status' >&2
   exit 1
 fi
-if ! grep -Eq '"startedAt":' "$status" \
-  || ! grep -Eq '"completedAt":' "$status" \
-  || ! grep -Eq '"matchedFileCount": 1' "$status" \
-  || ! grep -Eq '"readLineCount": 1' "$status" \
-  || ! grep -Eq '"windowedReadingCount": 0' "$status"; then
+if ! python3 - "$status" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    terminal = json.load(handle)["periods"]["morning"]["lastTerminal"]
+if terminal.get("startedAt") is None or terminal.get("completedAt") is None:
+    raise SystemExit("terminal timestamps missing")
+if terminal.get("counts") != {"matchedFileCount": 1, "readLineCount": 1, "windowedReadingCount": 0}:
+    raise SystemExit("terminal counts missing or incorrect")
+PY
+then
   echo 'completed pipeline status lacks timestamps or required counts' >&2
   cat "$status" >&2
   exit 1
@@ -168,10 +221,8 @@ negative_pid=""
 negative_pipeline_status="$negative_home/.config/scale2sheet/pipeline-status.json"
 if [ "$negative_status" -ne 1 ] \
   || ! grep -qx 'failed:input-missing' "$root/negative.log" \
-  || ! grep -Eq '"outcome": "failed:input-missing"' "$negative_pipeline_status" \
-  || ! grep -Eq '"startedAt":' "$negative_pipeline_status" \
-  || ! grep -Eq '"completedAt":' "$negative_pipeline_status" \
-  || ! grep -Eq '"matchedFileCount": 0' "$negative_pipeline_status" \
+  || ! assert_status_shape "$negative_pipeline_status" terminal failed:input-missing \
+  || ! assert_missing_input_status "$negative_pipeline_status" \
   || grep -Eq '"(readLineCount|windowedReadingCount)"' "$negative_pipeline_status" \
   || [ "$(stat -f '%Lp' "$negative_pipeline_status")" != '600' ]; then
   echo 'missing-input negative control did not produce bounded exit 1 and failed:input-missing status' >&2
