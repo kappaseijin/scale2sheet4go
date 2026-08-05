@@ -46,7 +46,9 @@ if ! run_exporter; then
   exit 1
 fi
 
-# Apple Health は HealthKit 署名後に有効化する（scale_exporter/APPLE_HEALTH_SETUP.md 参照）
+# apple-health は iPhone のショートカットが出力するため、exporter からは呼ばない。
+# これは障害や戻し忘れではなく、2026-08-03 のユーザー決定による意図的な設定である
+# （docs/decisions/2026-08-02T120800_scale_exporterとの責任境界の設計監査.md 参照）。
 # "$exporter" --source apple-health
 
 cd "$scale2sheet_dir"
