@@ -11,6 +11,7 @@
     "build:node": "tsc -p tsconfig.json",
     "build:bun": "bun build ./src/index.ts --compile --outfile dist/scale2sheet",
     "acceptance:pipeline-shadow": "bash scripts/run-pipeline-shadow-acceptance.sh",
+    "acceptance:binary-drift": "bash scripts/run-binary-source-drift-acceptance.sh",
     "acceptance:runtime-safety": "bash scripts/run-runtime-safety-acceptance.sh",
     "preflight:ac-ledger": "python3 scripts/check-ac-ledger.py",
     "dev": "tsx src/index.ts",
