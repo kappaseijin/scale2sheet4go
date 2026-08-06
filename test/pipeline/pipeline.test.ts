@@ -25,6 +25,7 @@ describe("runPipeline", () => {
         },
         transfer: async () => {
           transfers += 1;
+          return { state: "written" as const, transferredCellCount: 1 };
         },
         statusWriter: {
           write: async (status) => {
@@ -69,6 +70,7 @@ describe("runPipeline", () => {
         }),
         transfer: async () => {
           transfers += 1;
+          return { state: "written" as const, transferredCellCount: 1 };
         },
       }),
     ).resolves.toEqual({ exitCode: 0, outcome: "completed:no-data" });
@@ -105,6 +107,7 @@ describe("runPipeline", () => {
       }),
       transfer: async () => {
         transfers += 1;
+        return { state: "written" as const, transferredCellCount: 1 };
       },
       statusWriter: {
         write: async (status: Record<string, unknown>) => {
@@ -163,7 +166,7 @@ describe("runPipeline", () => {
           anomalyCandidates,
         );
       },
-      transfer: async () => {},
+      transfer: async () => ({ state: "written" as const, transferredCellCount: 1 }),
       statusWriter: {
         write: async (status: Record<string, unknown>) => {
           statuses.push(status);
@@ -203,7 +206,7 @@ describe("runPipeline", () => {
         readLineCount: 1,
         readings: [],
       }),
-      transfer: async () => {},
+      transfer: async () => ({ state: "written" as const, transferredCellCount: 1 }),
       statusWriter: {
         write: async (status: Record<string, unknown>) => {
           statuses.push(status);
@@ -242,6 +245,7 @@ describe("runPipeline", () => {
         }),
         transfer: async (readings) => {
           transferred = readings;
+          return { state: "written" as const, transferredCellCount: 1 };
         },
       }),
     ).resolves.toEqual({ exitCode: 0, outcome: "completed:transferred" });
@@ -253,7 +257,7 @@ describe("runPipeline", () => {
     const apple: MeasurementReading = { kind: "weight", value: 68.2, unit: "kg", measuredAt: "2026-08-03T06:30:00+09:00", source: "apple_health" };
     await runPipeline({ period: "morning", timeZone: "Asia/Tokyo", referenceTime,
       readInput: async () => ({ matchedFileCount: 1, readLineCount: 2, readings: [apple, { ...apple, value: 68.19999694824219, source: "google_fit" }] }),
-      transfer: async (readings) => { transferred = readings; },
+      transfer: async (readings) => { transferred = readings; return { state: "written" as const, transferredCellCount: 1 }; },
     });
     expect(transferred).toEqual([apple]);
   });
@@ -273,7 +277,7 @@ describe("runPipeline", () => {
         readLineCount: 3,
         readings: [apple, { ...apple }, google],
       }),
-      transfer: async () => {},
+      transfer: async () => ({ state: "written" as const, transferredCellCount: 1 }),
       statusWriter: {
         write: async (status) => {
           statuses.push(status as unknown as { counts: Record<string, number> });
@@ -287,5 +291,111 @@ describe("runPipeline", () => {
       windowedReadingCount: 2,
       uniqueMeasurementCount: 1,
     });
+  });
+
+  it("does not attempt a transfer when the window has other kinds but no weight (V-3)", async () => {
+    let transfers = 0;
+    const temperature: MeasurementReading = {
+      kind: "body_temperature",
+      value: 36.5,
+      unit: "celsius",
+      measuredAt: "2026-08-03T06:30:00+09:00",
+      source: "google_fit",
+    };
+
+    await expect(
+      runPipeline({
+        period: "morning",
+        timeZone: "Asia/Tokyo",
+        referenceTime,
+        readInput: async () => ({
+          matchedFileCount: 1,
+          readLineCount: 1,
+          readings: [temperature],
+        }),
+        transfer: async () => {
+          transfers += 1;
+          return { state: "written" as const, transferredCellCount: 1 };
+        },
+      }),
+    ).resolves.toEqual({ exitCode: 0, outcome: "completed:no-data" });
+    expect(transfers).toBe(0);
+  });
+
+  it.each([
+    { state: "not-written" as const, transferredCellCount: 0, label: "not-written with zero cells" },
+    { state: "written" as const, transferredCellCount: 0, label: "written with zero cells" },
+    { state: "unknown" as const, transferredCellCount: undefined, label: "unknown cell count" },
+  ])("treats $label as a transfer failure (V-3)", async ({ state, transferredCellCount }) => {
+    const weight: MeasurementReading = {
+      kind: "weight",
+      value: 68.4,
+      unit: "kg",
+      measuredAt: "2026-08-03T06:30:00+09:00",
+      source: "google_fit",
+    };
+    let notified = 0;
+
+    await expect(
+      runPipeline({
+        period: "morning",
+        timeZone: "Asia/Tokyo",
+        referenceTime,
+        readInput: async () => ({
+          matchedFileCount: 1,
+          readLineCount: 1,
+          readings: [weight],
+        }),
+        transfer: async () => ({ state, transferredCellCount }),
+        notifier: {
+          notify: async () => {
+            notified += 1;
+          },
+        },
+      }),
+    ).resolves.toEqual({ exitCode: 1, outcome: "failed:transfer" });
+    expect(notified).toBe(1);
+  });
+
+  it("matches the 2026-08-04 evening pair: window-out weight is no-data, a real transfer is completed (AC-122)", async () => {
+    const outsideEveningWindow: MeasurementReading = {
+      kind: "weight",
+      value: 70.5,
+      unit: "kg",
+      measuredAt: "2026-08-04T11:16:00+09:00",
+      source: "apple_health",
+    };
+    const noDataResult = await runPipeline({
+      period: "evening",
+      timeZone: "Asia/Tokyo",
+      referenceTime: new Date("2026-08-04T12:22:00+09:00"),
+      readInput: async () => ({
+        matchedFileCount: 1,
+        readLineCount: 1,
+        readings: [outsideEveningWindow],
+      }),
+      transfer: async () => ({ state: "written" as const, transferredCellCount: 1 }),
+    });
+    expect(noDataResult).toEqual({ exitCode: 0, outcome: "completed:no-data" });
+
+    const insideEveningWindow: MeasurementReading = {
+      kind: "weight",
+      value: 70.4,
+      unit: "kg",
+      measuredAt: "2026-08-04T21:31:00+09:00",
+      source: "apple_health",
+    };
+    const transferredResult = await runPipeline({
+      period: "evening",
+      timeZone: "Asia/Tokyo",
+      referenceTime: new Date("2026-08-04T22:03:00+09:00"),
+      readInput: async () => ({
+        matchedFileCount: 1,
+        readLineCount: 1,
+        readings: [insideEveningWindow],
+      }),
+      transfer: async () => ({ state: "written" as const, transferredCellCount: 5 }),
+    });
+    expect(transferredResult).toEqual({ exitCode: 0, outcome: "completed:transferred" });
   });
 });

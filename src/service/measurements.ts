@@ -13,6 +13,7 @@ import type {
   MeasurementReading,
   MeasurementSource,
   SpreadsheetRow,
+  TransferOutcome,
 } from "../domain/index.js";
 import {
   measurementPeriodLabels,
@@ -83,12 +84,13 @@ export async function syncMeasurements(
     return undefined;
   }
 
-  return transferLatestMeasurementSet({
+  const { row } = await transferLatestMeasurementSet({
     latestSet,
     sheetsConfig: options.sheetsConfig ?? requireGoogleSheetsConfig(options.config),
     timeZone: options.config.timeZone,
     logger,
   });
+  return row;
 }
 
 export interface TransferLatestMeasurementSetOptions {
@@ -98,23 +100,29 @@ export interface TransferLatestMeasurementSetOptions {
   readonly logger?: Logger;
 }
 
+export interface TransferLatestMeasurementSetResult {
+  /** Present only when the sheet reported at least one updated cell. */
+  readonly row?: SpreadsheetRow;
+  readonly outcome: TransferOutcome;
+}
+
 /** Transfers a prepared set without reading, windowing, or no-data classification. */
 export async function transferLatestMeasurementSet({
   latestSet,
   sheetsConfig,
   timeZone,
   logger = console,
-}: TransferLatestMeasurementSetOptions): Promise<SpreadsheetRow | undefined> {
-  const row = toSpreadsheetRow(latestSet, timeZone);
-
-  const updated = await updateSpreadsheetMeasurements({
+}: TransferLatestMeasurementSetOptions): Promise<TransferLatestMeasurementSetResult> {
+  const outcome = await updateSpreadsheetMeasurements({
     config: sheetsConfig,
     latestSet,
     timeZone,
     logger,
   });
 
-  return updated ? row : undefined;
+  return outcome.state === "written" && (outcome.transferredCellCount ?? 0) >= 1
+    ? { row: toSpreadsheetRow(latestSet, timeZone), outcome }
+    : { outcome };
 }
 
 export interface FilterReadingsByPeriodWindowOptions {

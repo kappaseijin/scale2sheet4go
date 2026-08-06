@@ -6,6 +6,7 @@ import { createGoogleSheetsAuth } from "../auth/index.js";
 import type {
   LatestMeasurementSet,
   MeasurementPeriod,
+  TransferOutcome,
 } from "../domain/index.js";
 
 interface Logger {
@@ -40,7 +41,7 @@ export async function updateSpreadsheetMeasurements({
   latestSet,
   timeZone,
   logger = console,
-}: UpdateSpreadsheetMeasurementsOptions): Promise<boolean> {
+}: UpdateSpreadsheetMeasurementsOptions): Promise<TransferOutcome> {
   const auth = await createGoogleSheetsAuth(config);
   const sheets = google.sheets({ version: "v4", auth });
   const sheetName = quoteSheetName(config.sheetName);
@@ -69,7 +70,7 @@ export async function updateSpreadsheetMeasurements({
     logger.error(
       `No row found in ${config.sheetName} for ${targetDate.toFormat("yyyy-MM-dd")}. Nothing was written.`,
     );
-    return false;
+    return { state: "not-written", transferredCellCount: 0 };
   }
 
   const data = buildMeasurementUpdateData({
@@ -81,21 +82,28 @@ export async function updateSpreadsheetMeasurements({
 
   if (data.length === 0) {
     logger.log("No defined measurement values matched sheet columns. Nothing was written.");
-    return false;
+    return { state: "not-written", transferredCellCount: 0 };
   }
 
-  await sheets.spreadsheets.values.batchUpdate({
+  const batchUpdateResponse = await sheets.spreadsheets.values.batchUpdate({
     spreadsheetId: config.spreadsheetId,
     requestBody: {
       valueInputOption: "USER_ENTERED",
       data,
     },
   });
+  const transferredCellCount = batchUpdateResponse.data.totalUpdatedCells ?? undefined;
 
   logger.log(
     `Updated ${data.length} ${latestSet.period} measurement cell(s) in row ${rowNumber}.`,
   );
-  return true;
+  if (transferredCellCount === undefined) {
+    return { state: "unknown" };
+  }
+  /** Design §7.2's table pairs `written` with a positive count; a confirmed zero is `not-written`. */
+  return transferredCellCount >= 1
+    ? { state: "written", transferredCellCount }
+    : { state: "not-written", transferredCellCount };
 }
 
 export function buildSheetColumnMapping(

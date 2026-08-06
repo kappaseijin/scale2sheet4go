@@ -13,6 +13,19 @@ export interface PipelineCounts {
   readonly uniqueMeasurementCount?: number;
 }
 
+/** V-3 (design §7.1): what the pipeline observed about this run's transfer attempt. */
+export type V3TransferState = "not-attempted" | "written" | "not-written" | "failed" | "unknown";
+
+export interface V3Observation {
+  readonly input: "ready" | "unavailable";
+  readonly windowedWeightCount?: number;
+  readonly transfer: {
+    readonly state: V3TransferState;
+    readonly requestedCellCount?: number;
+    readonly transferredCellCount?: number;
+  };
+}
+
 export interface PipelineStatus {
   readonly period: PipelinePeriod;
   readonly outcome: string;
@@ -22,6 +35,7 @@ export interface PipelineStatus {
   readonly counts: PipelineCounts;
   readonly diagnostic?: string;
   readonly inputAnomalyCandidates?: readonly InputAnomalyCandidate[];
+  readonly v3?: V3Observation;
 }
 
 export type PersistedPipelineOutcome =
@@ -40,9 +54,11 @@ export interface AtomicPipelineStatusWriterOptions {
   readonly renameFile?: typeof rename;
 }
 
+export type HealthCause = "terminal-failure" | "v3-not-transferred" | "v1-stale" | "consecutive-no-data";
+
 interface HealthStatusV1 {
   readonly state: "unobserved" | "normal" | "alert";
-  readonly causes: readonly string[];
+  readonly causes: readonly HealthCause[];
 }
 
 interface TerminalObservationV1 {
@@ -54,6 +70,7 @@ interface TerminalObservationV1 {
   readonly counts: PipelineCounts;
   readonly diagnostic?: string;
   readonly inputAnomalyCandidates?: readonly InputAnomalyCandidate[];
+  readonly v3?: V3Observation;
 }
 
 interface PeriodStatusV1 {
@@ -95,9 +112,9 @@ export type NotificationAttemptV1 = {
 /** Registered definition versions. A build writes exactly one of them. */
 export type DefinitionsVersion = 1 | 2 | 3;
 
-/** #63 introduced cross-path identity and `uniqueMeasurementCount` (design §5.2). */
-export const CURRENT_DEFINITIONS_VERSION = 2 satisfies DefinitionsVersion;
-const CURRENT_DEFINITIONS_LABEL = "2026-08-04/post-63";
+/** The #46 V-3 transfer observation and health evaluator apply from here (design §5.2). */
+export const CURRENT_DEFINITIONS_VERSION = 3 satisfies DefinitionsVersion;
+const CURRENT_DEFINITIONS_LABEL = "2026-08-05/v3-transfer-observation";
 
 interface PipelineStatusDocumentV1 {
   readonly schemaVersion: 1;
@@ -243,16 +260,25 @@ function recordTerminal(
     throw new PipelineStatusSchemaError("terminal pipeline status requires completedAt");
   }
   const period = document.periods[status.period];
+  const consecutiveNoDataCount = outcome === "completed:no-data"
+    ? period.consecutiveNoDataCount + 1
+    : outcome === "completed:transferred"
+      ? 0
+      : period.consecutiveNoDataCount;
+  const lastDoneAt = outcome.startsWith("completed:") ? completedAt : period.lastDoneAt;
   const next: PeriodStatusV1 = {
     ...period,
     ...(isFailure(outcome)
       ? { consecutiveFailureCount: period.consecutiveFailureCount + 1 }
       : { consecutiveFailureCount: 0 }),
-    ...(outcome === "completed:no-data"
-      ? { consecutiveNoDataCount: period.consecutiveNoDataCount + 1 }
-      : outcome === "completed:transferred"
-      ? { consecutiveNoDataCount: 0 }
-      : {}),
+    consecutiveNoDataCount,
+    health: evaluateHealth({
+      outcome,
+      v3: status.v3,
+      consecutiveNoDataCount,
+      lastDoneAt,
+      observedAt: updatedAt,
+    }),
     lastTerminal: {
       runId,
       outcome,
@@ -264,12 +290,38 @@ function recordTerminal(
       ...(status.inputAnomalyCandidates
         ? { inputAnomalyCandidates: status.inputAnomalyCandidates }
         : {}),
+      ...(status.v3 ? { v3: status.v3 } : {}),
     },
-    ...(outcome.startsWith("completed:") ? { lastDoneAt: completedAt } : {}),
+    ...(lastDoneAt !== period.lastDoneAt ? { lastDoneAt } : {}),
     ...(outcome === "completed:transferred" ? { lastTransferredAt: completedAt } : {}),
   };
   delete (next as { activeRun?: unknown }).activeRun;
   return replacePeriod(document, status.period, next, updatedAt);
+}
+
+/** Design §8.2: health is re-evaluated from this run's terminal, not carried forward. */
+function evaluateHealth(options: {
+  readonly outcome: PersistedPipelineOutcome;
+  readonly v3: V3Observation | undefined;
+  readonly consecutiveNoDataCount: number;
+  readonly lastDoneAt: string | undefined;
+  readonly observedAt: string;
+}): HealthStatusV1 {
+  const causes: HealthCause[] = [];
+  if (isFailure(options.outcome)) {
+    causes.push("terminal-failure");
+  }
+  if ((options.v3?.windowedWeightCount ?? 0) >= 1 && options.v3?.transfer.state !== "written") {
+    causes.push("v3-not-transferred");
+  }
+  if (options.lastDoneAt !== undefined &&
+    Date.parse(options.observedAt) - Date.parse(options.lastDoneAt) >= 2 * 24 * 60 * 60 * 1000) {
+    causes.push("v1-stale");
+  }
+  if (options.consecutiveNoDataCount >= 4) {
+    causes.push("consecutive-no-data");
+  }
+  return causes.length > 0 ? { state: "alert", causes } : { state: "normal", causes: [] };
 }
 
 function replacePeriod(
@@ -312,7 +364,7 @@ function parseDocument(value: unknown, observedAt: string): PipelineStatusDocume
   if (value.schemaVersion !== 1) {
     throw new PipelineStatusSchemaError(`unsupported status schema version ${String(value.schemaVersion ?? 0)}`);
   }
-  if (!isDefinitionsVersion(value.definitionsVersion)) {
+  if (!isWellFormedDefinitionsVersion(value.definitionsVersion)) {
     throw new PipelineStatusSchemaError(
       `unsupported status definitions version ${String(value.definitionsVersion ?? 0)}`,
     );
@@ -336,8 +388,13 @@ function parseDocument(value: unknown, observedAt: string): PipelineStatusDocume
   return { ...value, periods: { morning, evening } } as unknown as PipelineStatusDocumentV1;
 }
 
-function isDefinitionsVersion(value: unknown): value is DefinitionsVersion {
-  return value === 1 || value === 2 || value === 3;
+/**
+ * Any positive integer is a well-formed version number, known or not: design
+ * §5.2 treats an unrecognized higher value as a newer binary's write, not
+ * corruption, so the two must stay distinguishable at the parse boundary.
+ */
+function isWellFormedDefinitionsVersion(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -381,18 +438,13 @@ function evaluateRecoveredHealth(
   terminal: TerminalObservationV1,
   observedAt: string,
 ): HealthStatusV1 {
-  const causes: string[] = [];
-  if (isFailure(terminal.outcome)) {
-    causes.push("terminal-failure");
-  }
-  if ((period.consecutiveNoDataCount as number) >= 4) {
-    causes.push("consecutive-no-data");
-  }
-  if (typeof period.lastDoneAt === "string" &&
-    Date.parse(observedAt) - Date.parse(period.lastDoneAt) >= 2 * 24 * 60 * 60 * 1000) {
-    causes.push("v1-stale");
-  }
-  return causes.length > 0 ? { state: "alert", causes } : { state: "normal", causes: [] };
+  return evaluateHealth({
+    outcome: terminal.outcome,
+    v3: terminal.v3,
+    consecutiveNoDataCount: period.consecutiveNoDataCount as number,
+    lastDoneAt: typeof period.lastDoneAt === "string" ? period.lastDoneAt : undefined,
+    observedAt,
+  });
 }
 
 function hasValidCounters(value: unknown): value is Record<string, unknown> {

@@ -85,11 +85,12 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
               period,
               capturedAt: referenceTime.toISOString(),
             });
-            await transferLatestMeasurementSet({
+            const { outcome } = await transferLatestMeasurementSet({
               latestSet,
               sheetsConfig: requireGoogleSheetsConfig(config),
               timeZone: pipelineSettings.timeZone,
             });
+            return outcome;
           },
         });
         console.log(result.outcome);

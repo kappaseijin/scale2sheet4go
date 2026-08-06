@@ -47,6 +47,17 @@ export interface MeasurementReading {
  * `windowedReadingCount` answers #54 (their published record count) and
  * `uniqueMeasurementCount` answers #38 and the Slice 7 gate (AC-59).
  */
+/**
+ * V-3 (design §7.1): the pipeline decides the transfer outcome from what the
+ * sheet actually reports, not from "the call didn't throw". `written` means
+ * the adapter got a success response; whether cells actually changed is a
+ * separate question answered by `transferredCellCount`.
+ */
+export interface TransferOutcome {
+  readonly state: "written" | "not-written" | "unknown";
+  readonly transferredCellCount?: number;
+}
+
 export interface MeasurementCounts {
   /** Published records inside the window, after exact same-path deduplication. */
   readonly windowedReadingCount: number;

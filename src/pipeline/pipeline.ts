@@ -1,4 +1,4 @@
-import type { MeasurementPeriod, MeasurementReading } from "../domain/index.js";
+import type { MeasurementPeriod, MeasurementReading, TransferOutcome } from "../domain/index.js";
 import {
   countMeasurements,
   deduplicateCrossSourceReadings,
@@ -10,7 +10,7 @@ import {
   InputSnapshotError,
   type StableInputSnapshot,
 } from "./input-snapshot.js";
-import type { PipelineStatusWriter } from "./status.js";
+import type { PipelineStatusWriter, V3Observation } from "./status.js";
 import type { InputAnomalyCandidate } from "../sources/scale-exporter/index.js";
 
 export type PipelineOutcome =
@@ -32,7 +32,7 @@ export interface RunPipelineOptions {
   readonly timeZone: string;
   readonly referenceTime: Date;
   readonly readInput: () => Promise<StableInputSnapshot>;
-  readonly transfer: (readings: readonly MeasurementReading[]) => Promise<void>;
+  readonly transfer: (readings: readonly MeasurementReading[]) => Promise<TransferOutcome>;
   readonly notifier?: { notify(stage: "input" | "transfer", period: MeasurementPeriod): Promise<void> };
   readonly logger?: Pick<Console, "log">;
   readonly statusWriter?: PipelineStatusWriter;
@@ -47,6 +47,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     counts: Parameters<PipelineStatusWriter["write"]>[0]["counts"],
     diagnostic?: string,
     inputAnomalyCandidates: readonly InputAnomalyCandidate[] = [],
+    v3?: V3Observation,
   ) => {
     const completedAt = outcome === "running"
       ? undefined
@@ -62,6 +63,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
       ...(inputAnomalyCandidates.length > 0
         ? { inputAnomalyCandidates }
         : {}),
+      ...(v3 ? { v3 } : {}),
     });
     if (completedAt && options.targetDate && inputAnomalyCandidates.length > 0) {
       (options.logger ?? console).log(JSON.stringify({
@@ -84,6 +86,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
         error.counts,
         error.diagnostic,
         error.inputAnomalyCandidates,
+        { input: "unavailable", transfer: { state: "not-attempted" } },
       );
       return { exitCode: 1, outcome: `failed:${error.outcome}` };
     }
@@ -104,13 +107,22 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     readLineCount: input.readLineCount,
     ...countMeasurements(windowedReadings),
   };
-  if (deduplicatedReadings.length === 0) {
-    await writeStatus("completed:no-data", counts, undefined, input.inputAnomalyCandidates);
+  /** V-3 (design §7.2): the decision to transfer uses weight presence only, not any reading. */
+  const windowedWeightCount = deduplicatedReadings.filter((reading) => reading.kind === "weight").length;
+  if (windowedWeightCount === 0) {
+    await writeStatus(
+      "completed:no-data",
+      counts,
+      undefined,
+      input.inputAnomalyCandidates,
+      { input: "ready", windowedWeightCount: 0, transfer: { state: "not-attempted" } },
+    );
     return { exitCode: 0, outcome: "completed:no-data" };
   }
 
+  let transferOutcome: TransferOutcome;
   try {
-    await options.transfer(deduplicatedReadings);
+    transferOutcome = await options.transfer(deduplicatedReadings);
   } catch (error) {
     await options.notifier?.notify("transfer", options.period);
     await writeStatus(
@@ -118,9 +130,35 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
       counts,
       error instanceof Error ? error.message : String(error),
       input.inputAnomalyCandidates,
+      { input: "ready", windowedWeightCount, transfer: { state: "failed" } },
     );
     return { exitCode: 1, outcome: "failed:transfer" };
   }
-  await writeStatus("completed:transferred", counts, undefined, input.inputAnomalyCandidates);
+
+  const v3: V3Observation = {
+    input: "ready",
+    windowedWeightCount,
+    transfer: {
+      state: transferOutcome.state,
+      ...(transferOutcome.transferredCellCount !== undefined
+        ? { transferredCellCount: transferOutcome.transferredCellCount }
+        : {}),
+    },
+  };
+
+  /** V-3 (design §7.2): a response with no confirmed cell updates is a failure, not a success. */
+  if (transferOutcome.state !== "written" || (transferOutcome.transferredCellCount ?? 0) < 1) {
+    await options.notifier?.notify("transfer", options.period);
+    await writeStatus(
+      "failed:transfer",
+      counts,
+      `transfer reported ${transferOutcome.state} with ${transferOutcome.transferredCellCount ?? "unknown"} cell(s) updated`,
+      input.inputAnomalyCandidates,
+      v3,
+    );
+    return { exitCode: 1, outcome: "failed:transfer" };
+  }
+
+  await writeStatus("completed:transferred", counts, undefined, input.inputAnomalyCandidates, v3);
   return { exitCode: 0, outcome: "completed:transferred" };
 }

@@ -58,8 +58,8 @@ describe("AtomicPipelineStatusWriter", () => {
     let document = JSON.parse(await readFile(statusPath, "utf8"));
     expect(document).toMatchObject({
       schemaVersion: 1,
-      definitionsVersion: 2,
-      definitionsLabel: "2026-08-04/post-63",
+      definitionsVersion: 3,
+      definitionsLabel: "2026-08-05/v3-transfer-observation",
       periods: {
         morning: {
           consecutiveFailureCount: 1,
@@ -98,8 +98,8 @@ describe("AtomicPipelineStatusWriter", () => {
     const statusPath = path.join(directory, "pipeline-status.json");
     const invalid = JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 2,
-      definitionsLabel: "2026-08-04/post-63",
+      definitionsVersion: 3,
+      definitionsLabel: "2026-08-05/v3-transfer-observation",
       updatedAt: "2026-08-05T00:00:00.000Z",
       periods: {
         morning: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: "invalid" },
@@ -125,7 +125,7 @@ describe("AtomicPipelineStatusWriter", () => {
     const statusPath = path.join(directory, "pipeline-status.json");
     await writeFile(statusPath, JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 2,
+      definitionsVersion: 3,
       definitionsLabel: "human label is not used for machine acceptance",
       updatedAt: "2026-08-05T00:01:00.000Z",
       periods: {
@@ -179,8 +179,8 @@ describe("AtomicPipelineStatusWriter", () => {
     const statusPath = path.join(directory, "pipeline-status.json");
     await writeFile(statusPath, JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 2,
-      definitionsLabel: "2026-08-04/post-63",
+      definitionsVersion: 3,
+      definitionsLabel: "2026-08-05/v3-transfer-observation",
       updatedAt: "2026-08-05T00:01:00.000Z",
       periods: {
         morning: {
@@ -216,13 +216,13 @@ describe("AtomicPipelineStatusWriter", () => {
     temporaryDirectories.push(directory);
     const writer = new AtomicPipelineStatusWriter(path.join(directory, "pipeline-status.json"), "run-morning");
     for (const schemaVersion of [0, 2]) {
-      const source = JSON.stringify({ schemaVersion, definitionsVersion: 2, definitionsLabel: "label", periods: {} });
+      const source = JSON.stringify({ schemaVersion, definitionsVersion: 3, definitionsLabel: "label", periods: {} });
       await writeFile(path.join(directory, "pipeline-status.json"), source, "utf8");
       await expect(writer.write({ period: "morning", outcome: "running", startedAt: "2026-08-05T00:00:00.000Z", targetDate: "2026-08-05", counts: {} }))
         .rejects.toThrow("unsupported status schema version");
       await expect(readFile(path.join(directory, "pipeline-status.json"), "utf8")).resolves.toBe(source);
     }
-    for (const definitionsVersion of [0, 4]) {
+    for (const definitionsVersion of [0, -1, 1.5]) {
       const source = JSON.stringify({ schemaVersion: 1, definitionsVersion, definitionsLabel: "label", periods: {} });
       await writeFile(path.join(directory, "pipeline-status.json"), source, "utf8");
       await expect(writer.write({ period: "morning", outcome: "running", startedAt: "2026-08-05T00:00:00.000Z", targetDate: "2026-08-05", counts: {} }))
@@ -269,11 +269,11 @@ describe("AtomicPipelineStatusWriter", () => {
     });
 
     const document = JSON.parse(await readFile(statusPath, "utf8"));
-    expect(document.definitionsVersion).toBe(2);
-    expect(document.definitionsLabel).toBe("2026-08-04/post-63");
+    expect(document.definitionsVersion).toBe(3);
+    expect(document.definitionsLabel).toBe("2026-08-05/v3-transfer-observation");
     expect(document.lastDefinitionsTransition).toEqual({
       fromVersion: 1,
-      toVersion: 2,
+      toVersion: 3,
       changedAt: "2026-08-06T00:00:00.000Z",
     });
     expect(document.periods.morning).toMatchObject({
@@ -292,8 +292,8 @@ describe("AtomicPipelineStatusWriter", () => {
     const statusPath = path.join(directory, "pipeline-status.json");
     const source = JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 3,
-      definitionsLabel: "2026-08-05/v3-transfer-observation",
+      definitionsVersion: 4,
+      definitionsLabel: "a future build's definitions",
       updatedAt: "2026-08-05T00:01:00.000Z",
       periods: {
         morning: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: { state: "unobserved", causes: [] } },
@@ -318,7 +318,7 @@ describe("AtomicPipelineStatusWriter", () => {
     const statusPath = path.join(directory, "pipeline-status.json");
     const source = JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 2,
+      definitionsVersion: 3,
       definitionsLabel: "label",
       updatedAt: "2026-08-05T00:01:00.000Z",
       periods: {
@@ -466,5 +466,119 @@ describe("AtomicPipelineStatusWriter", () => {
     const document = JSON.parse(await readFile(statusPath, "utf8"));
     expect(document.periods.morning.lastTerminal.outcome).toBe("completed:no-data");
     expect(document.periods.evening.lastTerminal).toBeUndefined();
+  });
+
+  describe("health evaluator (design §8.2)", () => {
+    it("flags terminal-failure and v3-not-transferred together when a weight write is refused", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+
+      await new AtomicPipelineStatusWriter(statusPath, "run-morning").write({
+        period: "morning",
+        outcome: "failed:transfer",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: { windowedReadingCount: 1 },
+        diagnostic: "no cells updated",
+        v3: { input: "ready", windowedWeightCount: 1, transfer: { state: "not-written", transferredCellCount: 0 } },
+      });
+
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.health).toEqual({
+        state: "alert",
+        causes: expect.arrayContaining(["terminal-failure", "v3-not-transferred"]),
+      });
+      expect(document.periods.morning.health.causes).toHaveLength(2);
+    });
+
+    it("does not flag v3-not-transferred when the window has no weight at all", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      for (let index = 0; index < 4; index += 1) {
+        await writer.write({
+          period: "morning",
+          outcome: "completed:no-data",
+          startedAt: `2026-08-0${index + 1}T00:00:00.000Z`,
+          completedAt: `2026-08-0${index + 1}T00:01:00.000Z`,
+          targetDate: `2026-08-0${index + 1}`,
+          counts: { windowedReadingCount: 0 },
+          v3: { input: "ready", windowedWeightCount: 0, transfer: { state: "not-attempted" } },
+        });
+      }
+
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.health).toEqual({
+        state: "alert",
+        causes: ["consecutive-no-data"],
+      });
+    });
+
+    it("returns to normal once a weight write is confirmed with updated cells", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      await writer.write({
+        period: "morning",
+        outcome: "failed:transfer",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: { windowedReadingCount: 1 },
+        v3: { input: "ready", windowedWeightCount: 1, transfer: { state: "unknown" } },
+      });
+      await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-06T00:00:00.000Z",
+        completedAt: "2026-08-06T00:01:00.000Z",
+        targetDate: "2026-08-06",
+        counts: { windowedReadingCount: 1 },
+        v3: { input: "ready", windowedWeightCount: 1, transfer: { state: "written", transferredCellCount: 5 } },
+      });
+
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.health).toEqual({ state: "normal", causes: [] });
+    });
+
+    it("flags v1-stale on a failing run that leaves lastDoneAt untouched", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-01T00:00:00.000Z",
+        completedAt: "2026-08-01T00:01:00.000Z",
+        targetDate: "2026-08-01",
+        counts: { windowedReadingCount: 1 },
+        v3: { input: "ready", windowedWeightCount: 1, transfer: { state: "written", transferredCellCount: 1 } },
+      });
+      await writer.write({
+        period: "morning",
+        outcome: "failed:input-missing",
+        startedAt: "2026-08-04T00:00:00.000Z",
+        completedAt: "2026-08-04T00:01:00.000Z",
+        targetDate: "2026-08-04",
+        counts: {},
+        v3: { input: "unavailable", transfer: { state: "not-attempted" } },
+      });
+
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.lastDoneAt).toBe("2026-08-01T00:01:00.000Z");
+      expect(document.periods.morning.health).toEqual({
+        state: "alert",
+        causes: expect.arrayContaining(["terminal-failure", "v1-stale"]),
+      });
+      expect(document.periods.morning.health.causes).toHaveLength(2);
+    });
   });
 });
