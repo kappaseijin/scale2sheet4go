@@ -56,6 +56,17 @@ describe("run lease", () => {
     expect(existsSync(holder.lockPath)).toBe(true);
   });
 
+  it("blocks the other period while a pipeline lease is held", async () => {
+    const configDir = await temporaryConfigDirectory();
+    const holder = await acquireRunLease({ configDir, kind: "pipeline", period: "morning" });
+
+    await expect(
+      acquireRunLease({ configDir, kind: "pipeline", period: "evening" }),
+    ).rejects.toThrow(RunLeaseConflictError);
+
+    await holder.release();
+  });
+
   it("delivers a stop request only to the matching owner", async () => {
     const configDir = await temporaryConfigDirectory();
     const holder = await acquireRunLease({ configDir, stopPollMilliseconds: 5 });

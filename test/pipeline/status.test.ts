@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AtomicPipelineStatusWriter } from "../../src/pipeline/status.js";
 
@@ -274,5 +274,116 @@ describe("AtomicPipelineStatusWriter", () => {
       activeRun: { runId: "run-morning", targetDate: "2026-08-06" },
       lastTerminal: { outcome: "completed:transferred", targetDate: "2026-08-05" },
     });
+  });
+
+  it("exposes only complete documents while repeatedly replacing the status file", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+    const completeDocuments = new Set<string>();
+
+    for (let index = 0; index < 40; index += 1) {
+      await writer.write({
+        period: "morning",
+        outcome: index % 2 === 0 ? "completed:no-data" : "completed:transferred",
+        startedAt: `2026-08-05T00:${String(index).padStart(2, "0")}:00.000Z`,
+        completedAt: `2026-08-05T00:${String(index).padStart(2, "0")}:01.000Z`,
+        targetDate: "2026-08-05",
+        counts: { matchedFileCount: index, readLineCount: index + 1, windowedReadingCount: index + 2 },
+      });
+      const document = await readFile(statusPath, "utf8");
+      JSON.parse(document);
+      completeDocuments.add(document);
+      expect((await stat(statusPath)).mode & 0o777).toBe(0o600);
+      expect(await readdir(directory)).not.toContain("pipeline-status.json.temporary");
+    }
+
+    expect(completeDocuments.size).toBe(40);
+    expect(JSON.parse(await readFile(statusPath, "utf8"))).toMatchObject({
+      periods: { morning: { lastTerminal: { outcome: "completed:transferred" } } },
+    });
+  });
+
+  it("commits the prepared document with rename instead of direct status writes", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    const renameFile = vi.fn(async (temporaryPath: string, targetPath: string) => {
+      await import("node:fs/promises").then(({ rename }) => rename(temporaryPath, targetPath));
+    });
+    const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning", { renameFile });
+
+    await writer.write({
+      period: "morning",
+      outcome: "running",
+      startedAt: "2026-08-05T00:00:00.000Z",
+      targetDate: "2026-08-05",
+      counts: {},
+    });
+
+    expect(renameFile).toHaveBeenCalledTimes(1);
+    expect(renameFile.mock.calls[0][0]).toMatch(/pipeline-status\.json\.\d+\.tmp$/u);
+    expect(renameFile.mock.calls[0][1]).toBe(statusPath);
+  });
+
+  it("keeps the old complete document when rename is interrupted", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    let renameCount = 0;
+    const renameFile = vi.fn(async (temporaryPath: string, targetPath: string) => {
+      renameCount += 1;
+      if (renameCount === 2) {
+        throw new Error("simulated stop around rename");
+      }
+      await import("node:fs/promises").then(({ rename }) => rename(temporaryPath, targetPath));
+    });
+    const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning", { renameFile });
+    await writer.write({
+      period: "morning", outcome: "completed:no-data",
+      startedAt: "2026-08-05T00:00:00.000Z", completedAt: "2026-08-05T00:01:00.000Z",
+      targetDate: "2026-08-05", counts: { windowedReadingCount: 0 },
+    });
+    const oldDocument = await readFile(statusPath, "utf8");
+
+    await expect(writer.write({
+      period: "morning", outcome: "completed:transferred",
+      startedAt: "2026-08-05T01:00:00.000Z", completedAt: "2026-08-05T01:01:00.000Z",
+      targetDate: "2026-08-05", counts: { windowedReadingCount: 1 },
+    })).rejects.toThrow("simulated stop around rename");
+    await expect(readFile(statusPath, "utf8")).resolves.toBe(oldDocument);
+  });
+
+  it("shows the period lost update that the shared lease prevents", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    const eveningWriter = new AtomicPipelineStatusWriter(statusPath, "run-evening");
+    let interleaved = false;
+    const morningRename = async (temporaryPath: string, targetPath: string) => {
+      if (!interleaved) {
+        interleaved = true;
+        const morningDocument = await readFile(temporaryPath, "utf8");
+        await eveningWriter.write({
+          period: "evening", outcome: "completed:transferred",
+          startedAt: "2026-08-05T20:00:00.000Z", completedAt: "2026-08-05T20:01:00.000Z",
+          targetDate: "2026-08-05", counts: { windowedReadingCount: 1 },
+        });
+        await writeFile(temporaryPath, morningDocument, "utf8");
+      }
+      await import("node:fs/promises").then(({ rename }) => rename(temporaryPath, targetPath));
+    };
+    const morningWriter = new AtomicPipelineStatusWriter(statusPath, "run-morning", { renameFile: morningRename });
+
+    await morningWriter.write({
+      period: "morning", outcome: "completed:no-data",
+      startedAt: "2026-08-05T07:00:00.000Z", completedAt: "2026-08-05T07:01:00.000Z",
+      targetDate: "2026-08-05", counts: { windowedReadingCount: 0 },
+    });
+
+    const document = JSON.parse(await readFile(statusPath, "utf8"));
+    expect(document.periods.morning.lastTerminal.outcome).toBe("completed:no-data");
+    expect(document.periods.evening.lastTerminal).toBeUndefined();
   });
 });

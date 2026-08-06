@@ -33,6 +33,10 @@ export interface PipelineStatusWriter {
   write(status: PipelineStatus): Promise<void>;
 }
 
+export interface AtomicPipelineStatusWriterOptions {
+  readonly renameFile?: typeof rename;
+}
+
 interface HealthStatusV1 {
   readonly state: "unobserved" | "normal" | "alert";
   readonly causes: readonly string[];
@@ -101,10 +105,15 @@ export class PipelineStatusSchemaError extends Error {
 }
 
 export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
+  private readonly renameFile: typeof rename;
+
   constructor(
     private readonly statusPath: string,
     private readonly runId = "unbound-run",
-  ) {}
+    options: AtomicPipelineStatusWriterOptions = {},
+  ) {
+    this.renameFile = options.renameFile ?? rename;
+  }
 
   async write(status: PipelineStatus): Promise<void> {
     const updatedAt = status.completedAt ?? status.startedAt;
@@ -118,7 +127,7 @@ export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
       mode: 0o600,
     });
     await chmod(temporaryPath, 0o600);
-    await rename(temporaryPath, this.statusPath);
+    await this.renameFile(temporaryPath, this.statusPath);
   }
 
   private async readDocument(observedAt: string): Promise<PipelineStatusDocumentV1> {
