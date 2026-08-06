@@ -247,4 +247,45 @@ describe("runPipeline", () => {
     ).resolves.toEqual({ exitCode: 0, outcome: "completed:transferred" });
     expect(transferred).toEqual([duplicate]);
   });
+
+  it("applies cross-source identity before the pipeline transfer", async () => {
+    let transferred: readonly MeasurementReading[] = [];
+    const apple: MeasurementReading = { kind: "weight", value: 68.2, unit: "kg", measuredAt: "2026-08-03T06:30:00+09:00", source: "apple_health" };
+    await runPipeline({ period: "morning", timeZone: "Asia/Tokyo", referenceTime,
+      readInput: async () => ({ matchedFileCount: 1, readLineCount: 2, readings: [apple, { ...apple, value: 68.19999694824219, source: "google_fit" }] }),
+      transfer: async (readings) => { transferred = readings; },
+    });
+    expect(transferred).toEqual([apple]);
+  });
+
+  it("records published records and physical measurements side by side", async () => {
+    const statuses: { counts: Record<string, number> }[] = [];
+    const apple: MeasurementReading = { kind: "weight", value: 68.2, unit: "kg", measuredAt: "2026-08-03T06:30:00+09:00", source: "Xiaomi Home" };
+    const google: MeasurementReading = { ...apple, value: 68.19999694824219, source: "google_fit" };
+
+    await runPipeline({
+      period: "morning",
+      timeZone: "Asia/Tokyo",
+      referenceTime,
+      targetDate: "2026-08-03",
+      readInput: async () => ({
+        matchedFileCount: 2,
+        readLineCount: 3,
+        readings: [apple, { ...apple }, google],
+      }),
+      transfer: async () => {},
+      statusWriter: {
+        write: async (status) => {
+          statuses.push(status as unknown as { counts: Record<string, number> });
+        },
+      },
+    });
+
+    expect(statuses.at(-1)?.counts).toEqual({
+      matchedFileCount: 2,
+      readLineCount: 3,
+      windowedReadingCount: 2,
+      uniqueMeasurementCount: 1,
+    });
+  });
 });

@@ -8,6 +8,7 @@ import {
 } from "../config/index.js";
 import type {
   LatestMeasurementSet,
+  MeasurementCounts,
   MeasurementPeriod,
   MeasurementReading,
   MeasurementSource,
@@ -15,6 +16,7 @@ import type {
 } from "../domain/index.js";
 import {
   measurementPeriodLabels,
+  roundToMeasurementResolution,
   selectReadingsByWeightAnchor,
 } from "../domain/index.js";
 import {
@@ -179,7 +181,9 @@ export function buildLatestMeasurementSet({
   readonly period: MeasurementPeriod;
   readonly capturedAt: string;
 }): LatestMeasurementSet {
-  const latestReadings = selectReadingsByWeightAnchor(readings, period);
+  const publishedReadings = deduplicateExactReadings(readings);
+  const uniqueReadings = deduplicateCrossSourceReadings(publishedReadings);
+  const latestReadings = selectReadingsByWeightAnchor(uniqueReadings, period);
   const weightReading = latestReadings.get("weight");
 
   const sources = new Set<Exclude<MeasurementSource, "mixed">>();
@@ -201,6 +205,10 @@ export function buildLatestMeasurementSet({
     period,
     capturedAt: weightReading?.measuredAt ?? capturedAt,
     source,
+    counts: {
+      windowedReadingCount: publishedReadings.length,
+      uniqueMeasurementCount: uniqueReadings.length,
+    },
     sourcesByKind,
     ...numberField("weightKg", latestReadings.get("weight")),
     ...numberField(
@@ -217,6 +225,44 @@ export function buildLatestMeasurementSet({
     ),
     ...numberField("pulseBpm", latestReadings.get("pulse")),
   };
+}
+
+/** F-2: both units are counted from one place so `run` and `pipeline` cannot drift apart. */
+export function countMeasurements(
+  readings: readonly MeasurementReading[],
+): MeasurementCounts {
+  const publishedReadings = deduplicateExactReadings(readings);
+  return {
+    windowedReadingCount: publishedReadings.length,
+    uniqueMeasurementCount: deduplicateCrossSourceReadings(publishedReadings).length,
+  };
+}
+
+/** AC-55: exact repeats of one published record stay removed, path by path. */
+export function deduplicateExactReadings(
+  readings: readonly MeasurementReading[],
+): MeasurementReading[] {
+  const seen = new Set<string>();
+  return readings.filter((reading) => {
+    const key = [reading.measuredAt, reading.kind, reading.value, reading.source].join("|");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+/** D-5: compare approximate values only across source paths, never within one path. */
+export function deduplicateCrossSourceReadings(readings: readonly MeasurementReading[]): MeasurementReading[] {
+  const retained: MeasurementReading[] = [];
+  for (const reading of readings) {
+    const duplicate = retained.find((other) => other.source !== reading.source && other.kind === reading.kind &&
+      other.measuredAt === reading.measuredAt && Math.abs(other.value - reading.value) /
+        Math.max(Math.abs(other.value), Math.abs(reading.value), 1) <= 1e-5);
+    if (!duplicate) retained.push(reading);
+  }
+  return retained;
 }
 
 export function determineMeasurementPeriod(
@@ -275,5 +321,9 @@ function numberField<Key extends keyof LatestMeasurementSet>(
   key: Key,
   reading: MeasurementReading | undefined,
 ): Partial<Pick<LatestMeasurementSet, Key>> {
-  return reading ? ({ [key]: reading.value } as Pick<LatestMeasurementSet, Key>) : {};
+  return reading
+    ? ({
+        [key]: roundToMeasurementResolution(reading.value, reading.kind),
+      } as Pick<LatestMeasurementSet, Key>)
+    : {};
 }

@@ -173,7 +173,12 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     terminal = json.load(handle)["periods"]["morning"]["lastTerminal"]
 if terminal.get("startedAt") is None or terminal.get("completedAt") is None:
     raise SystemExit("terminal timestamps missing")
-if terminal.get("counts") != {"matchedFileCount": 1, "readLineCount": 1, "windowedReadingCount": 0}:
+if terminal.get("counts") != {
+    "matchedFileCount": 1,
+    "readLineCount": 1,
+    "windowedReadingCount": 0,
+    "uniqueMeasurementCount": 0,
+}:
     raise SystemExit("terminal counts missing or incorrect")
 PY
 then

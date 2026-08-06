@@ -1,5 +1,10 @@
 import type { MeasurementPeriod, MeasurementReading } from "../domain/index.js";
-import { filterReadingsByPeriodWindow } from "../service/index.js";
+import {
+  countMeasurements,
+  deduplicateCrossSourceReadings,
+  deduplicateExactReadings,
+  filterReadingsByPeriodWindow,
+} from "../service/index.js";
 
 import {
   InputSnapshotError,
@@ -91,13 +96,16 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     referenceTime: options.referenceTime,
     timeZone: options.timeZone,
   });
-  const deduplicatedReadings = deduplicateReadings(windowedReadings);
+  const deduplicatedReadings = deduplicateCrossSourceReadings(
+    deduplicateExactReadings(windowedReadings),
+  );
+  const counts = {
+    matchedFileCount: input.matchedFileCount,
+    readLineCount: input.readLineCount,
+    ...countMeasurements(windowedReadings),
+  };
   if (deduplicatedReadings.length === 0) {
-    await writeStatus("completed:no-data", {
-      matchedFileCount: input.matchedFileCount,
-      readLineCount: input.readLineCount,
-      windowedReadingCount: 0,
-    }, undefined, input.inputAnomalyCandidates);
+    await writeStatus("completed:no-data", counts, undefined, input.inputAnomalyCandidates);
     return { exitCode: 0, outcome: "completed:no-data" };
   }
 
@@ -105,29 +113,14 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     await options.transfer(deduplicatedReadings);
   } catch (error) {
     await options.notifier?.notify("transfer", options.period);
-    await writeStatus("failed:transfer", {
-      matchedFileCount: input.matchedFileCount,
-      readLineCount: input.readLineCount,
-      windowedReadingCount: deduplicatedReadings.length,
-    }, error instanceof Error ? error.message : String(error), input.inputAnomalyCandidates);
+    await writeStatus(
+      "failed:transfer",
+      counts,
+      error instanceof Error ? error.message : String(error),
+      input.inputAnomalyCandidates,
+    );
     return { exitCode: 1, outcome: "failed:transfer" };
   }
-  await writeStatus("completed:transferred", {
-    matchedFileCount: input.matchedFileCount,
-    readLineCount: input.readLineCount,
-    windowedReadingCount: deduplicatedReadings.length,
-  }, undefined, input.inputAnomalyCandidates);
+  await writeStatus("completed:transferred", counts, undefined, input.inputAnomalyCandidates);
   return { exitCode: 0, outcome: "completed:transferred" };
-}
-
-function deduplicateReadings(readings: readonly MeasurementReading[]): MeasurementReading[] {
-  const seen = new Set<string>();
-  return readings.filter((reading) => {
-    const key = [reading.measuredAt, reading.kind, reading.value, reading.source].join("|");
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
 }

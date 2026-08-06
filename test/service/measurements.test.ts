@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   buildLatestMeasurementSet,
   collectLatestMeasurementSet,
+  countMeasurements,
   determineMeasurementPeriod,
+  deduplicateCrossSourceReadings,
   filterReadingsByPeriodWindow,
   syncMeasurements,
   toSpreadsheetRow,
@@ -20,6 +22,113 @@ const tempDirs: string[] = [];
 describe("measurement service", () => {
   afterEach(async () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true })));
+  });
+
+  it("deduplicates approximate readings only across source paths", () => {
+    const apple = { kind: "weight", value: 68.2, unit: "kg", measuredAt: "2026-08-05T01:00:00.000Z", source: "apple_health" } as const;
+    const google = { ...apple, value: 68.19999694824219, source: "google_fit" as const };
+    expect(deduplicateCrossSourceReadings([apple, google])).toEqual([apple]);
+    expect(deduplicateCrossSourceReadings([apple, { ...apple, value: 68.200001 }])).toHaveLength(2);
+    expect(deduplicateCrossSourceReadings([apple, { ...google, value: 68.21 }])).toHaveLength(2);
+  });
+
+  it("keeps both count units apart on the run path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scale2sheet-run-identity-"));
+    tempDirs.push(dir);
+    const measuredAt = "2026-08-03T06:30:00+09:00";
+    await writeFile(
+      join(dir, "scale_exporter_2026-08-03_apple-health_001.jsonl"),
+      `${JSON.stringify({ measuredAt, kind: "weight", value: 68.8, unit: "kg", source: "Xiaomi Home" })}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(dir, "scale_exporter_2026-08-03_google-fit_001.jsonl"),
+      `${JSON.stringify({ measuredAt, kind: "weight", value: 68.80000305175781, unit: "kg", source: "google_fit" })}\n`,
+      "utf8",
+    );
+
+    const config: AppConfig = {
+      timeZone: "Asia/Tokyo",
+      scaleExporter: { outputDir: dir },
+      scheduler: { morningCron: "0 7 * * *", eveningCron: "0 21 * * *" },
+    };
+
+    const latest = await collectLatestMeasurementSet({
+      config,
+      source: "scale-exporter",
+      period: "morning",
+      referenceTime: new Date("2026-08-03T00:00:00.000Z"),
+    });
+
+    expect(latest.counts).toEqual({
+      windowedReadingCount: 2,
+      uniqueMeasurementCount: 1,
+    });
+  });
+
+  it("rounds transferred values to the resolution of each kind", () => {
+    const latest = buildLatestMeasurementSet({
+      readings: [
+        { kind: "weight", value: 68.19999694824219, unit: "kg", measuredAt: "2026-08-03T06:30:00+09:00", source: "google_fit" },
+        { kind: "body_temperature", value: 36.749999046325684, unit: "celsius", measuredAt: "2026-08-03T06:30:00+09:00", source: "google_fit" },
+        { kind: "blood_pressure_systolic", value: 118.4, unit: "mmHg", measuredAt: "2026-08-03T06:30:00+09:00", source: "google_fit" },
+        { kind: "blood_pressure_diastolic", value: 77.6, unit: "mmHg", measuredAt: "2026-08-03T06:30:00+09:00", source: "google_fit" },
+        { kind: "pulse", value: 61.5, unit: "bpm", measuredAt: "2026-08-03T06:30:00+09:00", source: "google_fit" },
+      ],
+      period: "morning",
+      capturedAt: "2026-08-03T06:40:00+09:00",
+    });
+
+    expect(latest.weightKg).toBe(68.2);
+    expect(latest.bodyTemperatureCelsius).toBe(36.7);
+    expect(latest.bloodPressureSystolicMmHg).toBe(118);
+    expect(latest.bloodPressureDiastolicMmHg).toBe(78);
+    expect(latest.pulseBpm).toBe(62);
+  });
+
+  it("transfers the same value whichever path is read first", async () => {
+    const measuredAt = "2026-08-03T06:30:00+09:00";
+    const appleLine = `${JSON.stringify({ measuredAt, kind: "weight", value: 68.8, unit: "kg", source: "Xiaomi Home" })}\n`;
+    const googleLine = `${JSON.stringify({ measuredAt, kind: "weight", value: 68.80000305175781, unit: "kg", source: "google_fit" })}\n`;
+
+    const transferredWeight = async (firstLine: string, secondLine: string): Promise<number | undefined> => {
+      const dir = await mkdtemp(join(tmpdir(), "scale2sheet-read-order-"));
+      tempDirs.push(dir);
+      await writeFile(join(dir, "scale_exporter_2026-08-03_apple-health_001.jsonl"), firstLine, "utf8");
+      await writeFile(join(dir, "scale_exporter_2026-08-03_google-fit_001.jsonl"), secondLine, "utf8");
+      const latest = await collectLatestMeasurementSet({
+        config: {
+          timeZone: "Asia/Tokyo",
+          scaleExporter: { outputDir: dir },
+          scheduler: { morningCron: "0 7 * * *", eveningCron: "0 21 * * *" },
+        },
+        source: "scale-exporter",
+        period: "morning",
+        referenceTime: new Date("2026-08-03T00:00:00.000Z"),
+      });
+      return toSpreadsheetRow(latest, "Asia/Tokyo").weightKg as number | undefined;
+    };
+
+    expect(await transferredWeight(appleLine, googleLine)).toBe(68.8);
+    expect(await transferredWeight(googleLine, appleLine)).toBe(68.8);
+  });
+
+  it("counts published records and physical measurements separately", () => {
+    const apple = { kind: "weight", value: 68.8, unit: "kg", measuredAt: "2026-08-03T06:30:00+09:00", source: "Xiaomi Home" } as const;
+    const google = { ...apple, value: 68.80000305175781, source: "google_fit" as const };
+
+    expect(countMeasurements([apple, google])).toEqual({
+      windowedReadingCount: 2,
+      uniqueMeasurementCount: 1,
+    });
+    expect(countMeasurements([apple, apple, google])).toEqual({
+      windowedReadingCount: 2,
+      uniqueMeasurementCount: 1,
+    });
+    expect(countMeasurements([apple, { ...google, value: 68.9 }])).toEqual({
+      windowedReadingCount: 2,
+      uniqueMeasurementCount: 2,
+    });
   });
 
   it("determines morning and evening in the configured timezone", () => {

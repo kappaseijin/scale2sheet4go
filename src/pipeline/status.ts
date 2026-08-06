@@ -7,7 +7,10 @@ export type PipelinePeriod = "morning" | "evening";
 export interface PipelineCounts {
   readonly matchedFileCount?: number;
   readonly readLineCount?: number;
+  /** F-2: published records. Used for the #54 count comparison (AC-59). */
   readonly windowedReadingCount?: number;
+  /** F-2: physical measurements. Used for #38 and the Slice 7 gate (AC-59). */
+  readonly uniqueMeasurementCount?: number;
 }
 
 export interface PipelineStatus {
@@ -89,12 +92,24 @@ export type NotificationAttemptV1 = {
   | { readonly trigger: "notification-state-loss"; readonly toState: "alert" }
 );
 
+/** Registered definition versions. A build writes exactly one of them. */
+export type DefinitionsVersion = 1 | 2 | 3;
+
+/** #63 introduced cross-path identity and `uniqueMeasurementCount` (design §5.2). */
+export const CURRENT_DEFINITIONS_VERSION = 2 satisfies DefinitionsVersion;
+const CURRENT_DEFINITIONS_LABEL = "2026-08-04/post-63";
+
 interface PipelineStatusDocumentV1 {
   readonly schemaVersion: 1;
-  readonly definitionsVersion: 1;
-  readonly definitionsLabel: "2026-08-04/pre-63";
+  readonly definitionsVersion: DefinitionsVersion;
+  readonly definitionsLabel: string;
   readonly updatedAt: string;
   readonly periods: Record<PipelinePeriod, PeriodStatusV1>;
+  readonly lastDefinitionsTransition?: {
+    readonly fromVersion: number;
+    readonly toVersion: DefinitionsVersion;
+    readonly changedAt: string;
+  };
 }
 
 export class PipelineStatusSchemaError extends Error {
@@ -117,7 +132,7 @@ export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
 
   async write(status: PipelineStatus): Promise<void> {
     const updatedAt = status.completedAt ?? status.startedAt;
-    const document = await this.readDocument(updatedAt);
+    const document = rebaselineForDefinitions(await this.readDocument(updatedAt), updatedAt);
     const next = status.outcome === "running"
       ? recordActiveRun(document, status, this.runId, updatedAt)
       : recordTerminal(document, status, this.runId, updatedAt);
@@ -145,11 +160,36 @@ export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
   }
 }
 
+/**
+ * Design §5.3: observations counted under one definition are never continued
+ * under another. An older status is rebaselined instead of being carried over.
+ */
+function rebaselineForDefinitions(
+  document: PipelineStatusDocumentV1,
+  changedAt: string,
+): PipelineStatusDocumentV1 {
+  if (document.definitionsVersion === CURRENT_DEFINITIONS_VERSION) {
+    return document;
+  }
+  return {
+    schemaVersion: 1,
+    definitionsVersion: CURRENT_DEFINITIONS_VERSION,
+    definitionsLabel: CURRENT_DEFINITIONS_LABEL,
+    updatedAt: document.updatedAt,
+    periods: { morning: initialPeriod(), evening: initialPeriod() },
+    lastDefinitionsTransition: {
+      fromVersion: document.definitionsVersion,
+      toVersion: CURRENT_DEFINITIONS_VERSION,
+      changedAt,
+    },
+  };
+}
+
 function initialDocument(): PipelineStatusDocumentV1 {
   return {
     schemaVersion: 1,
-    definitionsVersion: 1,
-    definitionsLabel: "2026-08-04/pre-63",
+    definitionsVersion: CURRENT_DEFINITIONS_VERSION,
+    definitionsLabel: CURRENT_DEFINITIONS_LABEL,
     updatedAt: new Date(0).toISOString(),
     periods: {
       morning: initialPeriod(),
@@ -272,9 +312,14 @@ function parseDocument(value: unknown, observedAt: string): PipelineStatusDocume
   if (value.schemaVersion !== 1) {
     throw new PipelineStatusSchemaError(`unsupported status schema version ${String(value.schemaVersion ?? 0)}`);
   }
-  if (value.definitionsVersion !== 1) {
+  if (!isDefinitionsVersion(value.definitionsVersion)) {
     throw new PipelineStatusSchemaError(
       `unsupported status definitions version ${String(value.definitionsVersion ?? 0)}`,
+    );
+  }
+  if (value.definitionsVersion > CURRENT_DEFINITIONS_VERSION) {
+    throw new PipelineStatusSchemaError(
+      `status definitions version ${value.definitionsVersion} is newer than this build`,
     );
   }
   if (typeof value.definitionsLabel !== "string") {
@@ -289,6 +334,10 @@ function parseDocument(value: unknown, observedAt: string): PipelineStatusDocume
     throw new PipelineStatusSchemaError("pipeline status has an invalid period state");
   }
   return { ...value, periods: { morning, evening } } as unknown as PipelineStatusDocumentV1;
+}
+
+function isDefinitionsVersion(value: unknown): value is DefinitionsVersion {
+  return value === 1 || value === 2 || value === 3;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

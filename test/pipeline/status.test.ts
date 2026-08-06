@@ -58,8 +58,8 @@ describe("AtomicPipelineStatusWriter", () => {
     let document = JSON.parse(await readFile(statusPath, "utf8"));
     expect(document).toMatchObject({
       schemaVersion: 1,
-      definitionsVersion: 1,
-      definitionsLabel: "2026-08-04/pre-63",
+      definitionsVersion: 2,
+      definitionsLabel: "2026-08-04/post-63",
       periods: {
         morning: {
           consecutiveFailureCount: 1,
@@ -98,8 +98,8 @@ describe("AtomicPipelineStatusWriter", () => {
     const statusPath = path.join(directory, "pipeline-status.json");
     const invalid = JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 1,
-      definitionsLabel: "2026-08-04/pre-63",
+      definitionsVersion: 2,
+      definitionsLabel: "2026-08-04/post-63",
       updatedAt: "2026-08-05T00:00:00.000Z",
       periods: {
         morning: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: "invalid" },
@@ -125,7 +125,7 @@ describe("AtomicPipelineStatusWriter", () => {
     const statusPath = path.join(directory, "pipeline-status.json");
     await writeFile(statusPath, JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 1,
+      definitionsVersion: 2,
       definitionsLabel: "human label is not used for machine acceptance",
       updatedAt: "2026-08-05T00:01:00.000Z",
       periods: {
@@ -179,8 +179,8 @@ describe("AtomicPipelineStatusWriter", () => {
     const statusPath = path.join(directory, "pipeline-status.json");
     await writeFile(statusPath, JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 1,
-      definitionsLabel: "2026-08-04/pre-63",
+      definitionsVersion: 2,
+      definitionsLabel: "2026-08-04/post-63",
       updatedAt: "2026-08-05T00:01:00.000Z",
       periods: {
         morning: {
@@ -216,13 +216,13 @@ describe("AtomicPipelineStatusWriter", () => {
     temporaryDirectories.push(directory);
     const writer = new AtomicPipelineStatusWriter(path.join(directory, "pipeline-status.json"), "run-morning");
     for (const schemaVersion of [0, 2]) {
-      const source = JSON.stringify({ schemaVersion, definitionsVersion: 1, definitionsLabel: "label", periods: {} });
+      const source = JSON.stringify({ schemaVersion, definitionsVersion: 2, definitionsLabel: "label", periods: {} });
       await writeFile(path.join(directory, "pipeline-status.json"), source, "utf8");
       await expect(writer.write({ period: "morning", outcome: "running", startedAt: "2026-08-05T00:00:00.000Z", targetDate: "2026-08-05", counts: {} }))
         .rejects.toThrow("unsupported status schema version");
       await expect(readFile(path.join(directory, "pipeline-status.json"), "utf8")).resolves.toBe(source);
     }
-    for (const definitionsVersion of [0, 2]) {
+    for (const definitionsVersion of [0, 4]) {
       const source = JSON.stringify({ schemaVersion: 1, definitionsVersion, definitionsLabel: "label", periods: {} });
       await writeFile(path.join(directory, "pipeline-status.json"), source, "utf8");
       await expect(writer.write({ period: "morning", outcome: "running", startedAt: "2026-08-05T00:00:00.000Z", targetDate: "2026-08-05", counts: {} }))
@@ -231,13 +231,94 @@ describe("AtomicPipelineStatusWriter", () => {
     }
   });
 
+  it("rebaselines instead of continuing counts recorded under an older definition", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    await writeFile(statusPath, JSON.stringify({
+      schemaVersion: 1,
+      definitionsVersion: 1,
+      definitionsLabel: "2026-08-04/pre-63",
+      updatedAt: "2026-08-05T00:01:00.000Z",
+      periods: {
+        morning: {
+          consecutiveFailureCount: 3,
+          consecutiveNoDataCount: 5,
+          health: { state: "alert", causes: ["terminal-failure"] },
+          lastTerminal: {
+            runId: "pre-63-run",
+            outcome: "failed:transfer",
+            startedAt: "2026-08-05T00:00:00.000Z",
+            completedAt: "2026-08-05T00:01:00.000Z",
+            targetDate: "2026-08-05",
+            counts: { windowedReadingCount: 1 },
+          },
+          lastDoneAt: "2026-08-05T00:01:00.000Z",
+          lastTransferredAt: "2026-08-04T00:01:00.000Z",
+        },
+        evening: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: { state: "unobserved", causes: [] } },
+      },
+    }), "utf8");
+
+    await new AtomicPipelineStatusWriter(statusPath, "run-morning").write({
+      period: "morning",
+      outcome: "running",
+      startedAt: "2026-08-06T00:00:00.000Z",
+      targetDate: "2026-08-06",
+      counts: {},
+    });
+
+    const document = JSON.parse(await readFile(statusPath, "utf8"));
+    expect(document.definitionsVersion).toBe(2);
+    expect(document.definitionsLabel).toBe("2026-08-04/post-63");
+    expect(document.lastDefinitionsTransition).toEqual({
+      fromVersion: 1,
+      toVersion: 2,
+      changedAt: "2026-08-06T00:00:00.000Z",
+    });
+    expect(document.periods.morning).toMatchObject({
+      consecutiveFailureCount: 0,
+      consecutiveNoDataCount: 0,
+      health: { state: "unobserved", causes: [] },
+    });
+    expect(document.periods.morning).not.toHaveProperty("lastTerminal");
+    expect(document.periods.morning).not.toHaveProperty("lastDoneAt");
+    expect(document.periods.morning).not.toHaveProperty("lastTransferredAt");
+  });
+
+  it("does not overwrite a status written under a newer definition", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    const source = JSON.stringify({
+      schemaVersion: 1,
+      definitionsVersion: 3,
+      definitionsLabel: "2026-08-05/v3-transfer-observation",
+      updatedAt: "2026-08-05T00:01:00.000Z",
+      periods: {
+        morning: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: { state: "unobserved", causes: [] } },
+        evening: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: { state: "unobserved", causes: [] } },
+      },
+    });
+    await writeFile(statusPath, source, "utf8");
+
+    await expect(new AtomicPipelineStatusWriter(statusPath, "run-morning").write({
+      period: "morning",
+      outcome: "running",
+      startedAt: "2026-08-06T00:00:00.000Z",
+      targetDate: "2026-08-06",
+      counts: {},
+    })).rejects.toThrow("newer than this build");
+    await expect(readFile(statusPath, "utf8")).resolves.toBe(source);
+  });
+
   it("does not recover a type-invalid health field even when a valid terminal remains", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
     temporaryDirectories.push(directory);
     const statusPath = path.join(directory, "pipeline-status.json");
     const source = JSON.stringify({
       schemaVersion: 1,
-      definitionsVersion: 1,
+      definitionsVersion: 2,
       definitionsLabel: "label",
       updatedAt: "2026-08-05T00:01:00.000Z",
       periods: {

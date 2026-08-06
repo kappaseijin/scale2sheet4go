@@ -42,10 +42,23 @@ export interface MeasurementReading {
   readonly sourceRecordId?: string;
 }
 
+/**
+ * F-2: counts are kept in both units and never collapsed into one (AC-57).
+ * `windowedReadingCount` answers #54 (their published record count) and
+ * `uniqueMeasurementCount` answers #38 and the Slice 7 gate (AC-59).
+ */
+export interface MeasurementCounts {
+  /** Published records inside the window, after exact same-path deduplication. */
+  readonly windowedReadingCount: number;
+  /** Physical measurements, after cross-path identity merges them (D-5). */
+  readonly uniqueMeasurementCount: number;
+}
+
 export interface LatestMeasurementSet {
   readonly period: MeasurementPeriod;
   readonly capturedAt: string;
   readonly source: MeasurementSource;
+  readonly counts: MeasurementCounts;
   readonly weightKg?: number;
   readonly bodyTemperatureCelsius?: number;
   readonly bloodPressureSystolicMmHg?: number;
@@ -66,6 +79,27 @@ export interface SpreadsheetRow {
   readonly bloodPressureDiastolicMmHg: number | "";
   readonly pulseBpm: number | "";
   readonly source: MeasurementSource;
+}
+
+/**
+ * E-3: the transferred value is rounded to the resolution of its kind, so no
+ * path priority has to be decided and `68.19999694824219` cannot reach the
+ * spreadsheet (AC-60, AC-61). Resolutions are 0.1 kg, 0.1 celsius, 1 mmHg and
+ * 1 bpm, expressed as decimal places to keep the rounding exact in binary.
+ */
+const measurementResolutionDigits = {
+  weight: 1,
+  body_temperature: 1,
+  blood_pressure_systolic: 0,
+  blood_pressure_diastolic: 0,
+  pulse: 0,
+} as const satisfies Record<MeasurementKind, number>;
+
+export function roundToMeasurementResolution(
+  value: number,
+  kind: MeasurementKind,
+): number {
+  return Number(value.toFixed(measurementResolutionDigits[kind]));
 }
 
 export function latestByKind(
