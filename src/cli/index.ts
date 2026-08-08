@@ -1,4 +1,4 @@
-import { Command, InvalidArgumentError } from "commander";
+import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { DateTime } from "luxon";
 import os from "node:os";
 import path from "node:path";
@@ -121,6 +121,17 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
       "target date in YYYY-MM-DD format, using TIME_ZONE",
       parseDateOption,
     )
+    // #79: commander's own default for a missing/invalid --period is exit 1,
+    // the same code an input or transfer failure returns — run-pipeline.sh
+    // can't tell them apart. Route only this command's own option-parsing
+    // errors through exit 2; input/transfer failures still propagate as an
+    // uncaught rejection (Node's default exit 1), untouched by this override.
+    // --help/--version are also CommanderErrors but are successful exits
+    // (error.exitCode === 0) — only override actual argument errors.
+    .exitOverride((error) => {
+      process.exitCode = error.exitCode === 0 ? 0 : 2;
+      throw error;
+    })
     .action(async (options: RunCommandOptions) => {
       const config = loadConfig();
       const referenceTime = options.date
@@ -160,6 +171,13 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     if (error instanceof ConfigError) {
       console.error(error.message);
       process.exitCode = 1;
+      return;
+    }
+
+    // Raised by the `run` command's exitOverride above; process.exitCode is
+    // already set to 2 there. Returning (not rethrowing) avoids an uncaught
+    // exception overriding it back to Node's default.
+    if (error instanceof CommanderError) {
       return;
     }
 
