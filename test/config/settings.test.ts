@@ -134,6 +134,60 @@ describe("loadConfig with settings.json", () => {
     );
   });
 
+  it("reads Google Fit OAuth client credentials from settings.json (#110)", async () => {
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        "google-fit-client-id": "cid-from-settings",
+        "google-fit-client-secret": "secret-from-settings",
+        "google-fit-redirect-uri": "http://localhost:8888/settings-callback",
+      }),
+    );
+
+    const config = loadConfig({}, { settingsPath });
+
+    expect(config.googleFit?.clientId).toBe("cid-from-settings");
+    expect(config.googleFit?.clientSecret).toBe("secret-from-settings");
+    expect(config.googleFit?.redirectUri).toBe("http://localhost:8888/settings-callback");
+  });
+
+  it("prefers environment credentials over settings.json for Google Fit OAuth (#110)", async () => {
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        "google-fit-client-id": "cid-from-settings",
+        "google-fit-client-secret": "secret-from-settings",
+      }),
+    );
+
+    const config = loadConfig(
+      { GOOGLE_FIT_CLIENT_ID: "cid-from-env", GOOGLE_FIT_CLIENT_SECRET: "secret-from-env" },
+      { settingsPath },
+    );
+
+    expect(config.googleFit?.clientId).toBe("cid-from-env");
+    expect(config.googleFit?.clientSecret).toBe("secret-from-env");
+  });
+
+  it("prefers settings.json over the google-fit-credentials.json fallback file (#110)", async () => {
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        "google-fit-client-id": "cid-from-settings",
+        "google-fit-client-secret": "secret-from-settings",
+      }),
+    );
+    await writeFile(
+      path.join(configDir, "google-fit-credentials.json"),
+      JSON.stringify({ client_id: "cid-from-file", client_secret: "secret-from-file" }),
+    );
+
+    const config = loadConfig({}, { settingsPath });
+
+    expect(config.googleFit?.clientId).toBe("cid-from-settings");
+    expect(config.googleFit?.clientSecret).toBe("secret-from-settings");
+  });
+
   it("disables the settings layer when settingsPath is null", () => {
     const config = loadConfig({}, { settingsPath: null });
 

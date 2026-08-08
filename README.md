@@ -59,6 +59,7 @@ Spreadsheet は既存行を更新します。1行目の `月日` 列で当日行
 | `scale-exporter-output-dir` | scale_exporter JSONL入力フォルダ |
 | `apple-health-export-xml` | Apple Health XML入力パス |
 | `google-fit-token-path` / `google-fit-lookback-days` | Google Fit OAuthトークンと検索期間 |
+| `google-fit-client-id` / `google-fit-client-secret` / `google-fit-redirect-uri` | Google Fit OAuthクライアント（環境変数 `GOOGLE_FIT_CLIENT_ID` / `GOOGLE_FIT_CLIENT_SECRET` / `GOOGLE_FIT_REDIRECT_URI` でも設定可） |
 | `morning-cron` / `evening-cron` | `serve` の実行時刻 |
 
 認証情報は設定ファイルへ値を直接書かず、`~/.config/scale2sheet/google-sheets-service-account.json`（Sheets）または `google-fit-credentials.json`（Google Fit）へ配置します。詳細は [EXTERNAL_DESIGN.md](./docs/EXTERNAL_DESIGN.md#設定ファイル) を参照してください。

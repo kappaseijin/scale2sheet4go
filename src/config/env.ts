@@ -130,6 +130,9 @@ function settingsAsEnvOverlay(settings: SettingsFile): Record<string, string> {
     ["apple-health-export-xml", "APPLE_HEALTH_EXPORT_XML"],
     ["google-fit-token-path", "GOOGLE_FIT_TOKEN_PATH"],
     ["google-fit-lookback-days", "GOOGLE_FIT_LOOKBACK_DAYS"],
+    ["google-fit-client-id", "GOOGLE_FIT_CLIENT_ID"],
+    ["google-fit-client-secret", "GOOGLE_FIT_CLIENT_SECRET"],
+    ["google-fit-redirect-uri", "GOOGLE_FIT_REDIRECT_URI"],
     ["morning-cron", "MORNING_CRON"],
     ["evening-cron", "EVENING_CRON"],
   ];

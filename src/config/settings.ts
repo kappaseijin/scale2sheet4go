@@ -43,6 +43,9 @@ const settingsFileSchema = z
     "apple-health-export-xml": z.string().trim().min(1).optional(),
     "google-fit-token-path": z.string().trim().min(1).optional(),
     "google-fit-lookback-days": z.number().int().positive().optional(),
+    "google-fit-client-id": z.string().trim().min(1).optional(),
+    "google-fit-client-secret": z.string().trim().min(1).optional(),
+    "google-fit-redirect-uri": z.string().trim().min(1).optional(),
     "morning-cron": z.string().trim().min(1).optional(),
     "evening-cron": z.string().trim().min(1).optional(),
   })
