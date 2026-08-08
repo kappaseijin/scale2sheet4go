@@ -10,7 +10,7 @@ import {
   InputSnapshotError,
   type StableInputSnapshot,
 } from "./input-snapshot.js";
-import type { PipelineStatusWriter, V3Observation } from "./status.js";
+import type { HealthState, PipelineStatusWriter, V3Observation } from "./status.js";
 import type { InputAnomalyCandidate } from "../sources/scale-exporter/index.js";
 
 export type PipelineOutcome =
@@ -33,7 +33,9 @@ export interface RunPipelineOptions {
   readonly referenceTime: Date;
   readonly readInput: () => Promise<StableInputSnapshot>;
   readonly transfer: (readings: readonly MeasurementReading[]) => Promise<TransferOutcome>;
-  readonly notifier?: { notify(stage: "input" | "transfer", period: MeasurementPeriod): Promise<void> };
+  readonly notifier?: {
+    notify(period: MeasurementPeriod, transition: { fromState: HealthState; toState: HealthState }): Promise<void>;
+  };
   readonly logger?: Pick<Console, "log">;
   readonly statusWriter?: PipelineStatusWriter;
   readonly clock?: () => Date;
@@ -52,7 +54,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     const completedAt = outcome === "running"
       ? undefined
       : (options.clock ?? (() => new Date()))().toISOString();
-    await options.statusWriter?.write({
+    const result = await options.statusWriter?.write({
       period: options.period,
       outcome,
       startedAt,
@@ -73,6 +75,29 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
         inputAnomalyCandidates,
       }));
     }
+    /**
+     * AC-112: notify only the transition this write claimed, never on every
+     * failure. design §9.1/§9.2: `notification-state-loss` also claims one
+     * alert notification when a status document that lost its `health` key
+     * is recovered and re-evaluates to `alert` (never to `normal` — that
+     * case claims nothing, per §9.1). It carries no `fromState` (the prior
+     * confirmed state was lost, not skipped), so `unobserved` is used: the
+     * closest true reading is "no confirmed state existed before this",
+     * which is also the only other trigger whose toState is `alert` and
+     * that MacOsNotifier's message doesn't otherwise distinguish by
+     * fromState.
+     */
+    if (result?.notification?.trigger === "state-transition") {
+      await options.notifier?.notify(options.period, {
+        fromState: result.notification.fromState,
+        toState: result.notification.toState,
+      });
+    } else if (result?.notification?.trigger === "notification-state-loss") {
+      await options.notifier?.notify(options.period, {
+        fromState: "unobserved",
+        toState: result.notification.toState,
+      });
+    }
   };
   await writeStatus("running", {});
   let input: StableInputSnapshot;
@@ -80,7 +105,6 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     input = await options.readInput();
   } catch (error) {
     if (error instanceof InputSnapshotError) {
-      await options.notifier?.notify("input", options.period);
       await writeStatus(
         `failed:${error.outcome}`,
         error.counts,
@@ -124,7 +148,6 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
   try {
     transferOutcome = await options.transfer(deduplicatedReadings);
   } catch (error) {
-    await options.notifier?.notify("transfer", options.period);
     await writeStatus(
       "failed:transfer",
       counts,
@@ -148,7 +171,6 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
 
   /** V-3 (design §7.2): a response with no confirmed cell updates is a failure, not a success. */
   if (transferOutcome.state !== "written" || (transferOutcome.transferredCellCount ?? 0) < 1) {
-    await options.notifier?.notify("transfer", options.period);
     await writeStatus(
       "failed:transfer",
       counts,

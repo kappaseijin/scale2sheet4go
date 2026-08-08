@@ -1,10 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { MeasurementReading } from "../../src/domain/index.js";
 import { InputSnapshotError } from "../../src/pipeline/input-snapshot.js";
 import { runPipeline } from "../../src/pipeline/pipeline.js";
+import { AtomicPipelineStatusWriter } from "../../src/pipeline/status.js";
 
 const referenceTime = new Date("2026-08-03T03:00:00.000Z");
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true })));
+});
 
 describe("runPipeline", () => {
   it("does not call the transfer port when the input snapshot fails", async () => {
@@ -335,18 +345,22 @@ describe("runPipeline", () => {
       source: "google_fit",
     };
     let notified = 0;
+    const dir = await mkdtemp(join(tmpdir(), "scale2sheet-pipeline-notify-"));
+    tempDirs.push(dir);
 
     await expect(
       runPipeline({
         period: "morning",
         timeZone: "Asia/Tokyo",
         referenceTime,
+        targetDate: "2026-08-03",
         readInput: async () => ({
           matchedFileCount: 1,
           readLineCount: 1,
           readings: [weight],
         }),
         transfer: async () => ({ state, transferredCellCount }),
+        statusWriter: new AtomicPipelineStatusWriter(join(dir, "pipeline-status.json"), "run-morning"),
         notifier: {
           notify: async () => {
             notified += 1;
@@ -354,7 +368,165 @@ describe("runPipeline", () => {
         },
       }),
     ).resolves.toEqual({ exitCode: 1, outcome: "failed:transfer" });
+    /** The first terminal write is unobserved -> alert: exactly one transition notification. */
     expect(notified).toBe(1);
+  });
+
+  /**
+   * design §9.1/§9.2 (PR #134 review): a status document that lost its
+   * `health` key (schema drift/corruption) but still has a valid
+   * `lastTerminal` is recovered on read, not treated as broken. If the
+   * re-evaluated health is `alert`, that recovery claims a
+   * `notification-state-loss` attempt and must fire an alert notification —
+   * a real one, not just a claim recorded in the file. This trigger has no
+   * `fromState` (the prior confirmed state was lost), unlike the three
+   * `state-transition` triggers pipeline.ts already delivered.
+   */
+  function corruptedStatusMissingHealth(outcome: "failed:transfer" | "completed:transferred"): string {
+    return JSON.stringify({
+      schemaVersion: 1,
+      definitionsVersion: 3,
+      definitionsLabel: "2026-08-05/v3-transfer-observation",
+      updatedAt: "2026-08-07T00:01:00.000Z",
+      periods: {
+        morning: {
+          consecutiveFailureCount: 0,
+          consecutiveNoDataCount: 0,
+          lastTerminal: {
+            runId: "previous-run",
+            outcome,
+            startedAt: "2026-08-07T00:00:00.000Z",
+            completedAt: "2026-08-07T00:01:00.000Z",
+            targetDate: "2026-08-07",
+            counts: { windowedReadingCount: 1 },
+          },
+          lastDoneAt: outcome === "completed:transferred" ? "2026-08-07T00:01:00.000Z" : undefined,
+          lastTransferredAt: outcome === "completed:transferred" ? "2026-08-07T00:01:00.000Z" : undefined,
+        },
+        evening: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: { state: "unobserved", causes: [] } },
+      },
+    });
+  }
+
+  it("delivers a real notification for a notification-state-loss recovery into alert (design §9.1)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scale2sheet-pipeline-state-loss-"));
+    tempDirs.push(dir);
+    const statusPath = join(dir, "pipeline-status.json");
+    // The prior terminal failed, so re-evaluating health from it yields "alert".
+    await writeFile(statusPath, corruptedStatusMissingHealth("failed:transfer"), "utf8");
+
+    const weight: MeasurementReading = {
+      kind: "weight",
+      value: 68.4,
+      unit: "kg",
+      measuredAt: "2026-08-08T06:30:00+09:00",
+      source: "google_fit",
+    };
+    const notifications: Array<{ period: string; fromState: string; toState: string }> = [];
+
+    // This run's own transfer also fails, so health stays alert -> alert
+    // (no type-level transition trigger of its own). This isolates the
+    // recovery notification from the FIRST ("running") write as the only
+    // thing that could call notify() — otherwise a healthy second write
+    // would itself produce an alert -> normal transition and this test
+    // would pass for the wrong reason (confirmed: the first version of
+    // this test used a successful transfer and passed even with the
+    // bug present, because the run's own second write's alert -> normal
+    // transition delivered a notification regardless).
+    await expect(
+      runPipeline({
+        period: "morning",
+        timeZone: "Asia/Tokyo",
+        referenceTime: new Date("2026-08-08T06:40:00+09:00"),
+        targetDate: "2026-08-08",
+        readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
+        transfer: async () => ({ state: "not-written" as const, transferredCellCount: 0 }),
+        statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
+        notifier: {
+          notify: async (period, transition) => {
+            notifications.push({ period, ...transition });
+          },
+        },
+      }),
+    ).resolves.toEqual({ exitCode: 1, outcome: "failed:transfer" });
+
+    expect(notifications).toEqual([{ period: "morning", fromState: "unobserved", toState: "alert" }]);
+  });
+
+  it("does not notify for a notification-state-loss recovery into normal (design §9.1: recovery-to-normal claims nothing)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scale2sheet-pipeline-state-loss-"));
+    tempDirs.push(dir);
+    const statusPath = join(dir, "pipeline-status.json");
+    // The prior terminal succeeded, so re-evaluating health from it yields "normal".
+    await writeFile(statusPath, corruptedStatusMissingHealth("completed:transferred"), "utf8");
+
+    const weight: MeasurementReading = {
+      kind: "weight",
+      value: 68.4,
+      unit: "kg",
+      measuredAt: "2026-08-08T06:30:00+09:00",
+      source: "google_fit",
+    };
+    const notifications: unknown[] = [];
+
+    await expect(
+      runPipeline({
+        period: "morning",
+        timeZone: "Asia/Tokyo",
+        referenceTime: new Date("2026-08-08T06:40:00+09:00"),
+        targetDate: "2026-08-08",
+        readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
+        transfer: async () => ({ state: "written" as const, transferredCellCount: 1 }),
+        statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
+        notifier: {
+          notify: async (period, transition) => {
+            notifications.push({ period, ...transition });
+          },
+        },
+      }),
+    ).resolves.toEqual({ exitCode: 0, outcome: "completed:transferred" });
+
+    expect(notifications).toEqual([]);
+  });
+
+  it("does not re-send a claimed notification-state-loss attempt across a restart (design §9.2: recovered health is written back)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scale2sheet-pipeline-state-loss-"));
+    tempDirs.push(dir);
+    const statusPath = join(dir, "pipeline-status.json");
+    await writeFile(statusPath, corruptedStatusMissingHealth("failed:transfer"), "utf8");
+
+    const weight: MeasurementReading = {
+      kind: "weight",
+      value: 68.4,
+      unit: "kg",
+      measuredAt: "2026-08-08T06:30:00+09:00",
+      source: "google_fit",
+    };
+    const notifications: Array<{ fromState: string; toState: string }> = [];
+    // Both runs' own transfer fails too, keeping health at alert -> alert
+    // throughout, so only the first run's recovery notification can ever
+    // fire (see the previous test's comment for why this isolation matters).
+    const runOnce = () =>
+      runPipeline({
+        period: "morning",
+        timeZone: "Asia/Tokyo",
+        referenceTime: new Date("2026-08-08T06:40:00+09:00"),
+        targetDate: "2026-08-08",
+        readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
+        transfer: async () => ({ state: "not-written" as const, transferredCellCount: 0 }),
+        statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
+        notifier: { notify: async (_period, transition) => { notifications.push(transition); } },
+      });
+
+    await runOnce();
+    expect(notifications).toEqual([{ fromState: "unobserved", toState: "alert" }]);
+
+    // health is now present in the file, so a second "restart" no longer
+    // finds a missing-health period to recover, and does not re-claim.
+    await runOnce();
+    expect(notifications).toEqual([{ fromState: "unobserved", toState: "alert" }]);
+    const document = JSON.parse(await readFile(statusPath, "utf8"));
+    expect(document.periods.morning.health).toBeDefined();
   });
 
   it("matches the 2026-08-04 evening pair: window-out weight is no-data, a real transfer is completed (AC-122)", async () => {

@@ -235,7 +235,7 @@ if [ "$negative_status" -ne 1 ] \
   exit 1
 fi
 if [ "$(wc -l <"$osascript_log" 2>/dev/null || true)" -ne 1 ] \
-  || ! grep -Fq '入力に失敗しました（period=morning）' "$osascript_log"; then
+  || ! grep -Fq '異常を検知しました（period=morning）' "$osascript_log"; then
   echo 'missing-input negative control did not invoke the fake osascript notification exactly once' >&2
   [ -f "$osascript_log" ] && cat "$osascript_log" >&2
   exit 1

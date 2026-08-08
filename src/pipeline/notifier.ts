@@ -1,16 +1,24 @@
 import { spawn } from "node:child_process";
 
-export type PipelineFailureStage = "input" | "transfer";
+import type { HealthState } from "./status.js";
 
+export interface HealthStateTransition {
+  readonly fromState: HealthState;
+  readonly toState: HealthState;
+}
+
+/** AC-112: called once per state transition, never once per failed run. */
 export interface Notifier {
-  notify(stage: PipelineFailureStage, period: "morning" | "evening"): Promise<void>;
+  notify(period: "morning" | "evening", transition: HealthStateTransition): Promise<void>;
 }
 
 export class MacOsNotifier implements Notifier {
   constructor(private readonly executablePath = "/usr/bin/osascript") {}
 
-  async notify(stage: PipelineFailureStage, period: "morning" | "evening"): Promise<void> {
-    const message = `${stage === "input" ? "入力" : "転記"}に失敗しました（period=${period}）`;
+  async notify(period: "morning" | "evening", transition: HealthStateTransition): Promise<void> {
+    const message = transition.toState === "alert"
+      ? `異常を検知しました（period=${period}）`
+      : `復旧しました（period=${period}）`;
     await new Promise<void>((resolve) => {
       const child = spawn(this.executablePath, [
         "-e",

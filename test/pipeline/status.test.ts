@@ -581,4 +581,377 @@ describe("AtomicPipelineStatusWriter", () => {
       expect(document.periods.morning.health.causes).toHaveLength(2);
     });
   });
+
+  describe("notification transition (design §9.1/§9.2, AC-112/AC-123)", () => {
+    it("claims exactly one notification on unobserved -> alert and none while alert continues", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      const first = await writer.write({
+        period: "morning",
+        outcome: "failed:transfer",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: {},
+      });
+      expect(first.notification).toEqual({
+        trigger: "state-transition",
+        fromState: "unobserved",
+        toState: "alert",
+        attemptId: "run-morning",
+        claimedAt: "2026-08-05T00:01:00.000Z",
+        result: "claimed",
+      });
+
+      /** AC-123: a claim persisted on disk is not re-sent by a fresh process (new writer instance) on restart. */
+      const second = await new AtomicPipelineStatusWriter(statusPath, "run-morning-restarted").write({
+        period: "morning",
+        outcome: "failed:transfer",
+        startedAt: "2026-08-06T00:00:00.000Z",
+        completedAt: "2026-08-06T00:01:00.000Z",
+        targetDate: "2026-08-06",
+        counts: {},
+      });
+      expect(second.notification).toBeUndefined();
+
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.lastNotificationAttempt).toEqual({
+        trigger: "state-transition",
+        fromState: "unobserved",
+        toState: "alert",
+        attemptId: "run-morning",
+        claimedAt: "2026-08-05T00:01:00.000Z",
+        result: "claimed",
+      });
+    });
+
+    it("claims a notification on alert -> normal recovery, and none on normal -> normal", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      await writer.write({
+        period: "morning",
+        outcome: "failed:transfer",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: {},
+      });
+
+      const recovery = await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-06T00:00:00.000Z",
+        completedAt: "2026-08-06T00:01:00.000Z",
+        targetDate: "2026-08-06",
+        counts: {},
+      });
+      expect(recovery.notification).toEqual({
+        trigger: "state-transition",
+        fromState: "alert",
+        toState: "normal",
+        attemptId: "run-morning",
+        claimedAt: "2026-08-06T00:01:00.000Z",
+        result: "claimed",
+      });
+
+      const stillNormal = await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-07T00:00:00.000Z",
+        completedAt: "2026-08-07T00:01:00.000Z",
+        targetDate: "2026-08-07",
+        counts: {},
+      });
+      expect(stillNormal.notification).toBeUndefined();
+    });
+
+    it("does not re-claim a notification when only the alert cause changes", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      await writer.write({
+        period: "morning",
+        outcome: "failed:transfer",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: {},
+        v3: { input: "ready", windowedWeightCount: 1, transfer: { state: "not-written", transferredCellCount: 0 } },
+      });
+
+      /** Still alert (terminal-failure persists) but the V-3 cause drops: cause changed, state did not. */
+      const causeChanged = await writer.write({
+        period: "morning",
+        outcome: "failed:transfer",
+        startedAt: "2026-08-06T00:00:00.000Z",
+        completedAt: "2026-08-06T00:01:00.000Z",
+        targetDate: "2026-08-06",
+        counts: {},
+        v3: { input: "ready", windowedWeightCount: 1, transfer: { state: "failed" } },
+      });
+      expect(causeChanged.notification).toBeUndefined();
+
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.health.state).toBe("alert");
+    });
+
+    it("running does not clear the previous terminal's notification attempt", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      await writer.write({
+        period: "morning",
+        outcome: "failed:transfer",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: {},
+      });
+      const running = await writer.write({
+        period: "morning",
+        outcome: "running",
+        startedAt: "2026-08-06T00:00:00.000Z",
+        targetDate: "2026-08-06",
+        counts: {},
+      });
+      expect(running.notification).toBeUndefined();
+
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.lastNotificationAttempt).toMatchObject({ toState: "alert" });
+    });
+
+    it("claims one notification recovering a lost health key into alert, and none recovering into normal", async () => {
+      const alertDirectory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(alertDirectory);
+      const alertPath = path.join(alertDirectory, "pipeline-status.json");
+      await writeFile(alertPath, JSON.stringify({
+        schemaVersion: 1,
+        definitionsVersion: 3,
+        definitionsLabel: "2026-08-05/v3-transfer-observation",
+        updatedAt: "2026-01-01T00:01:00.000Z",
+        periods: {
+          morning: {
+            consecutiveFailureCount: 0,
+            consecutiveNoDataCount: 0,
+            lastTerminal: {
+              runId: "previous-run",
+              outcome: "completed:no-data",
+              startedAt: "2026-01-01T00:00:00.000Z",
+              completedAt: "2026-01-01T00:01:00.000Z",
+              targetDate: "2026-01-01",
+              counts: {},
+            },
+            lastDoneAt: "2026-01-01T00:01:00.000Z",
+          },
+          evening: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: { state: "unobserved", causes: [] } },
+        },
+      }), "utf8");
+
+      /** Losing health while stale (lastDoneAt far in the past) recovers into alert (v1-stale): one claim. */
+      const alertResult = await new AtomicPipelineStatusWriter(alertPath, "run-morning").write({
+        period: "morning", outcome: "running", startedAt: "2026-08-05T10:00:00.000Z", targetDate: "2026-08-05", counts: {},
+      });
+      expect(alertResult.notification).toEqual({
+        trigger: "notification-state-loss",
+        toState: "alert",
+        attemptId: "notification-state-loss:previous-run",
+        claimedAt: "2026-08-05T10:00:00.000Z",
+        result: "claimed",
+      });
+
+      /** AC-123: restarting again without further loss does not re-send the already-persisted claim. */
+      const restarted = await new AtomicPipelineStatusWriter(alertPath, "run-morning-restarted").write({
+        period: "morning", outcome: "running", startedAt: "2026-08-05T10:05:00.000Z", targetDate: "2026-08-05", counts: {},
+      });
+      expect(restarted.notification).toBeUndefined();
+
+      const normalDirectory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(normalDirectory);
+      const normalPath = path.join(normalDirectory, "pipeline-status.json");
+      await writeFile(normalPath, JSON.stringify({
+        schemaVersion: 1,
+        definitionsVersion: 3,
+        definitionsLabel: "2026-08-05/v3-transfer-observation",
+        updatedAt: "2026-08-05T00:01:00.000Z",
+        periods: {
+          morning: {
+            consecutiveFailureCount: 0,
+            consecutiveNoDataCount: 0,
+            lastTerminal: {
+              runId: "previous-run",
+              outcome: "completed:transferred",
+              startedAt: "2026-08-05T00:00:00.000Z",
+              completedAt: "2026-08-05T00:01:00.000Z",
+              targetDate: "2026-08-05",
+              counts: {},
+            },
+            lastDoneAt: "2026-08-05T00:01:00.000Z",
+            lastTransferredAt: "2026-08-05T00:01:00.000Z",
+          },
+          evening: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: { state: "unobserved", causes: [] } },
+        },
+      }), "utf8");
+
+      /** Losing health while fresh recovers into normal: no claim (design §9.1). */
+      const normalResult = await new AtomicPipelineStatusWriter(normalPath, "run-morning").write({
+        period: "morning", outcome: "running", startedAt: "2026-08-05T10:00:00.000Z", targetDate: "2026-08-05", counts: {},
+      });
+      expect(normalResult.notification).toBeUndefined();
+    });
+  });
+
+  describe("input anomaly candidates as a health cause (#66, design 2026-08-04T171300 §4)", () => {
+    const anomaly = [{ name: "scale_exporter_2026-08-03_apple-health-file_001.jsonl", reason: "file-name-pattern-mismatch" as const }];
+
+    it("carries the anomaly candidate into a recovered health evaluation", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      await writeFile(statusPath, JSON.stringify({
+        schemaVersion: 1,
+        definitionsVersion: 3,
+        definitionsLabel: "2026-08-05/v3-transfer-observation",
+        updatedAt: "2026-08-05T00:01:00.000Z",
+        periods: {
+          morning: {
+            consecutiveFailureCount: 0,
+            consecutiveNoDataCount: 0,
+            lastTerminal: {
+              runId: "previous-run",
+              outcome: "completed:transferred",
+              startedAt: "2026-08-05T00:00:00.000Z",
+              completedAt: "2026-08-05T00:01:00.000Z",
+              targetDate: "2026-08-05",
+              counts: {},
+              inputAnomalyCandidates: anomaly,
+            },
+            lastDoneAt: "2026-08-05T00:01:00.000Z",
+            lastTransferredAt: "2026-08-05T00:01:00.000Z",
+          },
+          evening: { consecutiveFailureCount: 0, consecutiveNoDataCount: 0, health: { state: "unobserved", causes: [] } },
+        },
+      }), "utf8");
+
+      const result = await new AtomicPipelineStatusWriter(statusPath, "run-morning").write({
+        period: "morning", outcome: "running", startedAt: "2026-08-06T10:00:00.000Z", targetDate: "2026-08-06", counts: {},
+      });
+
+      expect(result.notification).toMatchObject({ trigger: "notification-state-loss", toState: "alert" });
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.health).toEqual({
+        state: "alert",
+        causes: ["input-anomaly-candidates"],
+      });
+    });
+
+    it("does not stay normal on a day an anomaly candidate appears", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      const result = await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: {},
+        inputAnomalyCandidates: anomaly,
+      });
+
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.health).toEqual({
+        state: "alert",
+        causes: ["input-anomaly-candidates"],
+      });
+      /** unobserved -> alert: exactly one claim on the day the candidate first appears. */
+      expect(result.notification).toMatchObject({ trigger: "state-transition", fromState: "unobserved", toState: "alert" });
+    });
+
+    it("does not repeat the notification while the anomaly candidate persists", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: {},
+        inputAnomalyCandidates: anomaly,
+      });
+      const secondDay = await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-06T00:00:00.000Z",
+        completedAt: "2026-08-06T00:01:00.000Z",
+        targetDate: "2026-08-06",
+        counts: {},
+        inputAnomalyCandidates: anomaly,
+      });
+
+      expect(secondDay.notification).toBeUndefined();
+      const document = JSON.parse(await readFile(statusPath, "utf8"));
+      expect(document.periods.morning.health.state).toBe("alert");
+    });
+
+    it("claims exactly one recovery notification once the anomaly candidate stops appearing", async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+      temporaryDirectories.push(directory);
+      const statusPath = path.join(directory, "pipeline-status.json");
+      const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+      await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        completedAt: "2026-08-05T00:01:00.000Z",
+        targetDate: "2026-08-05",
+        counts: {},
+        inputAnomalyCandidates: anomaly,
+      });
+
+      const cleared = await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-06T00:00:00.000Z",
+        completedAt: "2026-08-06T00:01:00.000Z",
+        targetDate: "2026-08-06",
+        counts: {},
+      });
+
+      expect(cleared.notification).toEqual({
+        trigger: "state-transition",
+        fromState: "alert",
+        toState: "normal",
+        attemptId: "run-morning",
+        claimedAt: "2026-08-06T00:01:00.000Z",
+        result: "claimed",
+      });
+
+      const stillClear = await writer.write({
+        period: "morning",
+        outcome: "completed:transferred",
+        startedAt: "2026-08-07T00:00:00.000Z",
+        completedAt: "2026-08-07T00:01:00.000Z",
+        targetDate: "2026-08-07",
+        counts: {},
+      });
+      expect(stillClear.notification).toBeUndefined();
+    });
+  });
 });

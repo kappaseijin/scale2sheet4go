@@ -46,18 +46,30 @@ export type PersistedPipelineOutcome =
   | "failed:input-invalid-or-partial"
   | "failed:transfer";
 
+export interface PipelineStatusWriteResult {
+  /** Set only when this write claimed a state-transition notification attempt (design §9.1). */
+  readonly notification?: NotificationAttemptV1;
+}
+
 export interface PipelineStatusWriter {
-  write(status: PipelineStatus): Promise<void>;
+  write(status: PipelineStatus): Promise<PipelineStatusWriteResult>;
 }
 
 export interface AtomicPipelineStatusWriterOptions {
   readonly renameFile?: typeof rename;
 }
 
-export type HealthCause = "terminal-failure" | "v3-not-transferred" | "v1-stale" | "consecutive-no-data";
+export type HealthCause =
+  | "terminal-failure"
+  | "v3-not-transferred"
+  | "v1-stale"
+  | "consecutive-no-data"
+  | "input-anomaly-candidates";
+
+export type HealthState = "unobserved" | "normal" | "alert";
 
 interface HealthStatusV1 {
-  readonly state: "unobserved" | "normal" | "alert";
+  readonly state: HealthState;
   readonly causes: readonly HealthCause[];
 }
 
@@ -147,11 +159,14 @@ export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
     this.renameFile = options.renameFile ?? rename;
   }
 
-  async write(status: PipelineStatus): Promise<void> {
+  async write(status: PipelineStatus): Promise<PipelineStatusWriteResult> {
     const updatedAt = status.completedAt ?? status.startedAt;
-    const document = rebaselineForDefinitions(await this.readDocument(updatedAt), updatedAt);
-    const next = status.outcome === "running"
-      ? recordActiveRun(document, status, this.runId, updatedAt)
+    const read = await this.readDocument(updatedAt, status.period);
+    const document = rebaselineForDefinitions(read.document, updatedAt);
+    /** A version change discards prior history (design §5.3), so a stale recovery claim goes with it. */
+    const recoveryNotification = document === read.document ? read.notification : undefined;
+    const { document: next, notification: ownNotification } = status.outcome === "running"
+      ? { document: recordActiveRun(document, status, this.runId, updatedAt) }
       : recordTerminal(document, status, this.runId, updatedAt);
     const temporaryPath = `${this.statusPath}.${process.pid}.tmp`;
     await writeFile(temporaryPath, `${JSON.stringify(next, null, 2)}\n`, {
@@ -160,14 +175,20 @@ export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
     });
     await chmod(temporaryPath, 0o600);
     await this.renameFile(temporaryPath, this.statusPath);
+    /** This run's own transition (if any) reflects the most current outcome and takes priority. */
+    const notification = ownNotification ?? recoveryNotification;
+    return { ...(notification ? { notification } : {}) };
   }
 
-  private async readDocument(observedAt: string): Promise<PipelineStatusDocumentV1> {
+  private async readDocument(
+    observedAt: string,
+    currentPeriod: PipelinePeriod,
+  ): Promise<{ readonly document: PipelineStatusDocumentV1; readonly notification?: NotificationAttemptV1 }> {
     try {
-      return parseDocument(JSON.parse(await readFile(this.statusPath, "utf8")), observedAt);
+      return parseDocument(JSON.parse(await readFile(this.statusPath, "utf8")), observedAt, currentPeriod);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return initialDocument();
+        return { document: initialDocument() };
       }
       if (error instanceof PipelineStatusSchemaError) {
         throw error;
@@ -250,7 +271,7 @@ function recordTerminal(
   status: PipelineStatus,
   runId: string,
   updatedAt: string,
-): PipelineStatusDocumentV1 {
+): { readonly document: PipelineStatusDocumentV1; readonly notification?: NotificationAttemptV1 } {
   if (!isPersistedPipelineOutcome(status.outcome)) {
     throw new PipelineStatusSchemaError(`unsupported terminal pipeline outcome ${status.outcome}`);
   }
@@ -266,19 +287,25 @@ function recordTerminal(
       ? 0
       : period.consecutiveNoDataCount;
   const lastDoneAt = outcome.startsWith("completed:") ? completedAt : period.lastDoneAt;
+  const health = evaluateHealth({
+    outcome,
+    v3: status.v3,
+    consecutiveNoDataCount,
+    lastDoneAt,
+    inputAnomalyCandidates: status.inputAnomalyCandidates,
+    observedAt: updatedAt,
+  });
+  const transition = stateTransitionTrigger(period.health.state, health.state);
+  const notification: NotificationAttemptV1 | undefined = transition
+    ? { ...transition, attemptId: runId, claimedAt: updatedAt, result: "claimed" }
+    : undefined;
   const next: PeriodStatusV1 = {
     ...period,
     ...(isFailure(outcome)
       ? { consecutiveFailureCount: period.consecutiveFailureCount + 1 }
       : { consecutiveFailureCount: 0 }),
     consecutiveNoDataCount,
-    health: evaluateHealth({
-      outcome,
-      v3: status.v3,
-      consecutiveNoDataCount,
-      lastDoneAt,
-      observedAt: updatedAt,
-    }),
+    health,
     lastTerminal: {
       runId,
       outcome,
@@ -294,9 +321,30 @@ function recordTerminal(
     },
     ...(lastDoneAt !== period.lastDoneAt ? { lastDoneAt } : {}),
     ...(outcome === "completed:transferred" ? { lastTransferredAt: completedAt } : {}),
+    ...(notification ? { lastNotificationAttempt: notification } : {}),
   };
   delete (next as { activeRun?: unknown }).activeRun;
-  return replacePeriod(document, status.period, next, updatedAt);
+  return { document: replacePeriod(document, status.period, next, updatedAt), ...(notification ? { notification } : {}) };
+}
+
+/**
+ * Design §9.1/AC-112: only these three moves are notified. A cause change
+ * that leaves the state at `alert` re-notifies nobody.
+ */
+function stateTransitionTrigger(
+  fromState: "unobserved" | "normal" | "alert",
+  toState: "unobserved" | "normal" | "alert",
+):
+  | { readonly trigger: "state-transition"; readonly fromState: "unobserved" | "normal"; readonly toState: "alert" }
+  | { readonly trigger: "state-transition"; readonly fromState: "alert"; readonly toState: "normal" }
+  | undefined {
+  if ((fromState === "unobserved" || fromState === "normal") && toState === "alert") {
+    return { trigger: "state-transition", fromState, toState };
+  }
+  if (fromState === "alert" && toState === "normal") {
+    return { trigger: "state-transition", fromState, toState };
+  }
+  return undefined;
 }
 
 /** Design §8.2: health is re-evaluated from this run's terminal, not carried forward. */
@@ -306,6 +354,7 @@ function evaluateHealth(options: {
   readonly consecutiveNoDataCount: number;
   readonly lastDoneAt: string | undefined;
   readonly observedAt: string;
+  readonly inputAnomalyCandidates?: readonly InputAnomalyCandidate[] | undefined;
 }): HealthStatusV1 {
   const causes: HealthCause[] = [];
   if (isFailure(options.outcome)) {
@@ -320,6 +369,10 @@ function evaluateHealth(options: {
   }
   if (options.consecutiveNoDataCount >= 4) {
     causes.push("consecutive-no-data");
+  }
+  /** #66 (design 2026-08-04T171300 §4): an unrecognized filename is not silently absorbed. */
+  if ((options.inputAnomalyCandidates?.length ?? 0) > 0) {
+    causes.push("input-anomaly-candidates");
   }
   return causes.length > 0 ? { state: "alert", causes } : { state: "normal", causes: [] };
 }
@@ -357,7 +410,11 @@ function isPersistedPipelineOutcome(value: string): value is PersistedPipelineOu
     value === "failed:transfer";
 }
 
-function parseDocument(value: unknown, observedAt: string): PipelineStatusDocumentV1 {
+function parseDocument(
+  value: unknown,
+  observedAt: string,
+  currentPeriod: PipelinePeriod,
+): { readonly document: PipelineStatusDocumentV1; readonly notification?: NotificationAttemptV1 } {
   if (!isRecord(value)) {
     throw new PipelineStatusSchemaError("pipeline status must be a JSON object");
   }
@@ -385,7 +442,12 @@ function parseDocument(value: unknown, observedAt: string): PipelineStatusDocume
   if (!morning || !evening) {
     throw new PipelineStatusSchemaError("pipeline status has an invalid period state");
   }
-  return { ...value, periods: { morning, evening } } as unknown as PipelineStatusDocumentV1;
+  const document = {
+    ...value,
+    periods: { morning: morning.period, evening: evening.period },
+  } as unknown as PipelineStatusDocumentV1;
+  const recovered = currentPeriod === "morning" ? morning : evening;
+  return { document, ...(recovered.notification ? { notification: recovered.notification } : {}) };
 }
 
 /**
@@ -411,26 +473,42 @@ function isValidPeriodState(value: unknown): value is PeriodStatusV1 {
   return true;
 }
 
-function parsePeriodState(value: unknown, observedAt: unknown): PeriodStatusV1 | undefined {
+function parsePeriodState(
+  value: unknown,
+  observedAt: unknown,
+): { readonly period: PeriodStatusV1; readonly notification?: NotificationAttemptV1 } | undefined {
   if (isValidPeriodState(value)) {
-    return value;
+    return { period: value };
   }
   if (!hasValidCounters(value) || !isRecord(value) || "health" in value ||
     !isTerminalObservation(value.lastTerminal) || typeof observedAt !== "string") {
     return undefined;
   }
   const terminal = value.lastTerminal;
-  return {
+  const health = evaluateRecoveredHealth(value, terminal, observedAt);
+  /** Design §9.1: recovering into `alert` claims one notification; recovering into `normal` claims none. */
+  const notification: NotificationAttemptV1 | undefined = health.state === "alert"
+    ? {
+        trigger: "notification-state-loss",
+        toState: "alert",
+        attemptId: `notification-state-loss:${terminal.runId}`,
+        claimedAt: observedAt,
+        result: "claimed",
+      }
+    : undefined;
+  const period = {
     ...value,
     consecutiveFailureCount: value.consecutiveFailureCount as number,
     consecutiveNoDataCount: value.consecutiveNoDataCount as number,
-    health: evaluateRecoveredHealth(value, terminal, observedAt),
+    health,
     lastNotificationDiagnostic: {
       code: "notification-state-missing",
       observedAt,
       lastTerminalRunId: terminal.runId,
     },
+    ...(notification ? { lastNotificationAttempt: notification } : {}),
   } as PeriodStatusV1;
+  return { period, ...(notification ? { notification } : {}) };
 }
 
 function evaluateRecoveredHealth(
@@ -444,6 +522,7 @@ function evaluateRecoveredHealth(
     consecutiveNoDataCount: period.consecutiveNoDataCount as number,
     lastDoneAt: typeof period.lastDoneAt === "string" ? period.lastDoneAt : undefined,
     observedAt,
+    inputAnomalyCandidates: terminal.inputAnomalyCandidates,
   });
 }
 
