@@ -18,6 +18,7 @@ import { resolvePipelineSettings } from "../pipeline/settings.js";
 import { runPipeline } from "../pipeline/pipeline.js";
 import { AtomicPipelineStatusWriter } from "../pipeline/status.js";
 import { acquireRunLease, startScheduler } from "../scheduler/index.js";
+import { registerInstallationCommands } from "./installation.js";
 import {
   buildLatestMeasurementSet,
   syncMeasurements,
@@ -32,6 +33,8 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     .name("scale2sheet")
     .description("Sync body measurements to Google Sheets.")
     .version(APP_VERSION);
+
+  registerInstallationCommands(program);
 
   program
     .command("auth")
