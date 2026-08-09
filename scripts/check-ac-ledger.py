@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import subprocess
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,35 @@ def classify_definition_statuses(root: Path, rows: list[Reservation]) -> dict[st
     return groups
 
 
+def find_non_main_commit_evidence(ledger: str, root: Path) -> list[str]:
+    """Reject result-table commit evidence that cannot be reached from origin/main."""
+    errors: list[str] = []
+    in_result_table = False
+    for line in ledger.splitlines():
+        cells = [cell.strip() for cell in line.split("|")]
+        if "対象 commit" in cells:
+            in_result_table = True
+            continue
+        if not in_result_table or len(cells) < 10 or not re.fullmatch(r"AC-\d+[A-Za-z]*", cells[1]):
+            continue
+
+        evidence = cells[5]
+        if evidence == "—":
+            continue
+        for commit in (part.strip() for part in evidence.split(",")):
+            if not re.fullmatch(r"[0-9a-f]{7,40}", commit):
+                errors.append(f"{cells[1]}: target commit is not a SHA: {commit}")
+                continue
+            if subprocess.run(
+                ["git", "-C", str(root), "merge-base", "--is-ancestor", commit, "origin/main"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode != 0:
+                errors.append(f"{cells[1]}: target commit is not an ancestor of origin/main: {commit}")
+    return errors
+
+
 if __name__ == "__main__":
     root = Path(__file__).resolve().parents[1]
     rows = parse_reservations((root / "docs/ACCEPTANCE_TEST_REPORT.md").read_text())
@@ -106,9 +136,10 @@ if __name__ == "__main__":
     errors.extend(missing)
     errors.extend(find_definition_count_mismatches(rows))
     errors.extend(find_actual_definition_mismatches(root, rows))
+    errors.extend(find_non_main_commit_evidence((root / "docs/ACCEPTANCE_TEST_REPORT.md").read_text(), root))
     statuses = classify_definition_statuses(root, rows)
     if errors:
-        raise SystemExit("unapproved reservation overlap:\n" + "\n".join(errors))
+        raise SystemExit("AC ledger validation failed:\n" + "\n".join(errors))
     print(f"parsed {len(rows)} AC reservation rows; excluded {excluded} pre-ledger references")
     for status, entries in sorted(statuses.items()):
         print(f"CONFIRMED definition status {status} ({len(entries)}):\n" + "\n".join(entries))
