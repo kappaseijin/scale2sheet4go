@@ -155,6 +155,16 @@ Apple Health XMLから夜の列を更新します。
 ./dist/scale2sheet run --period evening --source apple-health
 ```
 
+### 終了コード
+
+`run` コマンドの終了コードです（`pipeline` / `serve` / `auth` / `doctor` やシグナル終了は対象外）。
+
+| exit code | 意味 |
+| --- | --- |
+| `2` | CLIの構文・引数エラー（未知のオプション、引数不足、不正な値など） |
+| `1` | 設定・環境・実行時のエラー（必須設定の欠落、入力の読み取り失敗、転記の失敗など） |
+| `0` | 正常終了（`--help` / `--version` を含む） |
+
 ## 常駐実行
 
 既定では `scale-exporter` をsourceにして、`MORNING_CRON` と `EVENING_CRON` で実行します。
