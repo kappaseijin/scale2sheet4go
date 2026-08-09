@@ -9,6 +9,9 @@ set -euo pipefail
 
 root=$(mktemp -d /private/tmp/scale2sheet-installer-acceptance.XXXXXX)
 holder_pid=""
+# #188: a concurrent full test run observed startup at 9.25s. 60 seconds is
+# an abnormality bound for a living holder, not the expected startup speed.
+holder_startup_attempts=1200
 
 cleanup() {
   for pid in "$holder_pid"; do
@@ -185,7 +188,7 @@ env -i HOME="$home5" PATH="$isolated_path" \
   http_proxy="http://127.0.0.1:9" https_proxy="http://127.0.0.1:9" \
   "$binary" serve >"$root/holder.log" 2>&1 &
 holder_pid=$!
-for _ in $(seq 1 100); do
+for _ in $(seq 1 "$holder_startup_attempts"); do
   grep -q 'Scheduler started' "$root/holder.log" && break
   kill -0 "$holder_pid" 2>/dev/null || { dump_diagnostic_file "serve holder log" "$root/holder.log"; fail "serve holder exited before starting"; }
   sleep 0.05

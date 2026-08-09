@@ -171,7 +171,13 @@ holder_pid=$started_pid
 receipt="$home/.config/scale2sheet/active-run.json"
 status="$home/.config/scale2sheet/pipeline-status.json"
 
-for _ in $(seq 1 100); do
+# #188: observed startup reached 9.25s under a full concurrent test run.
+# This is an abnormality bound, not a speed expectation: a living holder may
+# take up to 60s to publish receipt and running status under other load. A
+# dead holder exits immediately through the kill -0 branch below, so failures
+# do not wait for this upper bound.
+holder_startup_attempts=1200
+for _ in $(seq 1 "$holder_startup_attempts"); do
   if [ -f "$receipt" ] \
     && grep -Eq '"kind":"pipeline"' "$receipt" \
     && grep -Eq '"period":"morning"' "$receipt" \

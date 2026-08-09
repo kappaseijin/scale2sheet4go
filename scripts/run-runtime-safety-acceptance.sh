@@ -7,6 +7,9 @@ set -euo pipefail
 root=$(mktemp -d /private/tmp/scale2sheet-runtime-safety.XXXXXX)
 holder_pid=""
 conflict_pid=""
+# #188: a concurrent full test run observed startup at 9.25s. 60 seconds is
+# an abnormality bound for a living holder, not the expected startup speed.
+holder_startup_attempts=1200
 
 cleanup() {
   stop_process "$conflict_pid"
@@ -84,7 +87,7 @@ start_compiled() {
 
 start_compiled "$root/holder.log"
 
-for _ in $(seq 1 100); do
+for _ in $(seq 1 "$holder_startup_attempts"); do
   if grep -q 'Scheduler started' "$root/holder.log"; then
     break
   fi
@@ -134,7 +137,7 @@ wait "$holder_pid" 2>/dev/null || true
 holder_pid=""
 
 start_compiled "$root/reacquired.log"
-for _ in $(seq 1 100); do
+for _ in $(seq 1 "$holder_startup_attempts"); do
   if grep -q 'Scheduler started' "$root/reacquired.log"; then
     break
   fi
