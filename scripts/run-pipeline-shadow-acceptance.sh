@@ -48,8 +48,11 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
-npm run build:bun >/dev/null
-binary="$PWD/dist/scale2sheet"
+# Build the binary this acceptance exercises into its own temporary tree.
+# Never overwrite the checkout's dist/scale2sheet: npm test runs acceptance
+# files concurrently, and that binary may be a production artifact elsewhere.
+binary="$root/scale2sheet"
+bun build ./src/index.ts --compile --outfile "$binary" >/dev/null
 home="$root/home"
 output_dir="$root/published"
 poison_bin="$root/bin"

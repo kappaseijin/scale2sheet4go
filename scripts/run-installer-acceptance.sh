@@ -36,8 +36,9 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
-npm run build:bun >/dev/null
-binary="$PWD/dist/scale2sheet"
+# Keep this freshly compiled acceptance binary isolated from checkout dist/.
+binary="$root/scale2sheet"
+bun build ./src/index.ts --compile --outfile "$binary" >/dev/null
 
 fake_bin="$root/fake-bin"
 mkdir -p "$fake_bin"

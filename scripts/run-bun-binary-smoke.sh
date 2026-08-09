@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-binary="$repo_root/dist/scale2sheet"
 temp_root="$(mktemp -d "${TMPDIR:-/tmp}/scale2sheet-smoke.XXXXXX")"
+binary="$temp_root/scale2sheet"
 
 cleanup() {
   rm -rf "$temp_root"
@@ -21,7 +21,7 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 echo "Building Bun single-file executable..."
-(cd "$repo_root" && npm run build:bun)
+(cd "$repo_root" && bun build ./src/index.ts --compile --outfile "$binary")
 
 if [ ! -x "$binary" ]; then
   echo "Bun binary was not created or is not executable: $binary" >&2
