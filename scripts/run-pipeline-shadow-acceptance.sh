@@ -85,7 +85,7 @@ run_pipeline() {
     SCALE2SHEET_PRODUCER_MARKER="$root/producer-invoked" \
     SCALE2SHEET_OSASCRIPT_PATH="$fake_osascript" SCALE2SHEET_OSASCRIPT_LOG="$osascript_log" \
     http_proxy="http://127.0.0.1:9" https_proxy="http://127.0.0.1:9" \
-    "$binary" pipeline --period morning
+    "$binary" pipeline --period morning --date "$target_date"
 }
 
 run_pipeline_or_emit_diagnostic() {
@@ -102,7 +102,7 @@ start_pipeline() {
     SCALE2SHEET_PRODUCER_MARKER="$root/producer-invoked" \
     SCALE2SHEET_OSASCRIPT_PATH="$fake_osascript" SCALE2SHEET_OSASCRIPT_LOG="$osascript_log" \
     http_proxy="http://127.0.0.1:9" https_proxy="http://127.0.0.1:9" \
-    "$binary" pipeline --period morning >"$3" 2>&1 &
+    "$binary" pipeline --period morning --date "$target_date" >"$3" 2>&1 &
   started_pid=$!
 }
 

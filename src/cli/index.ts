@@ -49,7 +49,8 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     .command("pipeline")
     .description("Read a stable scale-exporter snapshot and transfer it.")
     .requiredOption("--period <period>", "measurement period: morning or evening")
-    .action(async (options: { readonly period: string }) => {
+    .option("--date <date>", "target date in YYYY-MM-DD format, using TIME_ZONE", parseDateOption)
+    .action(async (options: { readonly period: string; readonly date?: string }) => {
       const period = parsePipelinePeriod(options.period);
       if (!period) {
         console.error("failed:invalid-arguments");
@@ -58,8 +59,10 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
       }
 
       const pipelineSettings = resolvePipelineSettings();
-      const referenceTime = new Date();
-      const targetDate = DateTime.fromJSDate(referenceTime, {
+      const referenceTime = options.date
+        ? referenceTimeForDate(options.date, pipelineSettings.timeZone)
+        : new Date();
+      const targetDate = options.date ?? DateTime.fromJSDate(referenceTime, {
         zone: pipelineSettings.timeZone,
       }).toFormat("yyyy-MM-dd");
       const config = loadConfig();

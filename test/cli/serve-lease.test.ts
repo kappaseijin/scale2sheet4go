@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   startScheduler: vi.fn(),
   statusWriter: vi.fn(),
   notifier: vi.fn(),
+  readStableInputSnapshot: vi.fn(),
 }));
 
 vi.mock("../../src/config/index.js", () => ({
@@ -37,6 +38,7 @@ vi.mock("../../src/pipeline/status.js", () => ({
   AtomicPipelineStatusWriter: mocks.statusWriter,
 }));
 vi.mock("../../src/pipeline/notifier.js", () => ({ MacOsNotifier: mocks.notifier }));
+vi.mock("../../src/pipeline/input-snapshot.js", () => ({ readStableInputSnapshot: mocks.readStableInputSnapshot }));
 
 import { runCli } from "../../src/cli/index.js";
 
@@ -89,5 +91,28 @@ describe("serve command", () => {
       expect.objectContaining({ notifier, period: "morning", statusWriter }),
     );
     expect(lease.release).toHaveBeenCalledOnce();
+  });
+
+  it("uses an explicit pipeline target date for both input selection and status", async () => {
+    const lease = { ownerToken: "pipeline-run-token", release: vi.fn(), startStopPolling: vi.fn() };
+    mocks.loadConfig.mockReturnValue({ timeZone: "Asia/Tokyo" });
+    mocks.resolvePipelineSettings.mockReturnValue({ outputDir: "/tmp/exports", timeZone: "Asia/Tokyo" });
+    mocks.acquireRunLease.mockResolvedValue(lease);
+    mocks.statusWriter.mockImplementation(function StatusWriter() { return { write: vi.fn() }; });
+    mocks.notifier.mockImplementation(function Notifier() { return { notify: vi.fn() }; });
+    mocks.readStableInputSnapshot.mockResolvedValue({ matchedFileCount: 0, readLineCount: 0, readings: [] });
+    mocks.runPipeline.mockImplementation(async (options: { readInput: () => Promise<unknown> }) => {
+      await options.readInput();
+      return { exitCode: 0, outcome: "completed:no-data" };
+    });
+
+    await runCli(["node", "scale2sheet", "pipeline", "--period", "morning", "--date", "2026-08-09"]);
+
+    expect(mocks.runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ targetDate: "2026-08-09" }),
+    );
+    expect(mocks.readStableInputSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ targetDate: "2026-08-09" }),
+    );
   });
 });
