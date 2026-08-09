@@ -439,6 +439,13 @@ describe("runPipeline", () => {
         timeZone: "Asia/Tokyo",
         referenceTime: new Date("2026-08-08T06:40:00+09:00"),
         targetDate: "2026-08-08",
+        // Pins observedAt/startedAt/completedAt to the fixture's own time,
+        // not the real wall clock (default `new Date()`). Without this,
+        // evaluateHealth's v1-stale check compares the real "now" against
+        // corruptedStatusMissingHealth's hardcoded lastDoneAt
+        // (2026-08-07), which silently flips normal -> alert once real
+        // time drifts more than 2 days past that fixture date.
+        clock: () => new Date("2026-08-08T06:40:00+09:00"),
         readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
         transfer: async () => ({ state: "not-written" as const, transferredCellCount: 0 }),
         statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
@@ -475,6 +482,13 @@ describe("runPipeline", () => {
         timeZone: "Asia/Tokyo",
         referenceTime: new Date("2026-08-08T06:40:00+09:00"),
         targetDate: "2026-08-08",
+        // Pins observedAt/startedAt/completedAt to the fixture's own time,
+        // not the real wall clock (default `new Date()`). Without this,
+        // evaluateHealth's v1-stale check compares the real "now" against
+        // corruptedStatusMissingHealth's hardcoded lastDoneAt
+        // (2026-08-07), which silently flips normal -> alert once real
+        // time drifts more than 2 days past that fixture date.
+        clock: () => new Date("2026-08-08T06:40:00+09:00"),
         readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
         transfer: async () => ({ state: "written" as const, transferredCellCount: 1 }),
         statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
@@ -512,6 +526,13 @@ describe("runPipeline", () => {
         timeZone: "Asia/Tokyo",
         referenceTime: new Date("2026-08-08T06:40:00+09:00"),
         targetDate: "2026-08-08",
+        // Pins observedAt/startedAt/completedAt to the fixture's own time,
+        // not the real wall clock (default `new Date()`). Without this,
+        // evaluateHealth's v1-stale check compares the real "now" against
+        // corruptedStatusMissingHealth's hardcoded lastDoneAt
+        // (2026-08-07), which silently flips normal -> alert once real
+        // time drifts more than 2 days past that fixture date.
+        clock: () => new Date("2026-08-08T06:40:00+09:00"),
         readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
         transfer: async () => ({ state: "not-written" as const, transferredCellCount: 0 }),
         statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
