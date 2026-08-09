@@ -35,6 +35,6 @@ describe("acceptance: Bun binary smoke (#168)", () => {
 
       expect(result.status).toBe(0);
     },
-    30_000,
+    90_000,
   );
 });

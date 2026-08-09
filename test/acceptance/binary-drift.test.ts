@@ -34,6 +34,6 @@ describe("acceptance: binary/source command-set drift (#128)", () => {
 
       expect(result.status).toBe(0);
     },
-    30_000,
+    90_000,
   );
 });

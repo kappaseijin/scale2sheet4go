@@ -34,6 +34,6 @@ describe("acceptance: pipeline shadow path (#168)", () => {
 
       expect(result.status).toBe(0);
     },
-    60_000,
+    90_000,
   );
 });

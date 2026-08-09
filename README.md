@@ -187,7 +187,7 @@ npm test
 npm run build:node
 ```
 
-`npm test` は `bun build --compile` で実際にバイナリをビルドして検証する acceptance 試験を5本含みます（コマンドセット乖離 #128、pipeline shadow 経路・run lease・install/uninstall・CLI smoke #168）。そのぶん通常のユニットテストだけより時間がかかります（実測: 約25〜27秒。この5本を除くと数秒程度）。[Bun](https://bun.sh/) が PATH に無い場合、これらの検査はスキップではなく**失敗**します（インストール手順をエラーメッセージに表示します）。
+`npm test` は `bun build --compile` で実際にバイナリをビルドして検証する acceptance 試験を5本含みます（コマンドセット乖離 #128、pipeline shadow 経路・run lease・install/uninstall・CLI smoke #168）。そのぶん通常のユニットテストだけより時間がかかり、5本が並列で `bun build` を回すため**実行環境のCPU負荷によって所要時間が変動します**（複数環境での実測: 約20〜45秒。この5本を除くユニットテストのみなら約2秒）。#175 以降、各 acceptance 試験には既定の30秒より十分長い明示的タイムアウト（90秒）を設定しており、環境差による誤検知（実際は正常なのに時間切れで赤くなる）を防いでいます。[Bun](https://bun.sh/) が PATH に無い場合、これらの検査はスキップではなく**失敗**します（インストール手順をエラーメッセージに表示します）。
 
 ```sh
 curl -fsSL https://bun.sh/install | bash

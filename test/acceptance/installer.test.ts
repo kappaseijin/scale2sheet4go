@@ -35,6 +35,6 @@ describe("acceptance: install / uninstall (#168)", () => {
 
       expect(result.status).toBe(0);
     },
-    30_000,
+    90_000,
   );
 });
