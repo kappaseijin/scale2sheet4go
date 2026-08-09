@@ -542,3 +542,56 @@ send.sh <team> <from> <to> "$(< /tmp/msg.txt)"
 
 ヒアドキュメントの区切り語を **`'MSG'` とクォートする**こと。クォートしないと
 ヒアドキュメント内でも置換が走る。
+
+## D-5 は #63 実装前、転記値を1ビットも変えていなかった（2026-08-06）
+
+`deduplicateCrossSourceReadings`（D-5、経路をまたぐ物理測定の同一性判定）を
+`buildLatestMeasurementSet` の入口に配置した段階（PR #127 以前のコミット）では、
+**この関数を丸ごと呼ばなくても `run` 経路の出力は 1 文字も変わらなかった。**
+
+変異を当てて実測した。
+
+```
+変異: src/service/measurements.ts の
+  selectReadingsByWeightAnchor(deduplicateCrossSourceReadings(readings), period)
+  → selectReadingsByWeightAnchor(readings, period)
+
+実データ相当の fixture（apple-health と google-fit が同時刻に近似値を公開）を
+run 経路（syncMeasurements / collectLatestMeasurementSet）へ通した結果:
+  変異前後で出力が完全に同一の文字列
+  既存試験 85 件がすべて pass（誰も落ちない）
+```
+
+### なぜ落とせなかったか（fixture の作り方の問題ではない）
+
+- D-5 の同一性判定は `measuredAt` の完全一致を要求する（AC-54）。**併合対象は必ず同時刻**になる
+- `buildLatestMeasurementSet` の選択（`selectWeightByPeriod` / `selectClosestToReference`、
+  `src/domain/measurement.ts`）は strict 比較で**「同着なら先勝ち」**
+- dedup 自身も**先に現れた要素を残す**（`retained.find` が最初の一致で確定する実装）
+
+**dedup が残す要素と、dedup 抜きで選択が選ぶ要素は常に同一になる。** 選択側もdedup側も
+同じ「先勝ち」規則で動くため、重複を消しても消さなくても最終的に選ばれる1件は変わらない。
+
+一方 `pipeline.ts` 側の cross-source dedup は有効だった（同じ変異を当てると
+`test/pipeline/pipeline.test.ts` が落ちる）。ここは transfer へ渡す**配列そのもの**を
+比較する試験だったため、要素数の変化（2件→1件）が直接観測できた。
+
+### 影響: F-2 を実装するまで、service 側の dedup は無防備だった
+
+D-5 の効果は**件数にしか現れない。** ところが当時 `LatestMeasurementSet` は件数を
+公開しておらず（`windowedReadingCount` / `uniqueMeasurementCount` は F-2 で新設）、
+`run` 経路の配置回帰 fixture（「service から dedup を外すと落ちる」試験）を
+作ろうとしても作れなかった。
+
+PR #127 で F-2（`uniqueMeasurementCount` を service で数え、両経路から観測できるようにする）
+を D-5 と同じ PR に含めたことで、初めてこの配置が試験で守られるようになった。
+それまでの間、`service/measurements.ts` の dedup 呼び出しを消す変異が存在しても、
+どの試験も気づけない状態だった。
+
+### 次に #63 を触る人へ
+
+同一性・重複除去の実装を経路の異なる箇所（`service` と `pipeline` など）へ重複して置くときは、
+**「除去した後に選択される値が、除去前と同じ規則（先勝ち・最新優先など）で選ばれていないか」**
+を先に確認すること。同じ規則なら、除去の有無は最終出力を変えない。守りたいのは
+たいてい「件数」であり、値そのものではない。件数を外部から観測できる形にしてから
+配置回帰の試験を書く。
