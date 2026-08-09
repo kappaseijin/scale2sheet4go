@@ -523,7 +523,7 @@ doctor の実行と run の実行が日付をまたぐ
 | AC-48 | Slice 4 / 6 | **Slice 4 分を閉じる。** `APP_VERSION`、`done`・実転記・経過日数・異常継続日数の報告 | Task 3 |
 | AC-24 | Slice 6 | **作るが閉じない。** write method を持たない fake port の自動検査 | Task 1 |
 | AC-36 | Slice 6 | **作るが閉じない。** status fixture 表示の自動検査。**超過判定は検査しない** | Task 3 |
-| AC-41 | Slice 2 | **作るが閉じない。** `partialInput` を doctor が報告する | Task 3 |
+| AC-41 | Slice 2 | **作るが閉じない。** status API は `partialInput?: boolean` を保持するが、producer 未実装（#182）のため現時点では常に未定義。doctor もまだ報告しない | Task 3 |
 
 **新規 AC は不要である。**
 6 件はすべて既存の AC-01〜AC-49 の範囲にあり、目標定義または設計書に条件文がある。

@@ -16,6 +16,41 @@ afterEach(async () => {
 });
 
 describe("AtomicPipelineStatusWriter", () => {
+  it("round-trips partialInput without making it required for older status documents", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+
+    await writer.write({
+      period: "morning",
+      outcome: "completed:transferred",
+      startedAt: "2026-08-09T00:00:00.000Z",
+      completedAt: "2026-08-09T00:01:00.000Z",
+      targetDate: "2026-08-09",
+      counts: { windowedReadingCount: 1 },
+      partialInput: true,
+    });
+    const withPartialInput = JSON.parse(await readFile(statusPath, "utf8"));
+    expect(withPartialInput.periods.morning.lastTerminal.partialInput).toBe(true);
+
+    delete withPartialInput.periods.morning.lastTerminal.partialInput;
+    await writeFile(statusPath, JSON.stringify(withPartialInput), "utf8");
+
+    await new AtomicPipelineStatusWriter(statusPath, "run-evening").write({
+      period: "evening",
+      outcome: "completed:transferred",
+      startedAt: "2026-08-09T12:00:00.000Z",
+      completedAt: "2026-08-09T12:01:00.000Z",
+      targetDate: "2026-08-09",
+      counts: { windowedReadingCount: 1 },
+    });
+    const legacyCompatible = JSON.parse(await readFile(statusPath, "utf8"));
+    expect(legacyCompatible.periods.morning.lastTerminal).not.toHaveProperty("partialInput");
+    expect(legacyCompatible.periods.morning.lastTerminal.outcome).toBe("completed:transferred");
+    expect(legacyCompatible.periods.evening.lastTerminal).not.toHaveProperty("partialInput");
+  });
+
   it("keeps both periods and resets a no-data streak only after a transferred terminal", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
     temporaryDirectories.push(directory);

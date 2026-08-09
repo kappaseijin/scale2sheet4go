@@ -33,6 +33,13 @@ export interface PipelineStatus {
   readonly completedAt?: string;
   readonly targetDate?: string;
   readonly counts: PipelineCounts;
+  // No producer exists yet, so the production pipeline always leaves this
+  // undefined. A-1 file-level skip must create the signal; the current
+  // readStableInputSnapshot fails the whole snapshot on one parse error.
+  // Tracked by Issue #182. inputAnomalyCandidates is a separate #66 signal.
+  // #182 must decide whether false means observed-complete or is omitted like
+  // unmeasured; this API currently persists only the required true signal.
+  readonly partialInput?: boolean;
   readonly diagnostic?: string;
   readonly inputAnomalyCandidates?: readonly InputAnomalyCandidate[];
   readonly v3?: V3Observation;
@@ -89,6 +96,7 @@ interface TerminalObservationV1 {
   readonly completedAt: string;
   readonly targetDate: string;
   readonly counts: PipelineCounts;
+  readonly partialInput?: boolean;
   readonly diagnostic?: string;
   readonly inputAnomalyCandidates?: readonly InputAnomalyCandidate[];
   readonly v3?: V3Observation;
@@ -336,6 +344,7 @@ function recordTerminal(
       completedAt,
       targetDate: requireTargetDate(status),
       counts: status.counts,
+      ...(status.partialInput ? { partialInput: true } : {}),
       ...(status.diagnostic ? { diagnostic: status.diagnostic } : {}),
       ...(status.inputAnomalyCandidates
         ? { inputAnomalyCandidates: status.inputAnomalyCandidates }
