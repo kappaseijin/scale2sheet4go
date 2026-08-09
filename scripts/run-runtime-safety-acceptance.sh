@@ -26,7 +26,26 @@ stop_process() {
 npm run build:bun >/dev/null
 binary="$PWD/dist/scale2sheet"
 home="$root/home"
-mkdir -p "$home"
+scale_exporter_output_dir="$root/scale-exporter-output"
+mkdir -p "$home" "$scale_exporter_output_dir"
+
+# #168: `serve` now validates both the Sheets config and the selected
+# source's own config at startup (#47/#51, #148), before ever scheduling
+# anything -- this harness never reaches a real Sheets write or a real
+# scale_exporter read (it only exercises the O_EXLOCK lease contract), but
+# without a settings.json it now fails before "Scheduler started" is ever
+# printed. Neither value here is real: the Spreadsheet ID is not the
+# production one (163Lc0YeN5Zn...), and the output dir is an empty,
+# isolated directory serve's scheduled cron never actually fires against
+# in this harness's short lifetime.
+mkdir -p "$home/.config/scale2sheet"
+cat >"$home/.config/scale2sheet/settings.json" <<SETTINGSEOF
+{
+  "sheet-id": "acceptance-fixture-not-a-real-spreadsheet",
+  "sheets-credentials": "/nonexistent/acceptance-fixture-credentials.json",
+  "scale-exporter-output-dir": "$scale_exporter_output_dir"
+}
+SETTINGSEOF
 
 run_compiled() {
   env -i HOME="$home" PATH="/usr/bin:/bin" \

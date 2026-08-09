@@ -20,6 +20,24 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# #168: this harness never reaches a real Sheets write (both paths it
+# exercises are completed:no-data / failed:input-missing), but #148 made
+# requireGoogleSheetsConfig(config) run at startup, before either of those
+# is even attempted. Without a settings.json, that now fails first and this
+# acceptance never gets to poison detection at all. The value here is not a
+# real Spreadsheet -- it is never read -- and is not the production ID
+# (163Lc0YeN5Zn...).
+write_sheets_fixture_settings() {
+  local home_dir="$1"
+  mkdir -p "$home_dir/.config/scale2sheet"
+  cat >"$home_dir/.config/scale2sheet/settings.json" <<'SETTINGSEOF'
+{
+  "sheet-id": "acceptance-fixture-not-a-real-spreadsheet",
+  "sheets-credentials": "/nonexistent/acceptance-fixture-credentials.json"
+}
+SETTINGSEOF
+}
+
 npm run build:bun >/dev/null
 binary="$PWD/dist/scale2sheet"
 home="$root/home"
@@ -28,6 +46,7 @@ poison_bin="$root/bin"
 fake_osascript="$root/fake-osascript"
 osascript_log="$root/osascript.log"
 mkdir -p "$home" "$output_dir" "$poison_bin"
+write_sheets_fixture_settings "$home"
 
 cat >"$fake_osascript" <<'EOF'
 #!/usr/bin/env bash
@@ -201,6 +220,7 @@ fi
 
 negative_home="$root/negative-home"
 mkdir -p "$negative_home"
+write_sheets_fixture_settings "$negative_home"
 start_pipeline "$negative_home" "$root/missing" "$root/negative.log"
 negative_pid=$started_pid
 negative_status=""

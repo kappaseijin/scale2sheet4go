@@ -73,6 +73,20 @@ mkdir -p "$empty_home" "$empty_output"
 run_case "help" 0 "Usage:" "$binary" --help
 run_case "version" 0 "0.1.0" "$binary" --version
 
+# #168: `run` now validates the Sheets config at startup (#47/#51, #148),
+# before ever reading input, so this no-data case needs sheet-id and
+# sheets-credentials even though it never reaches a real Sheets write.
+# scale-exporter-output-dir is unaffected -- isolated_env already passes it
+# via SCALE_EXPORTER_OUTPUT_DIR. Neither value below is real (sheet-id is
+# not the production Spreadsheet ID 163Lc0YeN5Zn...).
+mkdir -p "$empty_home/.config/scale2sheet"
+cat >"$empty_home/.config/scale2sheet/settings.json" <<'JSON'
+{
+  "sheet-id": "acceptance-fixture-not-a-real-spreadsheet",
+  "sheets-credentials": "/nonexistent/acceptance-fixture-credentials.json"
+}
+JSON
+
 run_case "empty-scale-exporter" 0 "No spreadsheet row updated." \
   isolated_env "$empty_home" "$empty_output" \
   "$binary" run --period morning --source scale-exporter
@@ -98,7 +112,9 @@ cat >"$invalid_reading_home/.config/scale2sheet/settings.json" <<'JSON'
   "time-zone": "Asia/Tokyo",
   "source": "scale-exporter",
   "sheet-name": "体温・血圧",
-  "scale-exporter-output-dir": "__OUTPUT_DIR__"
+  "scale-exporter-output-dir": "__OUTPUT_DIR__",
+  "sheet-id": "acceptance-fixture-not-a-real-spreadsheet",
+  "sheets-credentials": "/nonexistent/acceptance-fixture-credentials.json"
 }
 JSON
 perl -0pi -e "s#__OUTPUT_DIR__#$invalid_reading_output#g" \
@@ -128,7 +144,7 @@ cat >"$valid_weight_output/scale_exporter_2026-06-18_apple-health_001.jsonl" <<'
 {"measuredAt":"2026-06-18T06:50:00+09:00","kind":"weight","value":70.2,"unit":"kg","source":"apple_health"}
 JSONL
 
-run_case "valid-weight-missing-sheets-credentials" 1 "Google Sheets requires credentials" \
+run_case "valid-weight-missing-sheets-credentials" 1 "Google Sheets requires both sheet-id and sheets-credentials" \
   isolated_env "$valid_weight_home" "$valid_weight_output" \
   "$binary" run --period morning --source scale-exporter --date 2026-06-18
 

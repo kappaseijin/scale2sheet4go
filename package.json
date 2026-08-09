@@ -14,6 +14,7 @@
     "acceptance:binary-drift": "bash scripts/run-binary-source-drift-acceptance.sh",
     "acceptance:runtime-safety": "bash scripts/run-runtime-safety-acceptance.sh",
     "acceptance:installer": "bash scripts/run-installer-acceptance.sh",
+    "acceptance:bun-binary-smoke": "bash scripts/run-bun-binary-smoke.sh",
     "preflight:ac-ledger": "python3 scripts/check-ac-ledger.py",
     "dev": "tsx src/index.ts",
     "test": "vitest run",

@@ -135,6 +135,30 @@ home5_credentials=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1
   "$home5/.config/scale2sheet/settings.json")
 echo '{}' >"$home5_credentials"
 
+# #168: `serve` now validates the Sheets config AND the selected source's
+# own config at startup (#47/#51, #148). Auto-generated settings.json
+# (written by `install` above) has sheets-credentials but no sheet-id
+# (#47/#51 removed both built-in defaults) and no scale-exporter-output-dir
+# -- serve would fail before ever reaching "Scheduler started", before this
+# fix. Neither injected value is real or production (sheet-id is not the
+# production Spreadsheet ID 163Lc0YeN5Zn...; the output dir is an isolated,
+# empty directory this check never actually reads from).
+home5_scale_exporter_output_dir="$root/home5-scale-exporter-output"
+mkdir -p "$home5_scale_exporter_output_dir"
+python3 - "$home5/.config/scale2sheet/settings.json" "$home5_scale_exporter_output_dir" <<'PYEOF'
+import json
+import sys
+
+settings_path, output_dir = sys.argv[1:]
+with open(settings_path, encoding="utf-8") as handle:
+    settings = json.load(handle)
+settings["sheet-id"] = "acceptance-fixture-not-a-real-spreadsheet"
+settings["scale-exporter-output-dir"] = output_dir
+with open(settings_path, "w", encoding="utf-8") as handle:
+    json.dump(settings, handle, indent=2)
+    handle.write("\n")
+PYEOF
+
 env -i HOME="$home5" PATH="$isolated_path" \
   http_proxy="http://127.0.0.1:9" https_proxy="http://127.0.0.1:9" \
   "$binary" serve >"$root/holder.log" 2>&1 &
