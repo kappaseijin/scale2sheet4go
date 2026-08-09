@@ -692,4 +692,135 @@ describe("runPipeline", () => {
     });
     expect(transferredResult).toEqual({ exitCode: 0, outcome: "completed:transferred" });
   });
+
+  /**
+   * Issue #164 (replaces #142): the existing test group above proves the
+   * delivery mechanism itself (state-transition / notification-state-loss
+   * triggers, no-double-send, no-false-positive) but never exercises two
+   * paths #76 named directly: the three input-stage failure outcomes, and
+   * a `normal -> alert` transition (as opposed to `unobserved -> alert`,
+   * the only direction the existing tests drive). Negative controls
+   * confirmed both were previously undetected (see PR body / #164).
+   */
+  describe("notification coverage for input failures and normal -> alert (#164)", () => {
+    it.each([
+      ["input-missing", "failed:input-missing"],
+      ["input-unstable", "failed:input-unstable"],
+      ["input-invalid-or-partial", "failed:input-invalid-or-partial"],
+    ] as const)(
+      "delivers one notification when readInput fails with %s (AC-1)",
+      async (inputOutcome, pipelineOutcome) => {
+        const dir = await mkdtemp(join(tmpdir(), "scale2sheet-pipeline-input-failure-"));
+        tempDirs.push(dir);
+        const statusPath = join(dir, "pipeline-status.json");
+        const notifications: Array<{ period: string; fromState: string; toState: string }> = [];
+
+        await expect(
+          runPipeline({
+            period: "morning",
+            timeZone: "Asia/Tokyo",
+            referenceTime: new Date("2026-08-08T06:40:00+09:00"),
+            targetDate: "2026-08-08",
+            clock: () => new Date("2026-08-08T06:40:00+09:00"),
+            readInput: async () => {
+              throw new InputSnapshotError(inputOutcome, undefined, { matchedFileCount: 0, readLineCount: 0 });
+            },
+            transfer: async () => ({ state: "written" as const, transferredCellCount: 1 }),
+            statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
+            notifier: {
+              notify: async (period, transition) => {
+                notifications.push({ period, ...transition });
+              },
+            },
+          }),
+        ).resolves.toEqual({ exitCode: 1, outcome: pipelineOutcome });
+
+        expect(notifications).toEqual([{ period: "morning", fromState: "unobserved", toState: "alert" }]);
+      },
+    );
+
+    it("delivers one notification for normal -> alert, not just unobserved -> alert (AC-2)", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "scale2sheet-pipeline-normal-to-alert-"));
+      tempDirs.push(dir);
+      const statusPath = join(dir, "pipeline-status.json");
+      const weight: MeasurementReading = {
+        kind: "weight",
+        value: 68.4,
+        unit: "kg",
+        measuredAt: "2026-08-08T06:30:00+09:00",
+        source: "google_fit",
+      };
+      const notifications: Array<{ fromState: string; toState: string }> = [];
+      const clock = () => new Date("2026-08-08T06:40:00+09:00");
+      const notifier = { notify: async (_period: string, transition: { fromState: string; toState: string }) => { notifications.push(transition); } };
+      const baseOptions = {
+        period: "morning" as const,
+        timeZone: "Asia/Tokyo",
+        referenceTime: new Date("2026-08-08T06:40:00+09:00"),
+        targetDate: "2026-08-08",
+        clock,
+        statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
+        notifier,
+      };
+
+      // Run 1: succeeds, establishing health=normal (unobserved -> normal
+      // claims no notification, per design; only unobserved/normal -> alert
+      // and alert -> normal claim one).
+      await expect(
+        runPipeline({
+          ...baseOptions,
+          readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
+          transfer: async () => ({ state: "written" as const, transferredCellCount: 1 }),
+        }),
+      ).resolves.toEqual({ exitCode: 0, outcome: "completed:transferred" });
+      expect(notifications).toEqual([]);
+
+      // Run 2: fails. This is #46's actual shape -- something that was
+      // working stops, not a first-ever failure -- and is the direction
+      // NC-2 targets (stateTransitionTrigger's fromState === "normal" arm).
+      await expect(
+        runPipeline({
+          ...baseOptions,
+          readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
+          transfer: async () => ({ state: "not-written" as const, transferredCellCount: 0 }),
+        }),
+      ).resolves.toEqual({ exitCode: 1, outcome: "failed:transfer" });
+
+      expect(notifications).toEqual([{ fromState: "normal", toState: "alert" }]);
+    });
+
+    it("does not deliver a second notification while failures continue, alert -> alert (AC-3)", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "scale2sheet-pipeline-alert-to-alert-"));
+      tempDirs.push(dir);
+      const statusPath = join(dir, "pipeline-status.json");
+      const weight: MeasurementReading = {
+        kind: "weight",
+        value: 68.4,
+        unit: "kg",
+        measuredAt: "2026-08-08T06:30:00+09:00",
+        source: "google_fit",
+      };
+      const notifications: Array<{ fromState: string; toState: string }> = [];
+      const clock = () => new Date("2026-08-08T06:40:00+09:00");
+      const notifier = { notify: async (_period: string, transition: { fromState: string; toState: string }) => { notifications.push(transition); } };
+      const runOnce = () =>
+        runPipeline({
+          period: "morning",
+          timeZone: "Asia/Tokyo",
+          referenceTime: new Date("2026-08-08T06:40:00+09:00"),
+          targetDate: "2026-08-08",
+          clock,
+          statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
+          notifier,
+          readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
+          transfer: async () => ({ state: "not-written" as const, transferredCellCount: 0 }),
+        });
+
+      await expect(runOnce()).resolves.toEqual({ exitCode: 1, outcome: "failed:transfer" });
+      expect(notifications).toEqual([{ fromState: "unobserved", toState: "alert" }]);
+
+      await expect(runOnce()).resolves.toEqual({ exitCode: 1, outcome: "failed:transfer" });
+      expect(notifications).toEqual([{ fromState: "unobserved", toState: "alert" }]);
+    });
+  });
 });
