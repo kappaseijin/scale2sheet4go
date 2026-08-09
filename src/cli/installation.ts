@@ -1,10 +1,11 @@
-import { mkdir, stat } from "node:fs/promises";
+import { access, constants, mkdir, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { Command } from "commander";
+import { DateTime } from "luxon";
 
-import { expandHomePath } from "../config/settings.js";
+import { expandHomePath, loadGoogleFitCredentials } from "../config/settings.js";
 import {
   ProcessExecutableBinaryCopySource,
   type BinaryCopySource,
@@ -21,11 +22,15 @@ import {
   writeManifest,
   type InstallManifest,
 } from "../installation/manifest.js";
+import { runDoctor, type DoctorDeps, type DoctorReport } from "../installation/doctor.js";
 import type { InstallationOperation } from "../installation/model.js";
 import { DangerousPrefixError, resolveInstallationPaths } from "../installation/paths.js";
 import { MissingAuthFilesError, planInstall, planUninstall } from "../installation/planner.js";
+import { LaunchctlAdapter } from "../installation/process.js";
 import { readSettings } from "../installation/settings-read.js";
-import { acquireRunLease, RunLeaseError, type RunLeaseHandle } from "../scheduler/run-lease.js";
+import { GoogleSheetsReadAdapter, type SheetsReadPort } from "../installation/sheets-read.js";
+import { acquireRunLease, readActiveRunReceipt, RunLeaseError, type RunLeaseHandle } from "../scheduler/run-lease.js";
+import { readPipelineStatusDocument } from "../pipeline/status.js";
 import { APP_VERSION } from "../version.js";
 
 export interface InstallCliOptions {
@@ -48,6 +53,20 @@ export interface InstallationCliDeps {
   readonly logger: Pick<Console, "log" | "error">;
 }
 
+/** Read-only command wiring is injected independently from install/uninstall's write-capable dependencies. */
+export interface DoctorCliDeps {
+  readonly logger: Pick<Console, "log" | "error">;
+  readonly createDoctorDeps: () => DoctorDeps;
+  readonly runDoctor: (deps: DoctorDeps) => Promise<DoctorReport>;
+}
+
+/** Command wiring is injectable so doctor cannot become an install/uninstall side effect. */
+export interface InstallationCommandDeps {
+  readonly doctor: DoctorCliDeps;
+  readonly runInstallCommand: typeof runInstallCommand;
+  readonly runUninstallCommand: typeof runUninstallCommand;
+}
+
 export function defaultInstallationCliDeps(): InstallationCliDeps {
   return {
     home: os.homedir(),
@@ -56,6 +75,101 @@ export function defaultInstallationCliDeps(): InstallationCliDeps {
     acquireLease: acquireRunLease,
     logger: console,
   };
+}
+
+/** Production wiring for the explicit, read-only `doctor` command. */
+export function defaultDoctorCliDeps(): DoctorCliDeps {
+  const home = os.homedir();
+  const paths = resolveInstallationPaths({ home, prefix: "~/.local" });
+  return {
+    logger: console,
+    createDoctorDeps: () => ({
+      paths,
+      execPath: process.execPath,
+      appVersion: APP_VERSION,
+      now: () => DateTime.now(),
+      readManifest,
+      readSettings,
+      environment: {
+        GOOGLE_FIT_CLIENT_ID: process.env.GOOGLE_FIT_CLIENT_ID,
+        GOOGLE_FIT_CLIENT_SECRET: process.env.GOOGLE_FIT_CLIENT_SECRET,
+      },
+      readGoogleFitCredentials: loadGoogleFitCredentials,
+      process: new LaunchctlAdapter(),
+      sheets: createDefaultSheetsReadPort(paths.settingsPath),
+      statFile: statReadableFile,
+      readTextFile,
+      readActiveRunReceipt,
+      readPipelineStatus: readPipelineStatusDocument,
+    }),
+    runDoctor,
+  };
+}
+
+function defaultInstallationCommandDeps(): InstallationCommandDeps {
+  return {
+    doctor: defaultDoctorCliDeps(),
+    runInstallCommand,
+    runUninstallCommand,
+  };
+}
+
+/** Lazily resolves the settings only if doctor reaches the Sheets read checks. */
+function createDefaultSheetsReadPort(settingsPath: string): SheetsReadPort {
+  let adapter: GoogleSheetsReadAdapter | undefined;
+  const requireAdapter = (): GoogleSheetsReadAdapter => {
+    if (adapter) {
+      return adapter;
+    }
+    const settings = readSettings(settingsPath);
+    const spreadsheetId = settings?.["sheet-id"];
+    const applicationCredentialsPath = settings?.["sheets-credentials"];
+    const sheetName = settings?.["sheet-name"];
+    if (!spreadsheetId || !applicationCredentialsPath || !sheetName) {
+      throw new Error("Google Sheets settings are incomplete");
+    }
+    adapter = new GoogleSheetsReadAdapter({ applicationCredentialsPath, spreadsheetId, sheetName });
+    return adapter;
+  };
+  return {
+    authenticate: () => requireAdapter().authenticate(),
+    readHeaderRow: () => requireAdapter().readHeaderRow(),
+    findTodayRow: (dateColumnIndex, today) => requireAdapter().findTodayRow(dateColumnIndex, today),
+  };
+}
+
+async function statReadableFile(filePath: string): Promise<{ readonly executable: boolean; readonly readable: boolean } | undefined> {
+  try {
+    const details = await stat(filePath);
+    await access(filePath, constants.R_OK);
+    return { executable: (details.mode & 0o111) !== 0, readable: true };
+  } catch {
+    return undefined;
+  }
+}
+
+async function readTextFile(filePath: string): Promise<string | undefined> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+export async function runDoctorCommand(deps: DoctorCliDeps = defaultDoctorCliDeps()): Promise<number> {
+  const report = await deps.runDoctor(deps.createDoctorDeps());
+  for (const check of report.checks) {
+    const line = `[${check.status}] ${check.id}${check.stage ? ` (${check.stage})` : ""}: ${check.message}`;
+    if (check.status === "FAIL") {
+      deps.logger.error(line);
+    } else {
+      deps.logger.log(line);
+    }
+  }
+  return report.status === "FAIL" ? 1 : 0;
 }
 
 /**
@@ -360,7 +474,10 @@ export async function runUninstallCommand(
   }
 }
 
-export function registerInstallationCommands(program: Command): void {
+export function registerInstallationCommands(
+  program: Command,
+  commandDeps: InstallationCommandDeps = defaultInstallationCommandDeps(),
+): void {
   program
     .command("install")
     .description("Install the compiled scale2sheet binary and optionally register launchd.")
@@ -369,7 +486,7 @@ export function registerInstallationCommands(program: Command): void {
     .option("--dry-run", "show the planned operations without any side effects", false)
     .option("--force", "stop an active run and re-register even if one is in progress", false)
     .action(async (options: { prefix: string; launchd: boolean; dryRun: boolean; force: boolean }) => {
-      process.exitCode = await runInstallCommand(options);
+      process.exitCode = await commandDeps.runInstallCommand(options);
     });
 
   program
@@ -378,7 +495,14 @@ export function registerInstallationCommands(program: Command): void {
     .option("--prefix <dir>", "installation root used to detect a prefix mismatch", "~/.local")
     .option("--dry-run", "show what would be removed without any side effects", false)
     .action(async (options: { prefix: string; dryRun: boolean }) => {
-      process.exitCode = await runUninstallCommand(options);
+      process.exitCode = await commandDeps.runUninstallCommand(options);
+    });
+
+  program
+    .command("doctor")
+    .description("Read-only diagnosis of installation, launchd, pipeline status, and Sheets access.")
+    .action(async () => {
+      process.exitCode = await runDoctorCommand(commandDeps.doctor);
     });
 }
 

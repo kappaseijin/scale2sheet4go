@@ -89,7 +89,7 @@ interface HealthStatusV1 {
   readonly causes: readonly HealthCause[];
 }
 
-interface TerminalObservationV1 {
+export interface TerminalObservationV1 {
   readonly runId: string;
   readonly outcome: PersistedPipelineOutcome;
   readonly startedAt: string;
@@ -102,7 +102,7 @@ interface TerminalObservationV1 {
   readonly v3?: V3Observation;
 }
 
-interface PeriodStatusV1 {
+export interface PeriodStatusV1 {
   readonly consecutiveFailureCount: number;
   readonly consecutiveNoDataCount: number;
   readonly health: HealthStatusV1;
@@ -145,7 +145,7 @@ export type DefinitionsVersion = 1 | 2 | 3;
 export const CURRENT_DEFINITIONS_VERSION = 3 satisfies DefinitionsVersion;
 const CURRENT_DEFINITIONS_LABEL = "2026-08-05/v3-transfer-observation";
 
-interface PipelineStatusDocumentV1 {
+export interface PipelineStatusDocumentV1 {
   readonly schemaVersion: 1;
   readonly definitionsVersion: DefinitionsVersion;
   readonly definitionsLabel: string;
@@ -227,6 +227,33 @@ export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
       throw new PipelineStatusSchemaError(`cannot read pipeline status: ${String(error)}`);
     }
   }
+}
+
+/**
+ * Read-only path for `doctor` (design §診断契約: "pipeline-status.json の
+ * 直近開始、完了、結果"). Reuses the same parser the writer uses internally
+ * (parseDocument) rather than reimplementing it. Returns undefined when no
+ * status file exists yet — distinct from AtomicPipelineStatusWriter's own
+ * internal fallback to an empty document, since doctor needs to tell "never
+ * run" apart from "ran and produced an empty-but-valid document".
+ */
+export async function readPipelineStatusDocument(
+  statusPath: string,
+): Promise<PipelineStatusDocumentV1 | undefined> {
+  let raw: string;
+  try {
+    raw = await readFile(statusPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+  const parsed = parseDocument(JSON.parse(raw), new Date().toISOString());
+  // Recovery notifications are write-side claims. Doctor consumes only the
+  // persisted status document and currently reports terminal observations,
+  // never recovered health or notification state.
+  return parsed.document;
 }
 
 /**

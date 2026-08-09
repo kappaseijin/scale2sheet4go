@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AtomicPipelineStatusWriter } from "../../src/pipeline/status.js";
+import { AtomicPipelineStatusWriter, readPipelineStatusDocument } from "../../src/pipeline/status.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -1006,5 +1006,46 @@ describe("AtomicPipelineStatusWriter", () => {
       });
       expect(stillClear.notifications).toEqual([]);
     });
+  });
+});
+
+describe("readPipelineStatusDocument (doctor's read-only path)", () => {
+  it("reuses the same parser as the writer, without reimplementing it", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    const writer = new AtomicPipelineStatusWriter(statusPath, "run-morning");
+    await writer.write({
+      period: "morning",
+      outcome: "completed:transferred",
+      startedAt: "2026-08-01T00:00:00.000Z",
+      completedAt: "2026-08-01T00:01:00.000Z",
+      targetDate: "2026-08-01",
+      counts: { windowedReadingCount: 1 },
+      v3: { input: "ready", windowedWeightCount: 1, transfer: { state: "written", transferredCellCount: 1 } },
+    });
+
+    const document = await readPipelineStatusDocument(statusPath);
+
+    expect(document?.periods.morning.lastTerminal?.outcome).toBe("completed:transferred");
+    expect(document?.periods.morning.lastDoneAt).toBe("2026-08-01T00:01:00.000Z");
+  });
+
+  it("returns undefined (not a throw) when no status file exists yet", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+
+    const document = await readPipelineStatusDocument(path.join(directory, "pipeline-status.json"));
+
+    expect(document).toBeUndefined();
+  });
+
+  it("throws PipelineStatusSchemaError for a malformed status file, distinct from missing", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
+    temporaryDirectories.push(directory);
+    const statusPath = path.join(directory, "pipeline-status.json");
+    await writeFile(statusPath, JSON.stringify({ schemaVersion: 999 }));
+
+    await expect(readPipelineStatusDocument(statusPath)).rejects.toThrow();
   });
 });

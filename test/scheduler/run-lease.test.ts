@@ -11,6 +11,7 @@ import {
   RunLeaseError,
   acquireRunLease,
   buildLockFlags,
+  readActiveRunReceipt,
   requestCooperativeStop,
 } from "../../src/scheduler/run-lease.js";
 
@@ -98,6 +99,34 @@ describe("run lease", () => {
     chmodSync(holder.lockPath, 0o644);
     await expect(acquireRunLease({ configDir })).rejects.toThrow("lock file");
     chmodSync(holder.lockPath, 0o600);
+  });
+
+  it("readActiveRunReceipt (doctor's read-only path): reports the live receipt without acquiring the lease", async () => {
+    const configDir = await temporaryConfigDirectory();
+    const holder = await acquireRunLease({ configDir, kind: "serve", origin: "manual" });
+
+    const receipt = readActiveRunReceipt(configDir);
+
+    expect(receipt).toEqual({
+      kind: "serve",
+      origin: "manual",
+      pid: process.pid,
+      startedAt: expect.any(String),
+    });
+    await holder.release();
+  });
+
+  it("readActiveRunReceipt returns undefined when no run is active", async () => {
+    const configDir = await temporaryConfigDirectory();
+
+    expect(readActiveRunReceipt(configDir)).toBeUndefined();
+  });
+
+  it("readActiveRunReceipt returns undefined (not a throw) for a malformed receipt file", async () => {
+    const configDir = await temporaryConfigDirectory();
+    await writeFile(path.join(configDir, "active-run.json"), "{ not json");
+
+    expect(readActiveRunReceipt(configDir)).toBeUndefined();
   });
 
   async function temporaryConfigDirectory(): Promise<string> {

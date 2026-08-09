@@ -48,6 +48,16 @@ export class LaunchctlAdapter {
     return result.exitCode === 0;
   }
 
+  /**
+   * design §診断契約: "best-effort の raw 診断出力" for `doctor` to display
+   * as-is. Unlike isRegistered, this never turns the output into a
+   * pass/fail decision — the exit code and text are shown, not parsed.
+   */
+  async printRaw(domain: string, label: string): Promise<{ readonly exitCode: number; readonly stdout: string }> {
+    const result = await this.run("launchctl", ["print", `${domain}/${label}`]);
+    return { exitCode: result.exitCode, stdout: result.stdout };
+  }
+
   async bootout(domain: string, label: string): Promise<LaunchctlResult> {
     if (!(await this.isRegistered(domain, label))) {
       return { outcome: "skipped", message: "not loaded" };

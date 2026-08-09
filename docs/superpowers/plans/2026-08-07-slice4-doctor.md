@@ -9,8 +9,9 @@ tags:
   - slice-4
   - doctor
 timestamp: "2026-08-07T01:32:26+09:00"
-updated: "2026-08-09T20:05:00+09:00"
-status: proposed
+updated: "2026-08-09T21:15:16+09:00"
+status: accepted
+accepted_by: PR #137 (merged 2026-08-09)
 ---
 
 # Ph.15 Slice 4（doctor）実装計画
@@ -446,11 +447,13 @@ Google Fit OAuth の再認証の開始
 - Modify: `src/installation/doctor.ts`
 - Modify: `test/installation/doctor.test.ts`
 
-- [ ] **Step 1: 失敗するテストを書く。** status fixture から、最後に成功した対象日、直近開始時刻、直近完了時刻、outcome、転記件数、launchd stderr のパスを表示すること。
-- [ ] **Step 2: `APP_VERSION`、period ごとの最後の `done` と実転記、各経過日数、異常継続日数の報告を検査する**（AC-48）。
-- [ ] **Step 3: `partialInput: true` を報告することを検査する**（AC-41）。
-- [ ] **Step 4: テストが失敗することを確認してから実装する。**
-- [ ] **Step 5: 負のコントロール N-5 を実行する。**
+- [x] **Step 1: 失敗するテストを書く。** status fixture から、対象日、直近開始時刻、直近完了時刻、outcome、転記件数、launchd stderr のパスを表示すること。
+- [x] **Step 2: `APP_VERSION`、period ごとの最後の `done` と実転記、各経過日数の報告を検査する。**
+      **異常継続日数は実装しない。** status に開始時刻がなく、連続実行回数を日数へ換算すると誤報になるため、AC-48 のこの部分は Issue #192 へ繰り延べた。
+- [x] **Step 3: `partialInput: true` が記録されている場合だけ報告することを検査する**（AC-41）。
+      producer は Issue #182 まで未実装なので、未定義を「部分入力なし」とは報告しない。
+- [x] **Step 4: テストが失敗することを確認してから実装する。**
+- [ ] **Step 5: 負のコントロール N-5 を実行する。** Task 5 の全負のコントロール実行で記録する。
 
 **過去の記録が無い項目は「未観測」とし、`done` を転記成功と呼ばない**（目標定義 AC-48）。
 `done` と実転記は別の値である。**片方をもう片方の代理にしない。**
@@ -487,11 +490,11 @@ doctor の実行と run の実行が日付をまたぐ
 - Modify: `src/cli/installation.ts`
 - Create: `test/cli/doctor.test.ts`
 
-- [ ] **Step 1: 失敗するテストを書く。** `doctor` の起動、終了コード（`FAIL` があれば非ゼロ）、`install` と `uninstall` から呼ばれないこと。
-- [ ] **Step 2: テストが失敗することを確認する。**
-- [ ] **Step 3: 接続する。**
-- [ ] **Step 4: `npm run typecheck` と `npm test` を通す。**
-- [ ] **Step 5: 負のコントロール N-2 を実行する。**
+- [x] **Step 1: 失敗するテストを書く。** `doctor` の起動、終了コード（`FAIL` があれば非ゼロ）、`install` と `uninstall` から呼ばれないこと。
+- [x] **Step 2: テストが失敗することを確認する。**
+- [x] **Step 3: 接続する。**
+- [x] **Step 4: `npm run typecheck` と `npm test` を通す。**
+- [x] **Step 5: 負のコントロール N-2 を実行する。** install action に `runDoctorCommand` を足す変異を、隔離テストが検出することを確認した。
 
 `--purge` と `--wipe` は**公開しない**（Slice 5 の範囲）。
 
@@ -520,10 +523,10 @@ doctor の実行と run の実行が日付をまたぐ
 | --- | --- | --- | --- |
 | AC-25 | Slice 4 | **閉じる。** install から doctor / auth / network adapter の呼出ゼロ | Task 4・Task 5 |
 | AC-33 | Slice 4 | **閉じる。** 設定破損・認証切れ・権限不足・配置不整合の検出と復旧手順 | Task 2・Task 5 |
-| AC-48 | Slice 4 / 6 | **Slice 4 分を閉じる。** `APP_VERSION`、`done`・実転記・経過日数・異常継続日数の報告 | Task 3 |
+| AC-48 | Slice 4 / 6 | `APP_VERSION`、`done`・実転記・経過日数を Task 3 で報告。**異常継続日数は Issue #192 へ繰り延べ**（開始時刻が status に無い） | Task 3 / #192 |
 | AC-24 | Slice 6 | **作るが閉じない。** write method を持たない fake port の自動検査 | Task 1 |
 | AC-36 | Slice 6 | **作るが閉じない。** status fixture 表示の自動検査。**超過判定は検査しない** | Task 3 |
-| AC-41 | Slice 2 | **作るが閉じない。** status API は `partialInput?: boolean` を保持するが、producer 未実装（#182）のため現時点では常に未定義。doctor もまだ報告しない | Task 3 |
+| AC-41 | Slice 2 | **作るが閉じない。** status API は `partialInput?: boolean` を保持し、doctor は記録された `true` だけを報告する。producer 未実装（#182）のため現時点の production 値は未定義であり、「部分入力なし」とは報告しない | Task 3 |
 
 **新規 AC は不要である。**
 6 件はすべて既存の AC-01〜AC-49 の範囲にあり、目標定義または設計書に条件文がある。

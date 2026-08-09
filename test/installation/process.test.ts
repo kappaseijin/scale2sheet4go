@@ -152,3 +152,34 @@ describe("LaunchctlAdapter.bootstrap", () => {
     });
   });
 });
+
+describe("LaunchctlAdapter.printRaw (doctor's best-effort diagnostic display)", () => {
+  it("returns the raw exit code and stdout for display, without interpreting them", async () => {
+    const runner: ProcessRunner = async (command, args) => {
+      expect(command).toBe("launchctl");
+      expect(args).toEqual(["print", "gui/501/jp.example.label"]);
+      return { exitCode: 0, stdout: "state = running\npid = 4242\n", stderr: "", timedOut: false };
+    };
+    const adapter = new LaunchctlAdapter(runner);
+
+    await expect(adapter.printRaw("gui/501", "jp.example.label")).resolves.toEqual({
+      exitCode: 0,
+      stdout: "state = running\npid = 4242\n",
+    });
+  });
+
+  it("returns a non-zero exit code as-is (unregistered), not just registered/unregistered", async () => {
+    const runner: ProcessRunner = async () => ({
+      exitCode: 113,
+      stdout: "",
+      stderr: "Could not find service",
+      timedOut: false,
+    });
+    const adapter = new LaunchctlAdapter(runner);
+
+    await expect(adapter.printRaw("gui/501", "jp.example.label")).resolves.toEqual({
+      exitCode: 113,
+      stdout: "",
+    });
+  });
+});

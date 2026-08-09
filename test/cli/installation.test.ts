@@ -52,14 +52,14 @@ async function makeDeps(home: string, overrides: Partial<InstallationCliDeps> = 
 }
 
 describe("CLI: install/uninstall registration (Task 7, design §外部インターフェース)", () => {
-  it("does not expose doctor, --purge, or --wipe (S-9)", () => {
+  it("exposes doctor but not Slice 5 purge options (S-9)", () => {
     const program = new Command();
     registerInstallationCommands(program);
 
     const names = program.commands.map((command) => command.name());
     expect(names).toContain("install");
     expect(names).toContain("uninstall");
-    expect(names).not.toContain("doctor");
+    expect(names).toContain("doctor");
 
     const uninstall = program.commands.find((command) => command.name() === "uninstall");
     const optionFlags = uninstall?.options.map((option) => option.long) ?? [];

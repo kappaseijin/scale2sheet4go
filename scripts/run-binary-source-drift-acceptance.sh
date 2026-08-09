@@ -121,11 +121,16 @@ import sys
 
 path = sys.argv[1]
 text = open(path, encoding="utf-8").read()
-marker = 'export function registerInstallationCommands(program: Command): void {'
-if marker not in text:
+marker = re.search(
+    r'export function registerInstallationCommands\([\s\S]*?\): void \{',
+    text,
+)
+if marker is None:
     raise SystemExit(f"marker not found in {path}")
-injected = marker + '\n  program.command("acceptance-mutation-only").action(() => {});'
-open(path, "w", encoding="utf-8").write(text.replace(marker, injected, 1))
+injected = marker.group(0) + '\n  program.command("acceptance-mutation-only").action(() => {});'
+open(path, "w", encoding="utf-8").write(
+    text[:marker.start()] + injected + text[marker.end():]
+)
 PYEOF
 if python3 "$checker" "$fresh" "$helper_mutation_dir/src/index.ts"; then
   echo 'helper-registered command mutation went undetected (regex-shaped hole reopened)' >&2

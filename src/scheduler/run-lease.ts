@@ -154,6 +154,62 @@ export async function acquireRunLease(
   }
 }
 
+export interface ActiveRunReceiptInfo {
+  readonly kind: "serve" | "pipeline" | "maintenance";
+  readonly origin: "launchd" | "manual" | "maintenance";
+  readonly period?: "morning" | "evening";
+  readonly pid: number;
+  readonly startedAt: string;
+}
+
+/**
+ * Best-effort, read-only receipt inspection for `doctor` (design §diagnostic
+ * contract: "run receipt による serve の稼働状態"). Never acquires the lease
+ * or the runtime directory/socket — just reads and validates the JSON file,
+ * so doctor never mutates or contends with an actually-running process.
+ * A missing or malformed receipt is reported as "no active run", not an
+ * error: doctor's own read failures are not the caller's problem to handle.
+ */
+export function readActiveRunReceipt(configDir: string): ActiveRunReceiptInfo | undefined {
+  const receiptPath = path.join(configDir, "active-run.json");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(receiptPath, "utf8"));
+  } catch {
+    return undefined;
+  }
+
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("kind" in parsed) ||
+    !("origin" in parsed) ||
+    !("pid" in parsed) ||
+    !("started-at" in parsed)
+  ) {
+    return undefined;
+  }
+
+  const record = parsed as Record<string, unknown>;
+  if (
+    (record.kind !== "serve" && record.kind !== "pipeline" && record.kind !== "maintenance") ||
+    (record.origin !== "launchd" && record.origin !== "manual" && record.origin !== "maintenance") ||
+    typeof record.pid !== "number" ||
+    typeof record["started-at"] !== "string"
+  ) {
+    return undefined;
+  }
+
+  const period = record.period;
+  return {
+    kind: record.kind,
+    origin: record.origin,
+    ...((period === "morning" || period === "evening") ? { period } : {}),
+    pid: record.pid,
+    startedAt: record["started-at"],
+  };
+}
+
 export async function requestCooperativeStop(
   configDir: string,
   ownerToken: string,
