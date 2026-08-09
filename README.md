@@ -195,11 +195,13 @@ curl -fsSL https://bun.sh/install | bash
 
 ## launchd による日次自動実行
 
-`scripts/run-pipeline.sh` が「scale_exporter でエクスポート → scale2sheet で転記」を1回分実行します。launchd が本実行と拾い直し実行の計 2 回/期を起動します（本体は冪等なので重複実行しても当日行を上書きするだけ）。異常は `osascript` の macOS 通知で知らせるため、LLM やログ監視に依存しません。
+`scripts/run-pipeline.sh` が `scale2sheet run --period` による転記を1回分実行します。launchd が本実行と拾い直し実行の計 2 回/期を起動します（本体は冪等なので重複実行しても当日行を上書きするだけ）。異常は `osascript` の macOS 通知で知らせるため、LLM やログ監視に依存しません。
+
+`scale_exporter` の起動はこのスクリプトの責任ではありません。`scale_exporter` 自身のスケジュールで `scale-exporter-output-dir` へ公開された JSONL を読み込むだけです。当日ぶんの公開ファイルがまだ無い場合や、`scale-exporter-output-dir` 自体が解決できない・存在しない場合は通知が出ます（`run` は失敗させず、通知のみです）。
 
 | ファイル | 役割 |
 | --- | --- |
-| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（exporter → run --period）。exporter は初回を含め最大3回試行（60秒間隔）、失敗時は通知して非0終了 |
+| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（公開済みJSONLの読込 → `run --period`） |
 | `scripts/launchd/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 本実行 + 11:30 拾い直し |
 | `scripts/launchd/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 本実行 + 23:30 拾い直し |
 
