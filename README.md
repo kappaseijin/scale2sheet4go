@@ -17,8 +17,40 @@ timestamp: "2026-07-02"
 
 ## データフロー
 
-```text
-[scale_exporter] --JSONL出力--> <入力フォルダ> --読込--> [scale2sheet] --> Google スプレッドシート
+<!-- diagram: composition -->
+```mermaid
+%% verify: composition
+flowchart LR
+  subgraph exp_side["scale_exporter（別プロジェクト・自身のスケジュールで実行）"]
+    EXP["scale_exporter<br/>scale_exporter_*.jsonl"]
+  end
+
+  subgraph s2s["scale2sheet（launchd で日次実行）"]
+    LA["scale-pipeline.morning<br/>07:00 / 11:30"]
+    LB["scale-pipeline.evening<br/>21:00 / 23:30"]
+    SH["scripts/run-pipeline.sh"]
+    BIN["dist/scale2sheet<br/>run --period P"]
+  end
+
+  subgraph cfg["~/.config/scale2sheet/"]
+    CFG["settings.json"]
+    SEC["google-sheets-service-account.json"]
+  end
+
+  OUT[("scale-exporter-output-dir<br/>分割 JSONL")]
+  LOG["~/Library/Logs/scale-pipeline/"]
+  GS["Google スプレッドシート<br/>当日行の 朝* / 夜* 列"]
+
+  EXP -->|JSONL 出力| OUT
+  LA --> SH
+  LB --> SH
+  SH -->|本日ぶんの公開を確認| OUT
+  SH -->|起動| BIN
+  OUT -->|読込| BIN
+  CFG --> BIN
+  SEC --> BIN
+  BIN -->|行を更新| GS
+  SH -.->|標準出力・エラー| LOG
 ```
 
 デフォルトのデータソースは `scale-exporter`（[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した分割 JSONL ファイルの読み込み）です。Google Fit REST API 直接取得（`--source google-fit`）も残っていますが、同 API は 2026 年末で終了するため非推奨です。launchd による朝夕の自動実行（本実行＋拾い直し）に対応します（後述）。
@@ -194,6 +226,30 @@ curl -fsSL https://bun.sh/install | bash
 ```
 
 ## launchd による日次自動実行
+
+<!-- diagram: run-path -->
+```mermaid
+%% verify: run-path
+flowchart TD
+  S(["launchd が run-pipeline.sh を起動"]) --> D{"scale-exporter-output-dir を解決<br/>環境変数 → settings.json"}
+  D -->|解決できない| DN["通知: 解決できません"]
+  D -->|ディレクトリが無い| DM["通知: 存在しないかディレクトリではありません"]
+  D -->|解決できた| P{"本日ぶんの google-fit<br/>公開ファイルが在るか"}
+  P -->|無い| PN["通知: 本日ぶん見当たりません"]
+  DN --> B
+  DM --> B
+  PN --> B
+  P -->|在る| B{"dist/scale2sheet が<br/>実行可能か"}
+  B -->|無い| BN["通知: バイナリが見つかりません"]
+  BN --> X2(["exit 1"])
+  B -->|在る| R["scale2sheet run --period P"]
+  R --> RC{"run の終了コード"}
+  RC -->|"非0 : run が失敗"| RN["通知: シート転記が失敗しました"]
+  RN --> X3(["exit 1"])
+  RC -->|"0 : 転記した"| OK(["正常終了"])
+  RC -->|"0 : 対象時間帯に測定値が無い"| Q1(["終了。通知は出ない"])
+  RC -->|"0 : 当日行がシートに無い"| Q2(["not-written。通知は出ない"])
+```
 
 `scripts/run-pipeline.sh` が `scale2sheet run --period` による転記を1回分実行します。launchd が本実行と拾い直し実行の計 2 回/期を起動します（本体は冪等なので重複実行しても当日行を上書きするだけ）。異常は `osascript` の macOS 通知で知らせるため、LLM やログ監視に依存しません。
 
