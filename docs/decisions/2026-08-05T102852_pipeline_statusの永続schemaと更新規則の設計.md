@@ -11,8 +11,8 @@ tags:
   - slice2
   - slice6
 timestamp: "2026-08-05T10:28:52+09:00"
-updated: "2026-08-05T11:04:44+09:00"
-status: proposed
+updated: "2026-08-07T05:06:56+09:00"
+status: accepted
 ---
 
 # pipeline status の永続 schema と更新規則の設計
