@@ -85,6 +85,14 @@ run_pipeline() {
     "$binary" pipeline --period morning
 }
 
+run_pipeline_or_emit_diagnostic() {
+  if ! run_pipeline "$1" "$2" >"$3" 2>&1; then
+    echo 'reacquired compiled pipeline exited non-zero before completed:no-data assertion' >&2
+    cat "$3" >&2
+    return 1
+  fi
+}
+
 start_pipeline() {
   env -i HOME="$1" PATH="$poison_bin:/usr/bin:/bin" \
     TIME_ZONE="Asia/Tokyo" SCALE_EXPORTER_OUTPUT_DIR="$2" \
@@ -185,7 +193,9 @@ kill -KILL "$holder_pid"
 wait "$holder_pid" 2>/dev/null || true
 holder_pid=""
 
-run_pipeline "$home" "$output_dir" >"$root/reacquired.log" 2>&1
+if ! run_pipeline_or_emit_diagnostic "$home" "$output_dir" "$root/reacquired.log"; then
+  exit 1
+fi
 if ! grep -qx 'completed:no-data' "$root/reacquired.log"; then
   echo 'reacquired compiled pipeline did not finish with completed:no-data' >&2
   cat "$root/reacquired.log" >&2
@@ -268,6 +278,25 @@ if [ "$(wc -l <"$osascript_log" 2>/dev/null || true)" -ne 1 ] \
   || ! grep -Fq '異常を検知しました（period=morning）' "$osascript_log"; then
   echo 'missing-input negative control did not invoke the fake osascript notification exactly once' >&2
   [ -f "$osascript_log" ] && cat "$osascript_log" >&2
+  exit 1
+fi
+
+# #188: exercise the same guarded shape with a real compiled-pipeline input
+# failure. Without the `if !` guard, set -e exits before the failure message
+# and captured command log can be emitted; the outer conditional lets this
+# acceptance continue while proving both diagnostics are present.
+diagnostic_home="$root/diagnostic-home"
+diagnostic_capture="$root/reacquired-failure-diagnostic.log"
+mkdir -p "$diagnostic_home"
+write_sheets_fixture_settings "$diagnostic_home"
+if run_pipeline_or_emit_diagnostic "$diagnostic_home" "$root/diagnostic-missing" "$root/diagnostic-command.log" >"$diagnostic_capture" 2>&1; then
+  echo 'diagnostic negative control unexpectedly succeeded' >&2
+  exit 1
+fi
+if ! grep -Fq 'reacquired compiled pipeline exited non-zero before completed:no-data assertion' "$diagnostic_capture" \
+  || ! grep -Fxq 'failed:input-missing' "$diagnostic_capture"; then
+  echo 'failed reacquired pipeline did not emit its diagnostic and command output' >&2
+  cat "$diagnostic_capture" >&2
   exit 1
 fi
 
