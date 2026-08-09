@@ -9,7 +9,7 @@ tags:
   - contract-testing
   - issue-162
 timestamp: "2026-08-10T01:02:03+09:00"
-updated: "2026-08-10T01:16:56+09:00"
+updated: "2026-08-10T01:30:29+09:00"
 status: proposed
 ---
 
@@ -110,13 +110,15 @@ flowchart LR
 
 ### 4.1 データ形式
 
-registry は TypeScript の `as const` data とし、active contract の値の一覧または extractor 関数を持たない。
+registry は TypeScript の `as const` data とし、生きている production 正本の値の一覧または extractor 関数を複製しない。
 
-例外として、retired contract だけは `retiredCanonicalFingerprint` を持つ。
+active contract は canonical value を持たない。
 
-これは production から意図的に消える旧 canonical field を、退役後も README から除去済みか判定するための履歴データである。
+retired contract の `retiredCanonicalFingerprint` は、production から意図的に失われた旧 canonical field の唯一の所在である。
 
-active contract の正本を registry へ複製する用途には使わない。
+これは生きている正本の複製ではなく、退役後も README から除去済みか判定するための履歴データである。
+
+この適用範囲を active contract の値を registry へ置く根拠にしてはならない。
 
 JSON ではなく TypeScript にする理由は、`active` と `retired` の必須項目を discriminated union で検査し、path と adapter key の typo を型検査でも止めるためである。
 
@@ -191,6 +193,12 @@ retired 行は、`retiredCanonicalFingerprint` の field が一つでも旧 READ
 
 比較値は registry の fingerprint から取り、retired adapter に旧値を手書きしない。
 
+retired 行でも全 `readmeSelectors` の section が解決できることを先に要求する。
+
+section が見つからない 0 件を「旧 field が無い」と解釈せず、`README_SECTION_NOT_FOUND` で失敗する。
+
+section が存在し旧 field が無い場合だけ、正しい退役として成功する。
+
 これにより、同じ「ファイルが無い」を次の二つへ分ける。
 
 | 状態 | 判定 |
@@ -246,6 +254,8 @@ projection は `kind: "readme" | "repo-file"` を持つ discriminated union に�
 
 README の表、散文、図は `readme`、`.env.example` のような repository 内の補助資料は `repo-file` とし、利用者向け README の欠落と sample file の欠落を同じ診断にしない。
 
+README parser は selector ごとに section 解決結果と projection を別々に返し、section 欠落を空配列へ畳み込まない。
+
 harness は source と behavior、behavior と各 README projection、README projection 同士を比較する。
 
 失敗は少なくとも次の code を持つ。
@@ -256,8 +266,9 @@ harness は source と behavior、behavior と各 README projection、README pro
 | `ADAPTER_EXECUTION_MISSING` | registry 行に対応する ledger または必須 phase が無い |
 | `CONTRACT_SOURCE_MISSING` | active の source path が無い |
 | `SOURCE_BEHAVIOR_MISMATCH` | 正本と観測挙動が違う |
-| `README_PROJECTION_INVALID` | 見出し、表、図、sentinel の分母が不正 |
-| `README_PROJECTION_MISSING` | active contract が要求する README 表現が無い |
+| `README_SECTION_NOT_FOUND` | active または retired の selector が指す README section が無い |
+| `README_PROJECTION_INVALID` | 見出し重複、表、図、sentinel の分母が不正 |
+| `README_PROJECTION_MISSING` | section は在るが active contract が要求する README 表現が無い |
 | `README_BEHAVIOR_MISMATCH` | README と観測挙動が違う |
 | `README_PROJECTIONS_DISAGREE` | 表、散文、図の内部で説明が違う |
 | `REPO_FILE_PROJECTION_INVALID` | sample file など README 外の projection の分母が不正 |
@@ -612,10 +623,12 @@ retired error が出なければ fingerprint の欠落、空、誤記を疑い�
 | L-2 | retired の source path を削除 | source phase を呼ばず緑、NO-ALARM |
 | L-3 | retired 行から `retiredAt` または `supersededBy` を削除 | `REGISTRY_INVALID`、KILLED または KILLED-BY-TSC |
 | L-4 | `supersededBy` を未登録または retired contract へ向ける | `SUPERSEDED_CONTRACT_NOT_ACTIVE`、KILLED |
-| L-5 | 対象見出しを削除、重複、空表、sentinel 欠落のいずれかにする | `README_PROJECTION_INVALID`、KILLED |
+| L-5 | active 行の `readmeSelector` が指す section を削除 | `README_SECTION_NOT_FOUND`、KILLED |
 | L-6 | README 以外の unit test または内部 refactor だけを変更 | 全 adapter が ledger に残ったまま緑、NO-ALARM |
 | L-7 | registry の adapter 行を一つだけ除外し、`expectedEntries` と active family を据え置く | `REGISTRY_INVALID` または `ADAPTER_EXECUTION_MISSING`、KILLED |
 | L-8 | retired 行の fingerprint を削除、空にする、または P-11 の旧値と一致しない値へ変える | 型または `REGISTRY_INVALID`、誤記時は P-11 の必須 retired error 欠落、KILLED または KILLED-BY-TSC |
+| L-9 | retired 行の `readmeSelector` が指す section を README から丸ごと削除 | `README_SECTION_NOT_FOUND`、KILLED |
+| L-10 | 対象見出しを重複、空表、sentinel 欠落のいずれかにする | `README_PROJECTION_INVALID`、KILLED |
 
 L-2 と L-6 は、ledger に対象 contract と所定 phase が記録されたことを同時に assert する。
 
@@ -715,7 +728,9 @@ production 正本、behavior、README を同じ変更単位で扱い、一層だ
 - 四つの required family に active contract が一つずつある。
 - active adapter は source、behavior、全 README projection を実行 ledger に記録する。
 - retired adapter は registry の履歴 fingerprint と README retirement だけを記録し、source と behavior を呼ばない。
+- active と retired の selector section 欠落は `README_SECTION_NOT_FOUND` で失敗し、0 件を除去済みと解釈しない。
 - registry から一行を外す L-7 が KILLED になる。
+- retired selector section を削除する L-9 が KILLED になる。
 - P-11 が二つの独立した error code で KILLED になる。
 - 現行の基準変異四件が新 gate で KILLED になる。
 - 非警報対照は adapter 実行証跡を残したまま緑になる。
