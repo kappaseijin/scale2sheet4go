@@ -14,6 +14,53 @@ timestamp: "2026-08-03T10:30:00+09:00"
 
 ---
 
+## 2026-08-09
+
+### マージ（6 本、reviewer による判定）
+
+| PR | 内容 | main |
+| --- | --- | --- |
+| #134 | 通知遷移。notification-state-loss が配送されない欠陥を修正 | 26e4e96 |
+| #146 | Google Fit OAuth クライアントを settings.json から読む | 40ab8af |
+| #143 | 行決定の characterization（3 往復） | 6e473a4 |
+| #147 | exit code の分離（--help が 2 を返す欠陥を修正） | 039c378 |
+| #148 | sheet-id / scale-exporter-output-dir の既定値を廃止（5 回差し戻し） | c27c84c |
+| #154 | pipeline.test.ts の実時計依存を除去（main を緑へ） | 8725c04 |
+
+tests 203 → 252
+
+### 確立した exit code の規則（PR #147）
+
+- exit 2: CLI の構文・引数エラー（Commander 由来）
+- exit 1: 設定・環境・実行時のエラー（必須設定の欠落、入力の読み取り失敗、転記の失敗など）
+- exit 0: 正常終了（--help / --version を含む）
+
+### 判定の実績
+
+APPROVED 7 / CHANGES_REQUESTED 10 / 空振り 0（計 17 回）。
+
+差し戻し 10 件はすべて、tsc・Vitest・diff-check が全通過した状態で見つかった。
+
+### 新規 Issue
+
+- #150: エージェント体制の並列増員（reviewer2 / programmer2 / worker2）
+- #151: run-pipeline.sh が scale_exporter のビルド生成物を呼んでいる
+- #153: pipeline.test.ts の実時計依存（PR #154 で解決）
+- #155: 時間依存の試験が clock 指定を忘れても動いてしまう
+
+### cutover（Issue #114）の前提が変わった
+
+gate G-2 の「exporter 自身のスケジュールだけで」は排他条件である。当方が run_exporter を呼んでいる状態では満たせない。
+
+2026-08-09T07:00:00+09:00、scale_exporter のジョブは exit 4 で失敗していた。公開された 4 ファイルは当方の run-pipeline.sh が書いたもの。先方の監査ツールは last_exit=4 を読みながら result=ok を返していた。
+
+順序（ユーザー決定）:
+1. 先方が PR #83（flock + exit 6 + 監査の誠実化）をマージ・配備
+2. 当方が run_exporter の呼び出しを外す
+3. その翌日から連続 2 日観測
+
+---
+
 ## 2026-08-03 reviewer を 1 席へ統合（前項の判断の揺れと確定）
 
 Issue #32 で `scale2sheet_reviewer_codex` を「Claude 系ロールの codex 代替」として終了したあと、
