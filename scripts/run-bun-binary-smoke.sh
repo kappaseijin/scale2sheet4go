@@ -10,6 +10,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# #168: fail loudly with install guidance rather than skipping if bun is
+# missing -- a skip would mean "the binary was not smoke-tested," not "the
+# binary behaved correctly" (Issue #126). Matches #128's guard.
+if ! command -v bun >/dev/null 2>&1; then
+  echo 'bun is required to run acceptance:bun-binary-smoke (part of `npm test`).' >&2
+  echo 'Install it with: curl -fsSL https://bun.sh/install | bash' >&2
+  echo 'Then restart your shell so `bun` is on PATH, and re-run `npm test`.' >&2
+  exit 1
+fi
+
 echo "Building Bun single-file executable..."
 (cd "$repo_root" && npm run build:bun)
 

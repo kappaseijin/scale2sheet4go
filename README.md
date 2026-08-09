@@ -11,7 +11,7 @@ timestamp: "2026-07-02"
 
 # scale2sheet
 
-朝・夜の身体測定値を Google Spreadsheet の当日行へ転記する TypeScript サービスです。正式な配布・運用形態は `bun build --compile` で生成する単体バイナリ `scale2sheet` です。開発・型検査は Node.js（>= 22）ツールチェインを使います。**`npm test` はバイナリ/ソース間のコマンドセット乖離検査（#128）を含むため、[Bun](https://bun.sh/)（>= 1.0.0）のインストールも必要です。**
+朝・夜の身体測定値を Google Spreadsheet の当日行へ転記する TypeScript サービスです。正式な配布・運用形態は `bun build --compile` で生成する単体バイナリ `scale2sheet` です。開発・型検査は Node.js（>= 22）ツールチェインを使います。**`npm test` はバイナリを実際にビルドして検証する acceptance 試験（コマンドセット乖離・pipeline shadow 経路・run lease・install/uninstall・CLI smoke、#128・#168）を含むため、[Bun](https://bun.sh/)（>= 1.0.0）のインストールも必要です。**
 
 パッケージ名は `cale2sheet`、CLI コマンド名は `scale2sheet` です。
 
@@ -187,7 +187,7 @@ npm test
 npm run build:node
 ```
 
-`npm test` はバイナリ/ソースのコマンドセット乖離検査（`bun build --compile` で実際にバイナリをビルドして比較）を含みます。[Bun](https://bun.sh/) が PATH に無い場合、この検査はスキップではなく**失敗**します（インストール手順をエラーメッセージに表示します）。
+`npm test` は `bun build --compile` で実際にバイナリをビルドして検証する acceptance 試験を5本含みます（コマンドセット乖離 #128、pipeline shadow 経路・run lease・install/uninstall・CLI smoke #168）。そのぶん通常のユニットテストだけより時間がかかります（実測: 約25〜27秒。この5本を除くと数秒程度）。[Bun](https://bun.sh/) が PATH に無い場合、これらの検査はスキップではなく**失敗**します（インストール手順をエラーメッセージに表示します）。
 
 ```sh
 curl -fsSL https://bun.sh/install | bash

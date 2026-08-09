@@ -23,6 +23,16 @@ stop_process() {
   fi
 }
 
+# #168: fail loudly with install guidance rather than skipping if bun is
+# missing -- a skip would mean "no lease contract was checked," not "the
+# contract held" (Issue #126). Matches #128's guard.
+if ! command -v bun >/dev/null 2>&1; then
+  echo 'bun is required to run acceptance:runtime-safety (part of `npm test`).' >&2
+  echo 'Install it with: curl -fsSL https://bun.sh/install | bash' >&2
+  echo 'Then restart your shell so `bun` is on PATH, and re-run `npm test`.' >&2
+  exit 1
+fi
+
 npm run build:bun >/dev/null
 binary="$PWD/dist/scale2sheet"
 home="$root/home"
