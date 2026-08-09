@@ -65,11 +65,11 @@ pipelineは`scale_exporter`の公開CLIを起動せず、その終了コード�
 ### 初回ブートストラップ
 
 ```sh
-./scripts/install.sh [scale2sheet install のオプション]
+npm run build:bun
+./dist/scale2sheet install [install のオプション]
 ```
 
-`scripts/install.sh` は `npm ci`、`npm run build:bun`、`dist/scale2sheet install "$@"` の順で実行する。
-初回配置後の更新は、同じスクリプトを再実行する。
+初回配置後の更新は、再ビルド後に同じ `install` サブコマンドを再実行する。
 
 ### CLI
 
@@ -688,7 +688,7 @@ Google Fit OAuth の再認証も開始しない。
 診断結果には最後に成功した対象日、直近開始時刻、直近完了時刻、outcome、転記件数、launchd stderr のパスを出す。
 AC-36 は直近の成功履歴を表示するだけであり、期待どおりか、期待時刻を超過しているかを判定しない。C-1 + C-3 により status の再構成と `doctor` への照会は可能になるが、通知を見逃し誰も照会しない場合を含め、Issue #46 の「届かなかった」問題を完全に解決するものではない。
 その判断は表示を見た利用者が行う。
-配置先、実行権限、version の不整合では、再ビルドと `scripts/install.sh --launchd` による復旧手順を表示する。
+配置先、実行権限、version の不整合では、再ビルドと `scale2sheet install --prefix <prefix> --launchd` による復旧手順を表示する。
 ただし、欠落した実行体と `doctor` は同じバイナリである。
 そのバイナリ自体が欠落した場合は `doctor` も起動できず、AC-33 と AC-36 は検出手段にならない。
 

@@ -228,8 +228,8 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-21 | Slice 5 | 自動 | — | — | — | interruption points | PENDING | Slice 5 で判定 |
 | AC-22 | Slice 6 | 自動 | — | — | — | README path | PENDING | Slice 6 で判定 |
 | AC-23 | Slice 5 | 自動 | — | — | — | dry-run tree | PENDING | Slice 5 で判定 |
-| AC-24 | Slice 6 | 代理指標、手動 | — | — | — | read-only Sheets | PENDING | Slice 4 fake + Slice 6 real read-only |
-| AC-25 | Slice 4 | 自動 | — | — | — | no doctor network | PENDING | Slice 4 で判定 |
+| AC-24 | Slice 6 | 代理指標、手動 | `npx vitest run test/installation/sheets-read.test.ts test/installation/doctor.test.ts` | 8518dce, 25a07ec | 2026-08-10T07:44:24+09:00 | read-only fake Sheets port | PENDING | Slice 4 fake は認証→header→当日行の順、write method なしを自動検査。Slice 6 で実 Spreadsheet の read-only を確認 |
+| AC-25 | Slice 4 | 自動 | `npm run acceptance:installer`、`npx vitest run test/cli/doctor.test.ts` | 8518dce | 2026-08-10T07:44:24+09:00 | compiled install under network deny | **PASS** | compiled install は network deny で成功し、install/uninstall は doctor deps を生成せず network adapter に到達しない |
 | AC-26 | Slice 2 | 自動 | `npm test -- --run test/pipeline/input-snapshot.test.ts` | ee89df3 | 2026-08-04 17:28 JST | bounded stable snapshot | PASS | fake delay で3 attempt・metadata 一致・missing/unstable/invalid を検査 |
 | AC-27 | Slice 6 | 代理指標、手動 | — | — | — | input failure notification | PENDING | missing/unstable/invalidの要求をSlice 2、実通知をSlice 6で判定 |
 | AC-28 | Slice 6 | 代理指標、手動 | — | — | — | input / transfer notification | PENDING | 2段階を区別。実行体欠落は対象外 |
@@ -237,15 +237,15 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-30 | Slice 2 | 自動 | `npm test -- --run test/pipeline/pipeline.test.ts`、`npm run acceptance:pipeline-shadow` | ee89df3 | 2026-08-04 17:28 JST | no-data / missing input | PASS | present-but-zero は exit 0・転記なし、missing は bounded exit 1 を検査 |
 | AC-31 | Slice 2 | 自動 | `npm test -- --run test/pipeline/input-snapshot.test.ts test/pipeline/pipeline.test.ts test/cli/serve-lease.test.ts` | ee89df3 | 2026-08-04 17:28 JST | input/status/notifier/lease ports | PASS | snapshot・status・notifier・lease の差替えを検査。3件数の証跡は AC-29 に集約。#63/#65 の未決契約は対象外 |
 | AC-32 | Slice 7 | 自動 | — | — | — | legacy reference removal | PENDING | Slice 7 で判定 |
-| AC-33 | Slice 4 | 自動 | — | — | — | doctor diagnostics | PENDING | Slice 4 で判定 |
+| AC-33 | Slice 4 | 自動 | `npx vitest run test/installation/doctor.test.ts test/cli/doctor.test.ts` | d71ffa2 | 2026-08-10T08:00:00+09:00 | doctor diagnostics | **PASS** | 設定破損、認証切れ、権限不足を fake port/deps で検出。配置先・実行権限・version 不整合では共通の `scale2sheet install --prefix <prefix> --launchd` 復旧手順も表示する。実行体欠落は適用範囲外 |
 | AC-34 | Slice 2 | 自動 | `npm test -- --run test/installation/plist.test.ts` | 9a3741b, f87ea12 | 2026-08-04 17:28 JST | plist stderr | PASS | period 別 `StandardErrorPath` を生成値で検査。spawn failure は対象外 |
 | AC-35 | Slice 6 | 自動、手動 | — | — | — | registration check | PENDING | Slice 6 で判定 |
-| AC-36 | Slice 6 | 自動、手動 | — | — | — | status history | PENDING | Slice 6 で判定 |
+| AC-36 | Slice 6 | 自動、手動 | `npx vitest run test/installation/doctor.test.ts` | 310b5bd | 2026-08-10T07:44:24+09:00 | status history | PENDING | Slice 4 で status fixture の対象日・成功時刻・結果を自動検査。超過判定は行わず、Slice 6 で実 run 後に履歴表示を確認 |
 | AC-37 | Slice 6 | 代理指標、手動 | — | — | — | normal active pipeline | PENDING | Slice 6 で判定 |
 | AC-38 | Slice 6 | 代理指標、手動 | — | — | — | force stop warning | PENDING | Slice 6 で判定 |
 | AC-39 | Slice 2 | 自動 | — | — | — | file-level skip | PENDING | Slice 2 で判定 |
 | AC-40 | Slice 2 | 自動 | — | — | — | excluded file diagnostics | PENDING | Slice 2 で判定 |
-| AC-41 | Slice 2 | 自動 | — | — | — | partial input status/doctor | PENDING | Slice 2/4 で判定 |
+| AC-41 | Slice 2 | 自動 | `npx vitest run test/installation/doctor.test.ts` | b85dd84, 310b5bd | 2026-08-10T07:44:24+09:00 | partial input status/doctor | PENDING | Slice 4 は記録済み `partialInput: true` だけを報告する。producer は Issue #182 まで未実装で、未定義を「部分入力なし」とは報告しない |
 | AC-42 | Slice 2 | 自動 | — | — | — | all-invalid fail-closed | PENDING | Slice 2 で判定 |
 | AC-42a | Slice 2 | 自動 | 544c59a | — | — | invalid diagnostic | **PASS** | reviewer end-to-end 確認済み |
 | AC-43 | Slice 2 | 自動 | — | — | — | no-data counter | PENDING | Slice 2 で判定 |
@@ -253,5 +253,5 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-45 | Slice 2 | 自動 | — | — | — | missing vs no-data | PENDING | Slice 2 で判定 |
 | AC-46 | Slice 7 | 自動 | — | — | — | no-data observation exclusion | PENDING | Slice 7 で判定 |
 | AC-47 | Slice 2 | 自動 | — | — | — | status fields | PENDING | Slice 2 で判定 |
-| AC-48 | Slice 4 / 6 | 自動 | — | — | — | doctor build identifier / done・実転記・異常の経過日数 | PENDING | Slice 4 / 6 で判定 |
+| AC-48 | Slice 4 / 6 | 自動 | `npx vitest run test/installation/doctor.test.ts` | 310b5bd, 10bd336 | 2026-08-10T07:44:24+09:00 | doctor build identifier / done・実転記・異常の経過日数 | PENDING | Slice 4 は build identifier、done・実転記・経過日数を報告。異常継続日数は開始時刻が status に無いため Issue #192 へ繰延し、Slice 6 判定も残す |
 | AC-49 | Slice 2 | 自動 | — | — | — | threshold notification distinction | PENDING | Slice 2 で判定 |

@@ -41,6 +41,11 @@ export interface ResolveInstallationPathsOptions {
 
 export const LAUNCHD_LABEL_PREFIX = "jp.seijin.kappa.scale-pipeline";
 
+/** One recovery command for installer failures and doctor diagnostics. */
+export function formatInstallCommand(prefix: string, launchd: boolean): string {
+  return `scale2sheet install --prefix ${prefix}${launchd ? " --launchd" : ""}`;
+}
+
 /** Expands a leading `~` against home, then resolves to an absolute, clean path. */
 export function normalizePath(input: string, home: string): string {
   const expanded = input === "~"

@@ -6,7 +6,7 @@ import type { ActiveRunReceiptInfo } from "../scheduler/run-lease.js";
 import { buildSheetColumnMapping } from "../sheets/adapter.js";
 import type { InstallManifest } from "./manifest.js";
 import type { InstallationPaths } from "./paths.js";
-import { LAUNCHD_LABEL_PREFIX } from "./paths.js";
+import { formatInstallCommand, LAUNCHD_LABEL_PREFIX } from "./paths.js";
 import type { SheetsReadPort } from "./sheets-read.js";
 
 export type DoctorStatus = "PASS" | "WARN" | "FAIL";
@@ -155,7 +155,7 @@ async function checkBinaryPlacement(
     checks.push(
       fail(
         "binary-placement",
-        `running binary ${deps.execPath} does not match the manifest's recorded path ${manifest["binary-path"]}`,
+        `running binary ${deps.execPath} does not match the manifest's recorded path ${manifest["binary-path"]}; recover with ${formatInstallCommand(manifest.prefix, true)}`,
         "INSTALL_PATH_MISMATCH",
       ),
     );
@@ -175,7 +175,7 @@ async function checkBinaryExecutable(
     checks.push(
       fail(
         "binary-executable",
-        `${manifest["binary-path"]} is missing or not executable`,
+        `${manifest["binary-path"]} is missing or not executable; recover with ${formatInstallCommand(manifest.prefix, true)}`,
         "BINARY_NOT_EXECUTABLE",
       ),
     );
@@ -190,7 +190,7 @@ function checkBinaryVersion(deps: DoctorDeps, manifest: InstallManifest, checks:
     checks.push(
       fail(
         "binary-version",
-        `running version ${deps.appVersion} does not match manifest version ${manifest.version}`,
+        `running version ${deps.appVersion} does not match manifest version ${manifest.version}; recover with ${formatInstallCommand(manifest.prefix, true)}`,
         "BINARY_VERSION_MISMATCH",
       ),
     );

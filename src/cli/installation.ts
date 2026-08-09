@@ -24,7 +24,7 @@ import {
 } from "../installation/manifest.js";
 import { runDoctor, type DoctorDeps, type DoctorReport } from "../installation/doctor.js";
 import type { InstallationOperation } from "../installation/model.js";
-import { DangerousPrefixError, resolveInstallationPaths } from "../installation/paths.js";
+import { DangerousPrefixError, formatInstallCommand, resolveInstallationPaths } from "../installation/paths.js";
 import { MissingAuthFilesError, planInstall, planUninstall } from "../installation/planner.js";
 import { LaunchctlAdapter } from "../installation/process.js";
 import { readSettings } from "../installation/settings-read.js";
@@ -369,7 +369,7 @@ export async function runInstallCommand(
       printFailureSummary(
         deps.logger,
         result,
-        `scale2sheet install --prefix ${paths.prefix}${options.launchd ? " --launchd" : ""}`,
+        formatInstallCommand(paths.prefix, options.launchd),
       );
       return 1;
     }

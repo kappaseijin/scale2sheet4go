@@ -1,5 +1,7 @@
+import { readFile } from "node:fs/promises";
+
 import { DateTime } from "luxon";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { runDoctor, type DoctorDeps } from "../../src/installation/doctor.js";
 import type { InstallManifest } from "../../src/installation/manifest.js";
@@ -212,6 +214,7 @@ describe("runDoctor: 2. running binary / manifest / plist placement consistency,
     const check = statusOf(report, "binary-placement");
     expect(check?.status).toBe("FAIL");
     expect(check?.stage).toBe("INSTALL_PATH_MISMATCH");
+    expect(check?.message).toContain(`scale2sheet install --prefix ${paths.prefix} --launchd`);
   });
 
   it("FAIL (BINARY_NOT_EXECUTABLE): the manifest's binary path has no execute permission", async () => {
@@ -224,6 +227,7 @@ describe("runDoctor: 2. running binary / manifest / plist placement consistency,
     const check = statusOf(report, "binary-executable");
     expect(check?.status).toBe("FAIL");
     expect(check?.stage).toBe("BINARY_NOT_EXECUTABLE");
+    expect(check?.message).toContain(`scale2sheet install --prefix ${paths.prefix} --launchd`);
   });
 
   it("FAIL (BINARY_VERSION_MISMATCH): the running binary's version differs from the manifest's", async () => {
@@ -231,6 +235,7 @@ describe("runDoctor: 2. running binary / manifest / plist placement consistency,
     const check = statusOf(report, "binary-version");
     expect(check?.status).toBe("FAIL");
     expect(check?.stage).toBe("BINARY_VERSION_MISMATCH");
+    expect(check?.message).toContain(`scale2sheet install --prefix ${paths.prefix} --launchd`);
   });
 });
 
@@ -619,6 +624,29 @@ describe("runDoctor: 13. target Spreadsheet and sheet read", () => {
 });
 
 describe("runDoctor: 14. date column and today's row identification", () => {
+  it("design integration 11: calls the fake Sheets API in read-only order", async () => {
+    const calls: string[] = [];
+    const sheets: SheetsReadPort = {
+      authenticate: vi.fn(async () => {
+        calls.push("authenticate");
+      }),
+      readHeaderRow: vi.fn(async () => {
+        calls.push("readHeaderRow");
+        return ["月日", "朝体重"];
+      }),
+      findTodayRow: vi.fn(async () => {
+        calls.push("findTodayRow");
+        return 5;
+      }),
+    };
+
+    const report = await runDoctor(baseDeps({ sheets }));
+
+    expect(report.status).toBe("PASS");
+    expect(calls).toEqual(["authenticate", "readHeaderRow", "findTodayRow"]);
+    expect(Object.keys(sheets).sort()).toEqual(["authenticate", "findTodayRow", "readHeaderRow"]);
+  });
+
   it("PASS: today's row is found", async () => {
     let receivedDateColumnIndex: number | undefined;
     const report = await runDoctor(baseDeps({
@@ -710,5 +738,14 @@ describe("runDoctor: negative controls (plan §5)", () => {
   it("N-7: any single FAIL check makes the aggregate exit non-zero (FAIL), never silently PASS/WARN", async () => {
     const report = await runDoctor(baseDeps({ appVersion: "9.9.9" }));
     expect(report.status).toBe("FAIL");
+  });
+
+  it("N-11: doctor has no notifier dependency or notification dispatch", async () => {
+    // DoctorDeps deliberately has no notifier port.  The source-level check
+    // complements that type boundary: adding a notification import/call is a
+    // behavior change and must make this read-only contract visibly fail.
+    const source = await readFile(new URL("../../src/installation/doctor.ts", import.meta.url), "utf8");
+    expect(Object.keys(baseDeps()).some((key) => /notifier|notification/i.test(key))).toBe(false);
+    expect(source).not.toMatch(/\bnotifier\b|\.notify\(/i);
   });
 });

@@ -5,7 +5,9 @@ set -euo pipefail
 # §隔離統合テスト 1, 2, 4, 5, 6 plus the "隔離 Bun 必須" checks for AC-17,
 # AC-18, AC-19). Never touches the real HOME, prefix, launchd, or network.
 # launchctl is a fake stub on PATH; Google network access is denied via
-# unroutable proxies. purge/wipe/doctor are Slice 5/4 and are out of scope.
+# unroutable proxies. This compiled `install` check is AC-25's network-deny
+# evidence; doctor fake-API behavior is covered by the injected read-only
+# port tests. purge/wipe remain Slice 5 scope.
 
 root=$(mktemp -d /private/tmp/scale2sheet-installer-acceptance.XXXXXX)
 holder_pid=""

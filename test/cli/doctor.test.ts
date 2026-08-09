@@ -63,7 +63,12 @@ describe("CLI: doctor", () => {
   });
 
   it("does not invoke doctor from install or uninstall", async () => {
-    const doctor = doctorCliDeps({ status: "PASS", checks: [] });
+    const doctor = {
+      ...doctorCliDeps({ status: "PASS", checks: [] }),
+      // Creating these deps wires the production Google Sheets adapter.  The
+      // install/uninstall boundary must not reach it, even under network deny.
+      createDoctorDeps: vi.fn(() => ({} as DoctorDeps)),
+    };
     const deps = commandDeps(doctor);
 
     const installProgram = new Command();
@@ -76,6 +81,7 @@ describe("CLI: doctor", () => {
 
     expect(deps.runInstallCommand).toHaveBeenCalledOnce();
     expect(deps.runUninstallCommand).toHaveBeenCalledOnce();
+    expect(doctor.createDoctorDeps).not.toHaveBeenCalled();
     expect(doctor.runDoctor).not.toHaveBeenCalled();
   });
 });
