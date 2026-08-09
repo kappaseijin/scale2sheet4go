@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-02（Ph.15 の実装分割確定と Slice 1 着手、scale_exporter との責任境界を追加）
+最終更新: 2026-08-09（Ph.15 の Slice 1 完了、Slice 2・3 着地を記録）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -107,7 +107,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.12 | 単一バイナリ化（bun buildを正式配布形態にする） | launchd運用・エンドユーザー向け配布をBunコンパイル済み単体バイナリへ切り替え。開発・型検査・テストはNode.jsツールチェイン継続 | **実装中**（PR #11, #12 完了。検討書: [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md)） |
 | Ph.13 | Bunを優先実行環境にする・バイナリ名変更 | バイナリ名を`scale2sheet-bun`→`scale2sheet`へ変更、README/設計書をBun優先の書き方へ更新 | **計画中**（検討書: [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md)） |
 | Ph.14 | エージェント体制の派生命名への移行 | 7役割（pm/innovator/architect/programmer/reviewer×2/worker）を `<プロジェクト名>_<役割>_<ベンダー>` で登録、専用クローンと人格差分 AGENT.md を整備、兼任・プロジェクト跨ぎを解消。reviewer をベンダー別2名に分割しレビュー経路を閉じた（reviewer は 2026-08-03 の決定により 1 席へ統合） | **完了**（2026-07-28） |
-| Ph.15 | インストーラ／アンインストーラの整備 | インストール後の実行体をソースチェックアウトから独立させる（Ph.12 の未完了分の回収）。導入・撤収・診断の手段を提供し、launchd plist と run-pipeline.sh の絶対パス依存を解消する。あわせて `build` → `build:node` へ改名 | **実装中・Slice 1**（2026-08-02 着手。目標定義: [decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md](./decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md)、設計書: [INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md)、実装分割: [decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md](./decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md)） |
+| Ph.15 | インストーラ／アンインストーラの整備 | インストール後の実行体をソースチェックアウトから独立させる（Ph.12 の未完了分の回収）。導入・撤収・診断の手段を提供し、launchd plist と run-pipeline.sh の絶対パス依存を解消する。あわせて `build` → `build:node` へ改名 | **Slice 1 完了（2026-08-02）・Slice 2 着地（PR #73）・Slice 3 着地（PR #139）**。Slice 1 実装根拠: src/version.ts、src/scheduler/run-lease.ts、src/installation/settings-read.ts、test/scheduler/run-lease.test.ts、test/cli/serve-lease.test.ts、scripts/run-runtime-safety-acceptance.sh。Slice 2 根拠: PR #73（input snapshot / pipeline CLI）。Slice 3 根拠: PR #139（install / 既定 uninstall / Task 1-8 実装、AC 骨格）。[目標定義](./decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md)、[INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md)、[実装分割](./decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md) |
 
 ---
 
@@ -122,10 +122,10 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Slice | 内容 | 状態 |
 | --- | --- | --- |
 | 0 | 着手条件の確認（PR を作らない） | 完了（2026-08-02 全項目 PASS） |
-| 1 | runtime safety foundation（APP_VERSION / read-only settings / run lease / `O_EXLOCK_DARWIN` / 最小 acceptance harness / AC 骨格） | **実装中** |
-| 2 | 内蔵 pipeline の shadow path | 未着手（責任境界の監査待ち） |
-| 3 | install と既定 uninstall | 未着手 |
-| 4 | doctor | 未着手 |
+| 1 | runtime safety foundation（APP_VERSION / read-only settings / run lease / `O_EXLOCK_DARWIN` / 最小 acceptance harness / AC 骨格） | **完了**（2026-08-02、根拠: `6bf2511 feat: add runtime safety foundation`） |
+| 2 | 内蔵 pipeline の shadow path | **着地（PR #73）**（根拠: `d214648 Merge pull request #73 from kappaseijin/feat/pipeline-shadow-path`） |
+| 3 | install と既定 uninstall | **着地（PR #139）**（根拠: `d1f98bc Slice 3: install / 既定 uninstall (Task 1-8) (#139)`） |
+| 4 | doctor | **着手・停止中**（Task 1・2 push 済み。根拠: `5d99a9c`（`origin/feature/slice4-doctor`）。未マージ。parseDocument のシグネチャ変更（PR #134）に伴う設計判断待ち） |
 | 5 | purge と wipe | 未着手 |
 | 6 | distribution と切替準備 | 未着手 |
 | 7 | 観測後 cleanup | 未着手 |
