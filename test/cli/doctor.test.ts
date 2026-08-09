@@ -7,6 +7,7 @@ import {
   type InstallationCommandDeps,
 } from "../../src/cli/installation.js";
 import type { DoctorDeps, DoctorReport } from "../../src/installation/doctor.js";
+import { formatInstallCommand } from "../../src/installation/paths.js";
 
 afterEach(() => {
   process.exitCode = undefined;
@@ -29,6 +30,18 @@ function commandDeps(doctor: DoctorCliDeps): InstallationCommandDeps {
 }
 
 describe("CLI: doctor", () => {
+  it("keeps the recovery command registered: the displayed install subcommand accepts --launchd", () => {
+    const program = new Command();
+    registerInstallationCommands(program, commandDeps(doctorCliDeps({ status: "PASS", checks: [] })));
+
+    const displayed = formatInstallCommand("/Users/example/.local", true);
+    const commandName = displayed.match(/^scale2sheet ([^ ]+) --prefix /)?.[1];
+    const command = program.commands.find((candidate) => candidate.name() === commandName);
+
+    expect(commandName).toBeDefined();
+    expect(command?.options.some((option) => option.long === "--launchd")).toBe(true);
+  });
+
   it("runs doctor explicitly, prints every check, and exits zero without a FAIL", async () => {
     const deps = doctorCliDeps({
       status: "WARN",
