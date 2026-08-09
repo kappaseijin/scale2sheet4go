@@ -20,7 +20,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.0.0",
+    "bun": ">=1.0.0"
   },
   "dependencies": {
     "commander": "^15.0.0",
