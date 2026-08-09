@@ -47,8 +47,17 @@ export type PersistedPipelineOutcome =
   | "failed:transfer";
 
 export interface PipelineStatusWriteResult {
-  /** Set only when this write claimed a state-transition notification attempt (design §9.1). */
-  readonly notification?: NotificationAttemptV1;
+  /**
+   * #165: a write claims a notification for its own period (design §9.1)
+   * AND can simultaneously recover the OTHER period's missing health,
+   * which also claims one (§9.2). Both are real alerts and both must be
+   * delivered -- recovery is a document-wide event, not scoped to
+   * whichever period happened to run. Empty when nothing was claimed.
+   */
+  readonly notifications: readonly {
+    readonly period: PipelinePeriod;
+    readonly notification: NotificationAttemptV1;
+  }[];
 }
 
 export interface PipelineStatusWriter {
@@ -161,10 +170,10 @@ export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
 
   async write(status: PipelineStatus): Promise<PipelineStatusWriteResult> {
     const updatedAt = status.completedAt ?? status.startedAt;
-    const read = await this.readDocument(updatedAt, status.period);
+    const read = await this.readDocument(updatedAt);
     const document = rebaselineForDefinitions(read.document, updatedAt);
-    /** A version change discards prior history (design §5.3), so a stale recovery claim goes with it. */
-    const recoveryNotification = document === read.document ? read.notification : undefined;
+    /** A version change discards prior history (design §5.3), so any stale recovery claims go with it. */
+    const recoveredNotifications = document === read.document ? read.recoveredNotifications : {};
     const { document: next, notification: ownNotification } = status.outcome === "running"
       ? { document: recordActiveRun(document, status, this.runId, updatedAt) }
       : recordTerminal(document, status, this.runId, updatedAt);
@@ -175,20 +184,34 @@ export class AtomicPipelineStatusWriter implements PipelineStatusWriter {
     });
     await chmod(temporaryPath, 0o600);
     await this.renameFile(temporaryPath, this.statusPath);
-    /** This run's own transition (if any) reflects the most current outcome and takes priority. */
-    const notification = ownNotification ?? recoveryNotification;
-    return { ...(notification ? { notification } : {}) };
+    /**
+     * #165: this run's own transition (if any) reflects the most current
+     * outcome for ITS period and takes priority over a recovery claim for
+     * that same period. The OTHER period is untouched by this write, so
+     * its recovery claim (if any) is delivered as-is -- recovery is a
+     * document-wide event; both periods' alerts are real.
+     */
+    const otherPeriod: PipelinePeriod = status.period === "morning" ? "evening" : "morning";
+    const ownPeriodNotification = ownNotification ?? recoveredNotifications[status.period];
+    const otherPeriodNotification = recoveredNotifications[otherPeriod];
+    const notifications: PipelineStatusWriteResult["notifications"] = [
+      ...(ownPeriodNotification ? [{ period: status.period, notification: ownPeriodNotification }] : []),
+      ...(otherPeriodNotification ? [{ period: otherPeriod, notification: otherPeriodNotification }] : []),
+    ];
+    return { notifications };
   }
 
   private async readDocument(
     observedAt: string,
-    currentPeriod: PipelinePeriod,
-  ): Promise<{ readonly document: PipelineStatusDocumentV1; readonly notification?: NotificationAttemptV1 }> {
+  ): Promise<{
+    readonly document: PipelineStatusDocumentV1;
+    readonly recoveredNotifications: Partial<Record<PipelinePeriod, NotificationAttemptV1>>;
+  }> {
     try {
-      return parseDocument(JSON.parse(await readFile(this.statusPath, "utf8")), observedAt, currentPeriod);
+      return parseDocument(JSON.parse(await readFile(this.statusPath, "utf8")), observedAt);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return { document: initialDocument() };
+        return { document: initialDocument(), recoveredNotifications: {} };
       }
       if (error instanceof PipelineStatusSchemaError) {
         throw error;
@@ -413,8 +436,10 @@ function isPersistedPipelineOutcome(value: string): value is PersistedPipelineOu
 function parseDocument(
   value: unknown,
   observedAt: string,
-  currentPeriod: PipelinePeriod,
-): { readonly document: PipelineStatusDocumentV1; readonly notification?: NotificationAttemptV1 } {
+): {
+  readonly document: PipelineStatusDocumentV1;
+  readonly recoveredNotifications: Partial<Record<PipelinePeriod, NotificationAttemptV1>>;
+} {
   if (!isRecord(value)) {
     throw new PipelineStatusSchemaError("pipeline status must be a JSON object");
   }
@@ -446,8 +471,13 @@ function parseDocument(
     ...value,
     periods: { morning: morning.period, evening: evening.period },
   } as unknown as PipelineStatusDocumentV1;
-  const recovered = currentPeriod === "morning" ? morning : evening;
-  return { document, ...(recovered.notification ? { notification: recovered.notification } : {}) };
+  return {
+    document,
+    recoveredNotifications: {
+      ...(morning.notification ? { morning: morning.notification } : {}),
+      ...(evening.notification ? { evening: evening.notification } : {}),
+    },
+  };
 }
 
 /**

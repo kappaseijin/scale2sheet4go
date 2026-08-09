@@ -597,14 +597,17 @@ describe("AtomicPipelineStatusWriter", () => {
         targetDate: "2026-08-05",
         counts: {},
       });
-      expect(first.notification).toEqual({
-        trigger: "state-transition",
-        fromState: "unobserved",
-        toState: "alert",
-        attemptId: "run-morning",
-        claimedAt: "2026-08-05T00:01:00.000Z",
-        result: "claimed",
-      });
+      expect(first.notifications).toEqual([{
+        period: "morning",
+        notification: {
+          trigger: "state-transition",
+          fromState: "unobserved",
+          toState: "alert",
+          attemptId: "run-morning",
+          claimedAt: "2026-08-05T00:01:00.000Z",
+          result: "claimed",
+        },
+      }]);
 
       /** AC-123: a claim persisted on disk is not re-sent by a fresh process (new writer instance) on restart. */
       const second = await new AtomicPipelineStatusWriter(statusPath, "run-morning-restarted").write({
@@ -615,7 +618,7 @@ describe("AtomicPipelineStatusWriter", () => {
         targetDate: "2026-08-06",
         counts: {},
       });
-      expect(second.notification).toBeUndefined();
+      expect(second.notifications).toEqual([]);
 
       const document = JSON.parse(await readFile(statusPath, "utf8"));
       expect(document.periods.morning.lastNotificationAttempt).toEqual({
@@ -651,14 +654,17 @@ describe("AtomicPipelineStatusWriter", () => {
         targetDate: "2026-08-06",
         counts: {},
       });
-      expect(recovery.notification).toEqual({
-        trigger: "state-transition",
-        fromState: "alert",
-        toState: "normal",
-        attemptId: "run-morning",
-        claimedAt: "2026-08-06T00:01:00.000Z",
-        result: "claimed",
-      });
+      expect(recovery.notifications).toEqual([{
+        period: "morning",
+        notification: {
+          trigger: "state-transition",
+          fromState: "alert",
+          toState: "normal",
+          attemptId: "run-morning",
+          claimedAt: "2026-08-06T00:01:00.000Z",
+          result: "claimed",
+        },
+      }]);
 
       const stillNormal = await writer.write({
         period: "morning",
@@ -668,7 +674,7 @@ describe("AtomicPipelineStatusWriter", () => {
         targetDate: "2026-08-07",
         counts: {},
       });
-      expect(stillNormal.notification).toBeUndefined();
+      expect(stillNormal.notifications).toEqual([]);
     });
 
     it("does not re-claim a notification when only the alert cause changes", async () => {
@@ -697,7 +703,7 @@ describe("AtomicPipelineStatusWriter", () => {
         counts: {},
         v3: { input: "ready", windowedWeightCount: 1, transfer: { state: "failed" } },
       });
-      expect(causeChanged.notification).toBeUndefined();
+      expect(causeChanged.notifications).toEqual([]);
 
       const document = JSON.parse(await readFile(statusPath, "utf8"));
       expect(document.periods.morning.health.state).toBe("alert");
@@ -724,7 +730,7 @@ describe("AtomicPipelineStatusWriter", () => {
         targetDate: "2026-08-06",
         counts: {},
       });
-      expect(running.notification).toBeUndefined();
+      expect(running.notifications).toEqual([]);
 
       const document = JSON.parse(await readFile(statusPath, "utf8"));
       expect(document.periods.morning.lastNotificationAttempt).toMatchObject({ toState: "alert" });
@@ -761,19 +767,22 @@ describe("AtomicPipelineStatusWriter", () => {
       const alertResult = await new AtomicPipelineStatusWriter(alertPath, "run-morning").write({
         period: "morning", outcome: "running", startedAt: "2026-08-05T10:00:00.000Z", targetDate: "2026-08-05", counts: {},
       });
-      expect(alertResult.notification).toEqual({
-        trigger: "notification-state-loss",
-        toState: "alert",
-        attemptId: "notification-state-loss:previous-run",
-        claimedAt: "2026-08-05T10:00:00.000Z",
-        result: "claimed",
-      });
+      expect(alertResult.notifications).toEqual([{
+        period: "morning",
+        notification: {
+          trigger: "notification-state-loss",
+          toState: "alert",
+          attemptId: "notification-state-loss:previous-run",
+          claimedAt: "2026-08-05T10:00:00.000Z",
+          result: "claimed",
+        },
+      }]);
 
       /** AC-123: restarting again without further loss does not re-send the already-persisted claim. */
       const restarted = await new AtomicPipelineStatusWriter(alertPath, "run-morning-restarted").write({
         period: "morning", outcome: "running", startedAt: "2026-08-05T10:05:00.000Z", targetDate: "2026-08-05", counts: {},
       });
-      expect(restarted.notification).toBeUndefined();
+      expect(restarted.notifications).toEqual([]);
 
       const normalDirectory = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-status-"));
       temporaryDirectories.push(normalDirectory);
@@ -806,7 +815,7 @@ describe("AtomicPipelineStatusWriter", () => {
       const normalResult = await new AtomicPipelineStatusWriter(normalPath, "run-morning").write({
         period: "morning", outcome: "running", startedAt: "2026-08-05T10:00:00.000Z", targetDate: "2026-08-05", counts: {},
       });
-      expect(normalResult.notification).toBeUndefined();
+      expect(normalResult.notifications).toEqual([]);
     });
   });
 
@@ -846,7 +855,10 @@ describe("AtomicPipelineStatusWriter", () => {
         period: "morning", outcome: "running", startedAt: "2026-08-06T10:00:00.000Z", targetDate: "2026-08-06", counts: {},
       });
 
-      expect(result.notification).toMatchObject({ trigger: "notification-state-loss", toState: "alert" });
+      expect(result.notifications).toEqual([{
+        period: "morning",
+        notification: expect.objectContaining({ trigger: "notification-state-loss", toState: "alert" }),
+      }]);
       const document = JSON.parse(await readFile(statusPath, "utf8"));
       expect(document.periods.morning.health).toEqual({
         state: "alert",
@@ -876,7 +888,10 @@ describe("AtomicPipelineStatusWriter", () => {
         causes: ["input-anomaly-candidates"],
       });
       /** unobserved -> alert: exactly one claim on the day the candidate first appears. */
-      expect(result.notification).toMatchObject({ trigger: "state-transition", fromState: "unobserved", toState: "alert" });
+      expect(result.notifications).toEqual([{
+        period: "morning",
+        notification: expect.objectContaining({ trigger: "state-transition", fromState: "unobserved", toState: "alert" }),
+      }]);
     });
 
     it("does not repeat the notification while the anomaly candidate persists", async () => {
@@ -904,7 +919,7 @@ describe("AtomicPipelineStatusWriter", () => {
         inputAnomalyCandidates: anomaly,
       });
 
-      expect(secondDay.notification).toBeUndefined();
+      expect(secondDay.notifications).toEqual([]);
       const document = JSON.parse(await readFile(statusPath, "utf8"));
       expect(document.periods.morning.health.state).toBe("alert");
     });
@@ -934,14 +949,17 @@ describe("AtomicPipelineStatusWriter", () => {
         counts: {},
       });
 
-      expect(cleared.notification).toEqual({
-        trigger: "state-transition",
-        fromState: "alert",
-        toState: "normal",
-        attemptId: "run-morning",
-        claimedAt: "2026-08-06T00:01:00.000Z",
-        result: "claimed",
-      });
+      expect(cleared.notifications).toEqual([{
+        period: "morning",
+        notification: {
+          trigger: "state-transition",
+          fromState: "alert",
+          toState: "normal",
+          attemptId: "run-morning",
+          claimedAt: "2026-08-06T00:01:00.000Z",
+          result: "claimed",
+        },
+      }]);
 
       const stillClear = await writer.write({
         period: "morning",
@@ -951,7 +969,7 @@ describe("AtomicPipelineStatusWriter", () => {
         targetDate: "2026-08-07",
         counts: {},
       });
-      expect(stillClear.notification).toBeUndefined();
+      expect(stillClear.notifications).toEqual([]);
     });
   });
 });

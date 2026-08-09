@@ -76,27 +76,36 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
       }));
     }
     /**
-     * AC-112: notify only the transition this write claimed, never on every
-     * failure. design §9.1/§9.2: `notification-state-loss` also claims one
-     * alert notification when a status document that lost its `health` key
-     * is recovered and re-evaluates to `alert` (never to `normal` — that
-     * case claims nothing, per §9.1). It carries no `fromState` (the prior
-     * confirmed state was lost, not skipped), so `unobserved` is used: the
-     * closest true reading is "no confirmed state existed before this",
-     * which is also the only other trigger whose toState is `alert` and
-     * that MacOsNotifier's message doesn't otherwise distinguish by
-     * fromState.
+     * AC-112: notify only the transition(s) this write claimed, never on
+     * every failure. design §9.1/§9.2: `notification-state-loss` also
+     * claims one alert notification when a status document that lost its
+     * `health` key is recovered and re-evaluates to `alert` (never to
+     * `normal` — that case claims nothing, per §9.1). It carries no
+     * `fromState` (the prior confirmed state was lost, not skipped), so
+     * `unobserved` is used: the closest true reading is "no confirmed
+     * state existed before this", which is also the only other trigger
+     * whose toState is `alert` and that MacOsNotifier's message doesn't
+     * otherwise distinguish by fromState.
+     *
+     * #165: recovery is a document-wide event. A single write can claim a
+     * notification for its OWN period (this run's outcome) and, at the
+     * same time, for the OTHER period (its missing health recovered by
+     * this same read). Both are real alerts and both are delivered here,
+     * to the period each one actually belongs to — not always
+     * options.period.
      */
-    if (result?.notification?.trigger === "state-transition") {
-      await options.notifier?.notify(options.period, {
-        fromState: result.notification.fromState,
-        toState: result.notification.toState,
-      });
-    } else if (result?.notification?.trigger === "notification-state-loss") {
-      await options.notifier?.notify(options.period, {
-        fromState: "unobserved",
-        toState: result.notification.toState,
-      });
+    for (const entry of result?.notifications ?? []) {
+      if (entry.notification.trigger === "state-transition") {
+        await options.notifier?.notify(entry.period, {
+          fromState: entry.notification.fromState,
+          toState: entry.notification.toState,
+        });
+      } else if (entry.notification.trigger === "notification-state-loss") {
+        await options.notifier?.notify(entry.period, {
+          fromState: "unobserved",
+          toState: entry.notification.toState,
+        });
+      }
     }
   };
   await writeStatus("running", {});

@@ -550,6 +550,107 @@ describe("runPipeline", () => {
     expect(document.periods.morning.health).toBeDefined();
   });
 
+  /**
+   * Issue #165: recovery is a document-wide event, not scoped to whichever
+   * period this run happens to be for. A status document that lost its
+   * `health` key on BOTH periods gets both re-evaluated and both written
+   * back to disk on any single write -- but before this fix, only the
+   * period matching the run's own `options.period` ever had its recovery
+   * notification delivered. The other period's alert was recorded as
+   * `claimed` in the file (a lie: nothing was ever sent) and, since the
+   * health key was now present, could never recover -- and therefore never
+   * notify -- again.
+   */
+  function bothPeriodsMissingHealth(): string {
+    const terminal = (runId: string, targetDate: string) => ({
+      runId,
+      outcome: "failed:transfer" as const,
+      startedAt: `${targetDate}T00:00:00.000Z`,
+      completedAt: `${targetDate}T00:01:00.000Z`,
+      targetDate,
+      counts: { windowedReadingCount: 1 },
+    });
+    return JSON.stringify({
+      schemaVersion: 1,
+      definitionsVersion: 3,
+      definitionsLabel: "2026-08-05/v3-transfer-observation",
+      updatedAt: "2026-08-08T00:01:00.000Z",
+      periods: {
+        morning: {
+          consecutiveFailureCount: 0,
+          consecutiveNoDataCount: 0,
+          lastTerminal: terminal("previous-morning-run", "2026-08-08"),
+        },
+        evening: {
+          consecutiveFailureCount: 0,
+          consecutiveNoDataCount: 0,
+          lastTerminal: terminal("previous-evening-run", "2026-08-08"),
+        },
+      },
+    });
+  }
+
+  it("delivers both periods' recovered alerts from a single run, and does not re-send on restart (AC-1/AC-2, #165)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scale2sheet-pipeline-both-recovered-"));
+    tempDirs.push(dir);
+    const statusPath = join(dir, "pipeline-status.json");
+    await writeFile(statusPath, bothPeriodsMissingHealth(), "utf8");
+
+    const weight: MeasurementReading = {
+      kind: "weight",
+      value: 68.4,
+      unit: "kg",
+      measuredAt: "2026-08-08T06:30:00+09:00",
+      source: "google_fit",
+    };
+    const notifications: Array<{ period: string; fromState: string; toState: string }> = [];
+    // This run's own transfer also fails, keeping morning's health at
+    // alert -> alert (no state-transition trigger of its own), so morning's
+    // notification here can only be the notification-state-loss recovery
+    // claim -- the same isolation used by the single-period tests above.
+    const runOnce = () =>
+      runPipeline({
+        period: "morning",
+        timeZone: "Asia/Tokyo",
+        referenceTime: new Date("2026-08-08T06:40:00+09:00"),
+        targetDate: "2026-08-08",
+        clock: () => new Date("2026-08-08T06:40:00+09:00"),
+        readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
+        transfer: async () => ({ state: "not-written" as const, transferredCellCount: 0 }),
+        statusWriter: new AtomicPipelineStatusWriter(statusPath, "run-morning"),
+        notifier: {
+          notify: async (period, transition) => {
+            notifications.push({ period, ...transition });
+          },
+        },
+      });
+
+    await runOnce();
+    // AC-1: both periods' alerts are delivered from the one execution --
+    // not just morning (the period that actually ran).
+    expect(notifications).toEqual(
+      expect.arrayContaining([
+        { period: "morning", fromState: "unobserved", toState: "alert" },
+        { period: "evening", fromState: "unobserved", toState: "alert" },
+      ]),
+    );
+    expect(notifications).toHaveLength(2);
+
+    // AC-2: lastNotificationAttempt=claimed corresponds to an actual
+    // delivery, for both periods -- not a recorded claim nobody received.
+    const document = JSON.parse(await readFile(statusPath, "utf8"));
+    expect(document.periods.morning.lastNotificationAttempt).toMatchObject({ result: "claimed" });
+    expect(document.periods.evening.lastNotificationAttempt).toMatchObject({ result: "claimed" });
+    expect(document.periods.morning.health).toBeDefined();
+    expect(document.periods.evening.health).toBeDefined();
+
+    // Restart: both periods now have a health key, so neither can recover
+    // (and therefore neither can claim) again. No re-send.
+    notifications.length = 0;
+    await runOnce();
+    expect(notifications).toEqual([]);
+  });
+
   it("matches the 2026-08-04 evening pair: window-out weight is no-data, a real transfer is completed (AC-122)", async () => {
     const outsideEveningWindow: MeasurementReading = {
       kind: "weight",
