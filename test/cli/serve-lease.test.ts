@@ -14,6 +14,11 @@ vi.mock("../../src/config/index.js", () => ({
   ConfigError: class ConfigError extends Error {},
   loadConfig: mocks.loadConfig,
   requireGoogleFitConfig: vi.fn(),
+  requireGoogleSheetsConfig: vi.fn().mockReturnValue({
+    applicationCredentialsPath: "/tmp/credentials.json",
+    spreadsheetId: "test-sheet",
+    sheetName: "sheet",
+  }),
 }));
 
 vi.mock("../../src/scheduler/index.js", () => ({
@@ -22,7 +27,10 @@ vi.mock("../../src/scheduler/index.js", () => ({
 }));
 
 vi.mock("../../src/auth/index.js", () => ({ runGoogleFitAuthFlow: vi.fn() }));
-vi.mock("../../src/service/index.js", () => ({ syncMeasurements: vi.fn() }));
+vi.mock("../../src/service/index.js", () => ({
+  syncMeasurements: vi.fn(),
+  requireSourceConfig: vi.fn(),
+}));
 vi.mock("../../src/pipeline/pipeline.js", () => ({ runPipeline: mocks.runPipeline }));
 vi.mock("../../src/pipeline/settings.js", () => ({ resolvePipelineSettings: mocks.resolvePipelineSettings }));
 vi.mock("../../src/pipeline/status.js", () => ({

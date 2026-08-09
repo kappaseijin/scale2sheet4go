@@ -73,7 +73,6 @@ export function defaultSettingsContent(configDir: string): SettingsFile {
       configDir,
       "google-sheets-service-account.json",
     ),
-    "scale-exporter-output-dir": "~/Documents/scale_exporter",
     "google-fit-token-path": path.join(configDir, "google-fit-token.json"),
     "morning-cron": "0 7 * * *",
     "evening-cron": "0 21 * * *",

@@ -21,6 +21,7 @@ import { acquireRunLease, startScheduler } from "../scheduler/index.js";
 import { registerInstallationCommands } from "./installation.js";
 import {
   buildLatestMeasurementSet,
+  requireSourceConfig,
   syncMeasurements,
   transferLatestMeasurementSet,
 } from "../service/index.js";
@@ -62,6 +63,8 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
         zone: pipelineSettings.timeZone,
       }).toFormat("yyyy-MM-dd");
       const config = loadConfig();
+      /** Fails at startup, not just when a weight is actually found to transfer (#47/#51 follow-up). */
+      const sheetsConfig = requireGoogleSheetsConfig(config);
       const notifier = new MacOsNotifier(process.env.SCALE2SHEET_OSASCRIPT_PATH ?? "/usr/bin/osascript");
       const lease = await acquireRunLease({ kind: "pipeline", period });
       const statusWriter = new AtomicPipelineStatusWriter(
@@ -90,7 +93,7 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
             });
             const { outcome } = await transferLatestMeasurementSet({
               latestSet,
-              sheetsConfig: requireGoogleSheetsConfig(config),
+              sheetsConfig,
               timeZone: pipelineSettings.timeZone,
             });
             return outcome;
@@ -134,13 +137,18 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     })
     .action(async (options: RunCommandOptions) => {
       const config = loadConfig();
+      const source = options.source ?? config.defaultSource;
+      /** Fails at startup, not just when a weight is actually found to transfer (#47/#51 follow-up). */
+      const sheetsConfig = requireGoogleSheetsConfig(config);
+      requireSourceConfig(config, source);
       const referenceTime = options.date
         ? referenceTimeForDate(options.date, config.timeZone)
         : undefined;
       const row = await syncMeasurements({
         config,
+        sheetsConfig,
         period: options.period,
-        source: options.source ?? config.defaultSource,
+        source,
         ...(referenceTime ? { referenceTime } : {}),
       });
 
@@ -157,10 +165,14 @@ export async function runCli(argv: readonly string[] = process.argv): Promise<vo
     )
     .action(async (options: ServeCommandOptions) => {
       const config = loadConfig();
+      const source = options.source ?? config.defaultSource;
+      /** Fails at startup, before the lease is acquired (#47/#51 follow-up). */
+      requireGoogleSheetsConfig(config);
+      requireSourceConfig(config, source);
       const lease = await acquireRunLease({ kind: "serve" });
       startScheduler({
         config,
-        source: options.source ?? config.defaultSource,
+        source,
         lease,
       });
     });

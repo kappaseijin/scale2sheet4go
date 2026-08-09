@@ -17,8 +17,6 @@ import {
 export { ConfigError, expandHomePath } from "./settings.js";
 export type { DefaultSource } from "./settings.js";
 
-export const defaultGoogleSheetId =
-  "163Lc0YeN5ZnGeXdYqx6T_JGSMa91kpvfpoODjF7q8C0";
 export const defaultGoogleSheetName = "体温・血圧";
 
 const optionalString = z
@@ -45,7 +43,7 @@ const positiveIntegerFromString = z
 
 export const envSchema = z.object({
   TIME_ZONE: z.string().trim().min(1).default("Asia/Tokyo"),
-  GOOGLE_SHEET_ID: defaultedString(defaultGoogleSheetId),
+  GOOGLE_SHEET_ID: optionalString,
   GOOGLE_SHEET_NAME: defaultedString(defaultGoogleSheetName),
   GOOGLE_APPLICATION_CREDENTIALS: optionalString,
   GOOGLE_FIT_CLIENT_ID: optionalString,
@@ -62,7 +60,7 @@ export const envSchema = z.object({
     .default("~/.config/scale2sheet/google-fit-token.json"),
   GOOGLE_FIT_LOOKBACK_DAYS: positiveIntegerFromString.default(14),
   APPLE_HEALTH_EXPORT_XML: optionalString,
-  SCALE_EXPORTER_OUTPUT_DIR: defaultedString("~/Documents/scale_exporter"),
+  SCALE_EXPORTER_OUTPUT_DIR: optionalString,
   MORNING_CRON: z.string().trim().min(1).default("0 7 * * *"),
   EVENING_CRON: z.string().trim().min(1).default("0 21 * * *"),
 });
@@ -102,7 +100,7 @@ export interface AppConfig {
   readonly googleFit?: GoogleFitAuthConfig;
   readonly googleSheets?: GoogleSheetsAuthConfig;
   readonly appleHealth?: AppleHealthConfig;
-  readonly scaleExporter: ScaleExporterConfig;
+  readonly scaleExporter?: ScaleExporterConfig;
   readonly scheduler: SchedulerConfig;
 }
 
@@ -162,7 +160,7 @@ export function loadConfig(
       ? null
       : path.dirname(expandHomePath(settingsPath));
 
-  // 優先順位: 環境変数（空文字は未設定扱い） > settings.json > 既定値
+  // 優先順位: 環境変数（空文字は未設定扱い） > settings.json（組み込み既定値は無い。#47, #51）
   const merged: Record<string, string> = settingsAsEnvOverlay(settings);
   for (const key of Object.keys(envSchema.shape)) {
     const value = env[key];
@@ -175,14 +173,17 @@ export function loadConfig(
   const config: MutableAppConfig = {
     timeZone: parsed.TIME_ZONE,
     defaultSource: settings.source ?? "scale-exporter",
-    scaleExporter: {
-      outputDir: expandHomePath(parsed.SCALE_EXPORTER_OUTPUT_DIR),
-    },
     scheduler: {
       morningCron: parsed.MORNING_CRON,
       eveningCron: parsed.EVENING_CRON,
     },
   };
+
+  if (parsed.SCALE_EXPORTER_OUTPUT_DIR) {
+    config.scaleExporter = {
+      outputDir: expandHomePath(parsed.SCALE_EXPORTER_OUTPUT_DIR),
+    };
+  }
 
   let clientId = parsed.GOOGLE_FIT_CLIENT_ID;
   let clientSecret = parsed.GOOGLE_FIT_CLIENT_SECRET;
@@ -241,7 +242,8 @@ export function requireGoogleSheetsConfig(
 ): GoogleSheetsAuthConfig {
   if (!config.googleSheets) {
     throw new ConfigError(
-      "Google Sheets requires credentials: set sheets-credentials in settings.json or GOOGLE_APPLICATION_CREDENTIALS.",
+      "Google Sheets requires both sheet-id and sheets-credentials in " +
+        `${defaultSettingsPath} (or GOOGLE_SHEET_ID / GOOGLE_APPLICATION_CREDENTIALS).`,
     );
   }
 
@@ -256,4 +258,15 @@ export function requireAppleHealthConfig(config: AppConfig): AppleHealthConfig {
   }
 
   return config.appleHealth;
+}
+
+export function requireScaleExporterConfig(config: AppConfig): ScaleExporterConfig {
+  if (!config.scaleExporter) {
+    throw new ConfigError(
+      "The scale-exporter source requires scale-exporter-output-dir in " +
+        `${defaultSettingsPath} (or SCALE_EXPORTER_OUTPUT_DIR), pointing at your scale_exporter JSONL output folder.`,
+    );
+  }
+
+  return config.scaleExporter;
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { ConfigError } from "../../src/config/settings.js";
 import { resolvePipelineSettings } from "../../src/pipeline/settings.js";
 
 describe("resolvePipelineSettings", () => {
@@ -26,7 +27,7 @@ describe("resolvePipelineSettings", () => {
     ).toEqual({ outputDir: "/tmp/from-env", timeZone: "Asia/Tokyo" });
   });
 
-  it("uses existing settings before the built-in defaults", async () => {
+  it("uses existing settings over environment absence", async () => {
     const configDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-settings-"));
     directories.push(configDir);
     const settingsPath = path.join(configDir, "settings.json");
@@ -36,5 +37,26 @@ describe("resolvePipelineSettings", () => {
       outputDir: "/tmp/from-settings",
       timeZone: "UTC",
     });
+  });
+
+  it("throws a ConfigError naming scale-exporter-output-dir and the settings file when neither env nor settings has it (#51)", async () => {
+    const configDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-settings-"));
+    directories.push(configDir);
+    const settingsPath = path.join(configDir, "settings.json");
+    await writeFile(settingsPath, '{"time-zone":"UTC"}');
+
+    expect(() => resolvePipelineSettings({ settingsPath, environment: {} })).toThrow(ConfigError);
+    expect(() => resolvePipelineSettings({ settingsPath, environment: {} })).toThrow(
+      /scale-exporter-output-dir/,
+    );
+    expect(() => resolvePipelineSettings({ settingsPath, environment: {} })).toThrow(/settings\.json/);
+  });
+
+  it("no longer falls back to the dead ~/Documents/scale_exporter default (#51)", async () => {
+    const configDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-pipeline-settings-"));
+    directories.push(configDir);
+    const settingsPath = path.join(configDir, "settings.json");
+
+    expect(() => resolvePipelineSettings({ settingsPath, environment: {} })).toThrow(ConfigError);
   });
 });

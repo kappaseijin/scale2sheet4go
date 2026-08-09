@@ -12,10 +12,12 @@ import {
   determineMeasurementPeriod,
   deduplicateCrossSourceReadings,
   filterReadingsByPeriodWindow,
+  requireSourceConfig,
   syncMeasurements,
   toSpreadsheetRow,
 } from "../../src/service/index.js";
 import { findTodayRowNumber } from "../../src/sheets/adapter.js";
+import { ConfigError } from "../../src/config/index.js";
 import type { MeasurementReading } from "../../src/domain/index.js";
 import type { AppConfig } from "../../src/config/index.js";
 
@@ -720,6 +722,49 @@ describe("measurement service", () => {
         timeZone: "Asia/Tokyo",
       });
       expect(windowed).toEqual([]);
+    });
+  });
+
+  describe("requireSourceConfig (serve startup validation, #47/#51 follow-up)", () => {
+    const baseConfig: AppConfig = {
+      timeZone: "Asia/Tokyo",
+      scheduler: { morningCron: "0 7 * * *", eveningCron: "0 21 * * *" },
+    };
+
+    it("throws for scale-exporter when scaleExporter config is missing, not for the other sources' configs", () => {
+      expect(() => requireSourceConfig(baseConfig, "scale-exporter")).toThrow(ConfigError);
+      expect(() =>
+        requireSourceConfig({ ...baseConfig, scaleExporter: { outputDir: "/tmp/exports" } }, "scale-exporter"),
+      ).not.toThrow();
+    });
+
+    it("throws for google-fit when googleFit config is missing, not for the other sources' configs", () => {
+      expect(() => requireSourceConfig(baseConfig, "google-fit")).toThrow(ConfigError);
+      expect(() =>
+        requireSourceConfig(
+          {
+            ...baseConfig,
+            googleFit: {
+              clientId: "id",
+              clientSecret: "secret",
+              redirectUri: "http://localhost",
+              tokenPath: "/tmp/token.json",
+              lookbackDays: 14,
+            },
+          },
+          "google-fit",
+        ),
+      ).not.toThrow();
+    });
+
+    it("throws for apple-health when appleHealth config is missing, not for the other sources' configs", () => {
+      expect(() => requireSourceConfig(baseConfig, "apple-health")).toThrow(ConfigError);
+      expect(() =>
+        requireSourceConfig(
+          { ...baseConfig, appleHealth: { exportXmlPath: "/tmp/export.xml" } },
+          "apple-health",
+        ),
+      ).not.toThrow();
     });
   });
 });

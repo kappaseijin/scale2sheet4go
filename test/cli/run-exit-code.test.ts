@@ -9,10 +9,12 @@ vi.mock("../../src/config/index.js", () => ({
   ConfigError: class ConfigError extends Error {},
   loadConfig: mocks.loadConfig,
   requireGoogleFitConfig: vi.fn(),
+  requireGoogleSheetsConfig: vi.fn(),
 }));
 vi.mock("../../src/service/index.js", () => ({
   syncMeasurements: mocks.syncMeasurements,
   buildLatestMeasurementSet: vi.fn(),
+  requireSourceConfig: vi.fn(),
   transferLatestMeasurementSet: vi.fn(),
 }));
 vi.mock("../../src/auth/index.js", () => ({ runGoogleFitAuthFlow: vi.fn() }));

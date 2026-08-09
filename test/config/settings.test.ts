@@ -63,6 +63,7 @@ describe("loadConfig with settings.json", () => {
       settingsPath,
       JSON.stringify({
         "time-zone": "UTC",
+        "sheet-id": "sheet-from-settings",
         "sheet-name": "settings-name",
         "sheets-credentials": "/tmp/sa.json",
       }),
@@ -194,5 +195,84 @@ describe("loadConfig with settings.json", () => {
     expect(config.defaultSource).toBe("scale-exporter");
     expect(config.timeZone).toBe("Asia/Tokyo");
     expect(existsSync(settingsPath)).toBe(false);
+  });
+
+  it("auto-generated settings.json no longer bundles the dead scale-exporter-output-dir default (#51)", async () => {
+    loadConfig({}, { settingsPath });
+
+    const written = JSON.parse(await readFile(settingsPath, "utf8"));
+    expect(written).not.toHaveProperty("scale-exporter-output-dir");
+    expect(written).not.toHaveProperty("sheet-id");
+  });
+});
+
+describe("loadConfig without a built-in sheet-id or scale-exporter-output-dir default (#47, #51)", () => {
+  let configDir: string;
+  let settingsPath: string;
+
+  beforeEach(async () => {
+    configDir = await mkdtemp(path.join(os.tmpdir(), "scale2sheet-config-"));
+    settingsPath = path.join(configDir, "settings.json");
+  });
+
+  afterEach(async () => {
+    await rm(configDir, { recursive: true, force: true });
+  });
+
+  it("leaves googleSheets unset when sheet-id is missing, even with credentials configured", async () => {
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ "sheets-credentials": "/tmp/sa.json" }),
+    );
+
+    const config = loadConfig({}, { settingsPath });
+
+    expect(config.googleSheets).toBeUndefined();
+  });
+
+  it("requireGoogleSheetsConfig names both required keys and the settings file (#47)", async () => {
+    await writeFile(settingsPath, JSON.stringify({}));
+    const config = loadConfig({}, { settingsPath });
+
+    const { requireGoogleSheetsConfig } = await import("../../src/config/index.js");
+    expect(() => requireGoogleSheetsConfig(config)).toThrow(/sheet-id/);
+    expect(() => requireGoogleSheetsConfig(config)).toThrow(/sheets-credentials/);
+    expect(() => requireGoogleSheetsConfig(config)).toThrow(/settings\.json/);
+  });
+
+  it("populates googleSheets once both sheet-id and sheets-credentials are present", async () => {
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ "sheet-id": "abc123", "sheets-credentials": "/tmp/sa.json" }),
+    );
+
+    const config = loadConfig({}, { settingsPath });
+
+    expect(config.googleSheets?.spreadsheetId).toBe("abc123");
+  });
+
+  it("leaves scaleExporter unset when scale-exporter-output-dir is missing (#51)", async () => {
+    const config = loadConfig({}, { settingsPath });
+
+    expect(config.scaleExporter).toBeUndefined();
+  });
+
+  it("requireScaleExporterConfig names the required key and the settings file (#51)", async () => {
+    const config = loadConfig({}, { settingsPath });
+
+    const { requireScaleExporterConfig } = await import("../../src/config/index.js");
+    expect(() => requireScaleExporterConfig(config)).toThrow(/scale-exporter-output-dir/);
+    expect(() => requireScaleExporterConfig(config)).toThrow(/settings\.json/);
+  });
+
+  it("populates scaleExporter once scale-exporter-output-dir is present", async () => {
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ "scale-exporter-output-dir": "/tmp/exports" }),
+    );
+
+    const config = loadConfig({}, { settingsPath });
+
+    expect(config.scaleExporter?.outputDir).toBe("/tmp/exports");
   });
 });

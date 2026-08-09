@@ -37,30 +37,37 @@ Spreadsheet は既存行を更新します。1行目の `月日` 列で当日行
 
 ## セットアップ
 
-設定ファイルは `~/.config/scale2sheet/settings.json` です。環境変数（`.env` 含む） > `settings.json` > 組み込み既定値の順で解決します。
+設定ファイルは `~/.config/scale2sheet/settings.json` です。環境変数（`.env` 含む） > `settings.json` の順で解決します。**組み込み既定値はありません。** `sheet-id` と `scale-exporter-output-dir` は必須で、未指定なら起動時に失敗します（Issue #47 / #51）。
 
-### 組み込み既定値
+### 既存利用者向けの移行手順
 
-| 設定 | 未指定時の既定値 | 注意 |
-| --- | --- | --- |
-| `sheet-id` | ソースの `defaultGoogleSheetId` | 利用者本人の本番スプレッドシートを指します。値そのものは `src/config/env.ts` を参照してください。 |
-| `scale-exporter-output-dir` | `~/Documents/scale_exporter` | この環境では2026-07-09で更新が止まった旧出力先です。環境によって停止時期は異なります。設定せずに使うと古い入力を読み続ける可能性があります。 |
+2026-08-07 以前の `settings.json` には `sheet-id` が含まれていない場合があります。次のいずれかの手順で追加してください。
 
-`sheet-id` の実値はREADMEに掲載しません。共有されたREADMEから本番スプレッドシートを特定できる状態を避け、値の正本をソースに一元化します。
+1. `~/.config/scale2sheet/settings.json` をエディタで開く
+2. `"sheet-id": "<転記先SpreadsheetのID>"` を追加する（SpreadsheetのURL `https://docs.google.com/spreadsheets/d/<ここがID>/edit` から取得）
+3. `source` が `scale-exporter`（既定）の場合は、`"scale-exporter-output-dir": "<scale_exporterのJSONL出力フォルダ>"` も確認する。無ければ追加する
+
+設定せずに起動すると、次のようなメッセージで失敗します。メッセージにはどのキーをどのファイルへ追加すればよいかが含まれます。
+
+```
+Google Sheets requires both sheet-id and sheets-credentials in ~/.config/scale2sheet/settings.json (or GOOGLE_SHEET_ID / GOOGLE_APPLICATION_CREDENTIALS).
+```
 
 設定ファイルの主なキーは次のとおりです。
 
-| キー | 用途 |
-| --- | --- |
-| `time-zone` | 日付・時間帯の解釈（既定 `Asia/Tokyo`） |
-| `source` | `scale-exporter` / `google-fit` / `apple-health` |
-| `sheet-id` / `sheet-name` | 転記先Spreadsheetとシート名 |
-| `sheets-credentials` | Google Sheetsサービスアカウント鍵のパス |
-| `scale-exporter-output-dir` | scale_exporter JSONL入力フォルダ |
-| `apple-health-export-xml` | Apple Health XML入力パス |
-| `google-fit-token-path` / `google-fit-lookback-days` | Google Fit OAuthトークンと検索期間 |
-| `google-fit-client-id` / `google-fit-client-secret` / `google-fit-redirect-uri` | Google Fit OAuthクライアント（環境変数 `GOOGLE_FIT_CLIENT_ID` / `GOOGLE_FIT_CLIENT_SECRET` / `GOOGLE_FIT_REDIRECT_URI` でも設定可） |
-| `morning-cron` / `evening-cron` | `serve` の実行時刻 |
+| キー | 用途 | 必須 |
+| --- | --- | --- |
+| `time-zone` | 日付・時間帯の解釈（既定 `Asia/Tokyo`） | - |
+| `source` | `scale-exporter` / `google-fit` / `apple-health`（既定 `scale-exporter`） | - |
+| `sheet-id` / `sheet-name` | 転記先Spreadsheetとシート名 | `sheet-id` は必須 |
+| `sheets-credentials` | Google Sheetsサービスアカウント鍵のパス | 必須 |
+| `scale-exporter-output-dir` | scale_exporter JSONL入力フォルダ | `source` が `scale-exporter` のとき必須 |
+| `apple-health-export-xml` | Apple Health XML入力パス | `source` が `apple-health` のとき必須 |
+| `google-fit-token-path` / `google-fit-lookback-days` | Google Fit OAuthトークンと検索期間 | - |
+| `google-fit-client-id` / `google-fit-client-secret` / `google-fit-redirect-uri` | Google Fit OAuthクライアント（環境変数 `GOOGLE_FIT_CLIENT_ID` / `GOOGLE_FIT_CLIENT_SECRET` / `GOOGLE_FIT_REDIRECT_URI` でも設定可） | `source` が `google-fit` のとき必須 |
+| `morning-cron` / `evening-cron` | `serve` の実行時刻 | - |
+
+`sheet-id` の実値はREADMEに掲載しません。共有されたREADMEから本番スプレッドシートを特定できる状態を避け、値の正本を各自の `settings.json` に置きます。
 
 認証情報は設定ファイルへ値を直接書かず、`~/.config/scale2sheet/google-sheets-service-account.json`（Sheets）または `google-fit-credentials.json`（Google Fit）へ配置します。詳細は [EXTERNAL_DESIGN.md](./docs/EXTERNAL_DESIGN.md#設定ファイル) を参照してください。
 
@@ -95,14 +102,14 @@ node dist/index.js run --period morning
 }
 ```
 
-`scale-exporter-output-dir` は利用環境の入力フォルダへ変更してください。設定は環境変数、`settings.json`、組み込み既定値の順で解決されます。
+`scale-exporter-output-dir` は利用環境の入力フォルダへ変更してください。`sheet-id` と（`source` が `scale-exporter` のとき）`scale-exporter-output-dir` は必須です。設定は環境変数、`settings.json` の順で解決されます（組み込み既定値はありません）。
 
 認証ファイル（シークレット・手動配置）:
 
 - `~/.config/scale2sheet/google-sheets-service-account.json` — Google Sheets 用サービスアカウント鍵
 - `~/.config/scale2sheet/google-fit-credentials.json` — Google Fit 利用時のみ。`{"client_id": "...", "client_secret": "..."}`（scale_exporter と同形式）
 
-環境変数（`.env` 含む）は settings.json への**上書き**として引き続き使えます（変数名は `.env.example` 参照）。優先順位: 環境変数 > settings.json > 既定値。
+環境変数（`.env` 含む）は settings.json への**上書き**として引き続き使えます（変数名は `.env.example` 参照）。優先順位: 環境変数 > settings.json。
 
 Google Sheets は service account を使います。対象Spreadsheetをservice accountのメールアドレスに共有してください。
 

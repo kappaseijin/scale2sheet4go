@@ -5,6 +5,7 @@ import {
   requireAppleHealthConfig,
   requireGoogleFitConfig,
   requireGoogleSheetsConfig,
+  requireScaleExporterConfig,
 } from "../config/index.js";
 import type {
   LatestMeasurementSet,
@@ -302,14 +303,40 @@ export function toSpreadsheetRow(
   };
 }
 
+/**
+ * Validates the config a given source needs, without reading anything.
+ * Shared by every entry point (`run`/`pipeline`/`serve`) so "fails at
+ * startup" can't drift between them the way #47/#51's follow-up review
+ * found it had (serve started the scheduler without checking either the
+ * Sheets config or the selected source's own config).
+ */
+export function requireSourceConfig(
+  config: AppConfig,
+  source: MeasurementSourceOption,
+): void {
+  if (source === "scale-exporter") {
+    requireScaleExporterConfig(config);
+    return;
+  }
+
+  if (source === "google-fit") {
+    requireGoogleFitConfig(config);
+    return;
+  }
+
+  requireAppleHealthConfig(config);
+}
+
 export async function readLatestMeasurementsForSource(
   config: AppConfig,
   source: MeasurementSourceOption,
   referenceTime: Date,
 ): Promise<MeasurementReading[]> {
+  requireSourceConfig(config, source);
+
   if (source === "scale-exporter") {
     return readScaleExporterMeasurements(
-      config.scaleExporter,
+      requireScaleExporterConfig(config),
       referenceTime,
       config.timeZone,
     );
