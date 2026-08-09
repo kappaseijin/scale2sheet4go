@@ -26,6 +26,17 @@ fail() {
   exit 1
 }
 
+dump_diagnostic_file() {
+  local label="$1"
+  local file_path="$2"
+  echo "--- ${label} ---" >&2
+  if [ -e "$file_path" ]; then
+    cat "$file_path" >&2
+  else
+    echo "(absent: ${file_path})" >&2
+  fi
+}
+
 # #168: fail loudly with install guidance rather than skipping if bun is
 # missing -- a skip would mean "install/uninstall was not checked," not
 # "install/uninstall behaved correctly" (Issue #126). Matches #128's guard.
@@ -176,10 +187,13 @@ env -i HOME="$home5" PATH="$isolated_path" \
 holder_pid=$!
 for _ in $(seq 1 100); do
   grep -q 'Scheduler started' "$root/holder.log" && break
-  kill -0 "$holder_pid" 2>/dev/null || { cat "$root/holder.log" >&2; fail "serve holder exited before starting"; }
+  kill -0 "$holder_pid" 2>/dev/null || { dump_diagnostic_file "serve holder log" "$root/holder.log"; fail "serve holder exited before starting"; }
   sleep 0.05
 done
-grep -q 'Scheduler started' "$root/holder.log" || fail "serve holder never reached Scheduler started"
+if ! grep -q 'Scheduler started' "$root/holder.log"; then
+  dump_diagnostic_file "serve holder log" "$root/holder.log"
+  fail "serve holder never reached Scheduler started"
+fi
 
 # Snapshot after serve has already written its own active-run.json (serve's
 # own lease bookkeeping, unrelated to install's mutation), so the tree

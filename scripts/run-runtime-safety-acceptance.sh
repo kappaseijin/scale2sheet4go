@@ -23,6 +23,17 @@ stop_process() {
   fi
 }
 
+dump_diagnostic_file() {
+  local label="$1"
+  local file_path="$2"
+  echo "--- ${label} ---" >&2
+  if [ -e "$file_path" ]; then
+    cat "$file_path" >&2
+  else
+    echo "(absent: ${file_path})" >&2
+  fi
+}
+
 # #168: fail loudly with install guidance rather than skipping if bun is
 # missing -- a skip would mean "no lease contract was checked," not "the
 # contract held" (Issue #126). Matches #128's guard.
@@ -78,7 +89,7 @@ for _ in $(seq 1 100); do
     break
   fi
   if ! kill -0 "$holder_pid" 2>/dev/null; then
-    cat "$root/holder.log" >&2
+    dump_diagnostic_file "serve holder log" "$root/holder.log"
     exit 1
   fi
   sleep 0.05
@@ -86,6 +97,7 @@ done
 
 if ! grep -q 'Scheduler started' "$root/holder.log"; then
   echo 'holder did not acquire run lease' >&2
+  dump_diagnostic_file "serve holder log" "$root/holder.log"
   exit 1
 fi
 
@@ -127,7 +139,7 @@ for _ in $(seq 1 100); do
     break
   fi
   if ! kill -0 "$holder_pid" 2>/dev/null; then
-    cat "$root/reacquired.log" >&2
+    dump_diagnostic_file "reacquired serve log" "$root/reacquired.log"
     exit 1
   fi
   sleep 0.05
@@ -135,6 +147,7 @@ done
 
 if ! grep -q 'Scheduler started' "$root/reacquired.log"; then
   echo 'compiled process did not acquire lease after SIGKILL release' >&2
+  dump_diagnostic_file "reacquired serve log" "$root/reacquired.log"
   exit 1
 fi
 

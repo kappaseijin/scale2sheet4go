@@ -38,6 +38,17 @@ write_sheets_fixture_settings() {
 SETTINGSEOF
 }
 
+dump_diagnostic_file() {
+  local label="$1"
+  local file_path="$2"
+  echo "--- ${label} ---" >&2
+  if [ -e "$file_path" ]; then
+    cat "$file_path" >&2
+  else
+    echo "(absent: ${file_path})" >&2
+  fi
+}
+
 # #168: fail loudly with install guidance rather than skipping if bun is
 # missing -- a skip would mean "no binary was checked," not "the binary
 # matched the source" (Issue #126). Matches #128's guard.
@@ -169,7 +180,7 @@ for _ in $(seq 1 100); do
     break
   fi
   if ! kill -0 "$holder_pid" 2>/dev/null; then
-    cat "$root/holder.log" >&2
+    dump_diagnostic_file "pipeline holder log" "$root/holder.log"
     exit 1
   fi
   sleep 0.05
@@ -180,14 +191,16 @@ if ! [ -f "$receipt" ] \
   || ! grep -Eq '"period":"morning"' "$receipt" \
   || ! grep -Eq "\"pid\":${holder_pid}" "$receipt"; then
   echo 'pipeline holder did not publish the expected active-run receipt' >&2
-  [ -f "$receipt" ] && cat "$receipt" >&2
-  cat "$root/holder.log" >&2
+  dump_diagnostic_file "active-run receipt" "$receipt"
+  dump_diagnostic_file "pipeline holder log" "$root/holder.log"
   exit 1
 fi
 
 if ! [ -f "$status" ] \
   || ! assert_status_shape "$status" running unused; then
   echo 'pipeline holder did not write an incomplete running status before reading input' >&2
+  dump_diagnostic_file "pipeline status" "$status"
+  dump_diagnostic_file "pipeline holder log" "$root/holder.log"
   exit 1
 fi
 before_inode=$(stat -f '%i' "$status")
