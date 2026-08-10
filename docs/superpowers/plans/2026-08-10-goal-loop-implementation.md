@@ -258,7 +258,7 @@ PR #193 は純粋な滞留が 4 時間 29 分続いた一方、programmer の無
 
 短い無音閾値だけで claim を解放すると、進行中の実装を重複取得する。
 
-したがって 30 分の orphan grace は無音の開始時ではなく、pane または session の消失と wake ACK 不能の両方が確認された後から数える。
+したがって `orphanGraceMs` は無音の開始時ではなく、pane または session の消失と wake ACK 不能の両方が確認された後から数える。
 
 `policy.mjs` は正本を既定 path として読む。
 
@@ -1216,7 +1216,14 @@ provider 不在、GitHub source 不可、timeout、runner 起動失敗は mutati
 
 `docs/GOAL_LOOP_ACCEPTANCE_REPORT.md` は OKF frontmatter の `type: VerificationReport`、固定窓、main SHA、provider version、各 mutation の command / exit / result を持つ。
 
-N-16 は pm process を起動せず、programmer session と reviewer session だけを test fixture として provider へ登録する。
+N-16 は次の二条件を一つの control として順に実行する。
+
+- N-16.a cold start：pm process を最初から登録せず、programmer session と reviewer session だけを provider へ登録する。
+- N-16.b mid-run loss：pm process が在る状態で最初の Issue claim を成立させ、その後 pm process と pane を消失させてから PR review claim と次の Issue claim を続ける。
+
+両方で Issue claim、PR review claim、release 後の次 claim が続いた場合だけ N-16 を `KILLED` とする。
+
+片方だけ通った場合は `SURVIVED` とし、subcase ごとの raw event sequence を report に残す。
 
 Issue claim、PR review claim、release 後の次 claim が続いた場合だけ KILLED とする。
 
@@ -1274,7 +1281,7 @@ git commit -m "test: measure autonomous goal loop behavior"
 | N-13 | Task 3 derivation + Task 6 reducer | unit fixture |
 | N-14 | Task 3 derivation + Task 6 reducer | unit fixture |
 | N-15 | Task 3 derivation + Task 6 reducer | unit fixture |
-| N-16 | Task 8 acceptance runner | live provider、pm process 無し |
+| N-16 | Task 8 acceptance runner | live provider、pm cold start + mid-run loss |
 | N-17 | Task 6 reducer + Task 7 supervisor | adapter fixture |
 | N-18 | Task 8 metrics sentinel | unit fixture + live event source |
 | N-19 | Task 1 Goal schema + Task 3 selector | unit fixture |
@@ -1349,7 +1356,7 @@ npm run acceptance:goal-loop -- --goal 209 --provider <provider-command>
 
 Expected: `docs/GOAL_LOOP_ACCEPTANCE_REPORT.md` に N-1 から N-21 が一件ずつ在り、SURVIVED 0 件。
 
-N-16 は pm process を停止した条件で実行する。
+N-16 は pm の cold start 不在と、稼働中の pm 消失を別 subcase で実行する。
 
 - [ ] **Step 7: herdr host の apply mode を一 Goal に限定して有効化する**
 
@@ -1394,7 +1401,7 @@ user wait nudge count は pm の `ctx` event export から別に記録し、Clau
 - ready-to-claim と PR-ready-to-review-claim。
 - duplicate claim、blocked claim、stale-version publish（目標 0）。
 - N-1 から N-21 の三値。
-- pm を停止した N-16 の raw event sequence。
+- pm の cold start 不在と mid-run loss を分けた N-16 の raw event sequence。
 - 24 時間と 7 日で変化した値と、変化しなかった値。
 - 五つの pilot 閾値を維持、縮小、延長する根拠となる alert 検出率と誤検出率。
 
@@ -1432,7 +1439,7 @@ user wait nudge count は pm の `ctx` event export から別に記録し、Clau
 - [ ] pane/session 消失、ACK 不能、grace の三条件を一件ずつ変異できる。
 - [ ] Invalidated claim を自動 release していない。
 - [ ] seat absent から spawn action を生成していない。
-- [ ] pm process 無しの N-16 を live acceptance に含めている。
+- [ ] pm の cold start 不在と mid-run loss の両方を N-16 live acceptance に含めている。
 - [ ] 0 events の metrics に sentinel event control が在る。
 - [ ] README、`src/`、`dist/` を変更対象にしていない。
 - [ ] agmsg と herdr-agent-monitor の実装を scale2sheet の Task にしていない。
@@ -1449,7 +1456,7 @@ user wait nudge count は pm の `ctx` event export から別に記録し、Clau
 - pane/session 消失と ACK 不能の片方だけでは release が 0 件である証拠。
 - 二条件が揃った後も grace 満了前は release 0 件、満了後は一回だけである証拠。
 - source version 変更後、古い token の push / done が guard で止まる証拠。
-- pm process 無しに Issue claim、PR review claim、次 claim が続く N-16 の event sequence。
+- pm の cold start 不在と mid-run loss の双方で Issue claim、PR review claim、次 claim が続く N-16 の event sequence。
 - N-1 から N-21 の KILLED / KILLED-BY-TSC / SURVIVED ledger。
 - 24 時間と 7 日の fixed-window metrics。
 - user wait nudge、actionable stall、duplicate claim、blocked claim、stale-version publish の提示。
