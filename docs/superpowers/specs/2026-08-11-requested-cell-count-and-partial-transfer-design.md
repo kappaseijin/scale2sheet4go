@@ -9,6 +9,7 @@ tags:
   - google-sheets
   - issue-243
 timestamp: "2026-08-11T02:21:14+09:00"
+updated: "2026-08-11T02:36:00+09:00"
 status: proposed
 ---
 
@@ -29,7 +30,7 @@ status: proposed
 | 区分 | 本書での扱い |
 | --- | --- |
 | 固定 | `requestedCellCount` の正本、adapter outcome、pipeline status、doctor 表示、adapter の直接 probe |
-| ユーザー判断 | 案 A「観測だけ追加」、案 B-before「完全一致を cutover 前に導入」、案 B-after「完全一致を cutover 後に導入」の選択 |
+| ユーザー判断 | 案 A「観測だけ追加」、案 B-before「完全一致を cutover 前に導入」、案 B-after「完全一致を cutover 後に導入」の選択。B は最初の version 4 write で両 period の従来履歴を消す。B-before は G-2 の判定前に観測履歴を失い、B-after は判定に使った後で cutover 前の履歴を失う |
 | 対象外 | 実 Spreadsheet への試験書込み、Sheets API の transaction 保証、任意の型 field に writer が存在するかを調べる汎用 AST gate |
 
 汎用 AST gate は #243 の発見方法を一般化する別課題であり、対象 field ごとの正しい生成条件までは判定できない。
