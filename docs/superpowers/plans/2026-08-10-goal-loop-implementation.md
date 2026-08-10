@@ -10,6 +10,7 @@ tags:
   - agmsg
   - herdr
 timestamp: "2026-08-10T18:01:31+09:00"
+updated: "2026-08-10T20:13:24+09:00"
 ---
 
 # Goal Loop Implementation Plan
@@ -27,7 +28,11 @@ scale2sheet は GitHub adapter、eligibility、状態 reducer、provider adapter
 
 - 採用方式は hybrid とする。GitHub、agmsg、herdr の責務を一つの store へ統合しない。
 - E-1 により、新しい child Issue を goal から分解できる role は innovator と architect に限る。
-- S-1 により、seat が無い場合は auto-spawn しない。
+- S-2 により、active claim の owner seat が無い場合は制約付き auto-spawn を最終状態とする。
+- auto-spawn は N-1、N-7、N-8 の behavior control がすべて `HELD` であり、対応する M-N1-CAS、M-N7-TOKEN、M-N8-FENCE がすべて `KILLED` になるまで有効化せず、それまでは S-1 相当の通知だけを行う。
+- `HELD` は無変異の baseline で期待事象が成立した control result、`KILLED` は一つの実装変異によりその control の対象試験だけが失敗した mutation result とする。両者を同じ field または同じ語で報告しない。
+- `KILLED-BY-TSC`、`SURVIVED`、control の `FAILED` / `NOT-RUN`、provider 不可、runner 失敗は有効化根拠に数えない。
+- auto-spawn の有効化条件は behavior control と変異 gate の結果だけとし、pilot の日数または日時を条件にしない。
 - orphan claim は、同じ owner session について pane または session の消失と wake ACK 不能の両方を確認し、二条件が揃った後に grace を満了した場合だけ解放する。
 - `decision:pending`、open `blockedBy`、`queue:hold`、非 active Goal の resource は claim しない。
 - GitHub、claim provider、herdr のいずれかが読めない場合は fail-closed とし、別の ownership 手段へ fallback しない。
@@ -54,7 +59,7 @@ scale2sheet は GitHub adapter、eligibility、状態 reducer、provider adapter
 | `scripts/goal-loop/setup-labels.mjs` | 必要 label の dry-run と明示 `--apply` |
 | `scripts/goal-loop/claim-provider.mjs` | agmsg owner team が提供する外部 command の fail-closed adapter |
 | `scripts/goal-loop/policy.mjs` | 閾値を必須入力として検証する parser |
-| `scripts/goal-loop/pilot-policy.json` | T-2 で採用した pilot 閾値の単一正本 |
+| `scripts/goal-loop/pilot-policy.json` | T-2 で採用した pilot 閾値と seat recovery mode の単一正本 |
 | `scripts/goal-loop/reconcile.mjs` | queue、claim、agent、ACK から action を導出する純粋 reducer |
 | `scripts/goal-loop/herdr-source.mjs` | `herdr agent list` の JSON を正規化する adapter |
 | `scripts/goal-loop/message-sink.mjs` | provider の idempotent notification への wake / report 要求 adapter |
@@ -88,7 +93,8 @@ flowchart LR
   G --> I
   H --> I
   I --> J[Task 8<br/>metrics and acceptance]
-  J --> K[Task 9<br/>Issue #209 pilot]
+  J --> L[S-2 activation gate<br/>N-1 / N-7 / N-8]
+  L --> K[Task 9<br/>Issue #209 pilot]
 ```
 
 Task 1 から Task 6 と Task 8 の純粋計測部分は、外部 capability の実装前に main へ入れられる。
@@ -200,6 +206,7 @@ type Claim = ResourceRef & {
 | `progress` | resource key、token、summary | append 済み event | `STALE_TOKEN` |
 | `invalidate` | resource key、token、old/new sourceVersion、reason | 一世代一回の event | `STALE_TOKEN` |
 | `revalidate` | resource key、token、old/new sourceVersion、workPlan | 更新後の `Claim` | `STALE_TOKEN`、`SOURCE_VERSION_MISMATCH` |
+| `resume-owner` | resource key、token、fenced session id、fence evidence | 同じ agent id の新しい live session へ結び直し、generation と token を回転した `Claim` | `STALE_TOKEN`、`FENCE_INCOMPLETE`、`AGENT_SESSION_UNAVAILABLE` |
 | `release` | resource key、token、reason | release event | `STALE_TOKEN` |
 | `orphan-release` | resource key、token、paneMissingAt、ackFailedAt、graceSatisfiedAt | release event | `FENCE_INCOMPLETE`、`STALE_TOKEN` |
 | `notify-once` | recipient、message、transitionKey、claim generation | `sent` または `already-sent` と event | `RECIPIENT_UNAVAILABLE`、`EVENT_STORE_UNAVAILABLE` |
@@ -211,6 +218,12 @@ type Claim = ResourceRef & {
 active claim の unique key は `(team, repository, kind, number)` とする。
 
 generation は unique key に含めず、late release を拒否する token の一部にする。
+
+`resume-owner` は active claim の resource と agent id を変えない。
+
+provider は旧 session の fence evidence と新しい live actas session を同じ transaction で確認し、generation と token を回転する。
+
+回転後は旧 token の `ack`、`progress`、`release` を `STALE_TOKEN` で拒否する。
 
 `notify-once` は `(team, repository, transitionKey, claim generation)` を idempotency key とし、同じ通知を agmsg inbox へ二重 insert しない。
 
@@ -231,7 +244,11 @@ herdr-agent-monitor owner team へ、次を満たす host capability を依頼�
 - pm agent process とは別の長時間 process から `supervise-once` を定期実行する。
 - process 自身の停止を監視 pane へ表示し、停止を正常な work 0 件に畳み込まない。
 - stdout の action JSON と stderr の診断を時刻つきで保持する。
-- `seat-missing` では通知だけを行い、spawn しない。
+- `seat-missing` は通知だけを行い、active claim の無い role を auto-spawn しない。
+- `auto-spawn-owner` は policy が `claimed-owner-auto-spawn` であり、action の claim token と generation が現在の active claim に一致するときだけ実行する。
+- host は旧 owner session を fence してから同じ agent id を起動し、provider の `resume-owner` で新 session へ claim を原子的に結び直す。
+- fence 不能、spawn 失敗、`resume-owner` 失敗のいずれかでは新 token を配送せず、active claim を保持して通知する。
+- 同じ transition key と claim generation では spawn を一回だけ試し、失敗後に同じ世代を繰り返し起動せず通知へ戻す。
 - policy path と agmsg provider command path を明示引数で渡す。
 - 同じ state transition と claim generation の wake を重複実行しない。
 
@@ -244,6 +261,7 @@ T-2 で採用した pilot policy を次の一ファイルに置く。
 ```json
 {
   "sourceControlIssue": 209,
+  "seatRecoveryMode": "notify-only",
   "wakeAckTimeoutMs": 600000,
   "orphanGraceMs": 1800000,
   "sourceRecheckMs": 300000,
@@ -251,6 +269,14 @@ T-2 で採用した pilot policy を次の一ファイルに置く。
   "progressReportAfterMs": 3600000
 }
 ```
+
+`seatRecoveryMode` は `notify-only` と `claimed-owner-auto-spawn` の二値とする。
+
+初期値は `notify-only` とする。
+
+N-1、N-7、N-8 の control result がすべて `HELD` であり、対応する M-N1-CAS、M-N7-TOKEN、M-N8-FENCE の mutation result がすべて `KILLED` になった後の独立 PR だけが `claimed-owner-auto-spawn` へ変更できる。
+
+この mode は時間閾値ではないため、T-2 の五値へ数えない。
 
 五値の根拠は、誤って進行中の仕事を取り上げる危険を先に小さくすることである。
 
@@ -750,9 +776,12 @@ npx vitest run test/goal-loop/claim-provider.test.ts > /tmp/issue-209-task5-red.
 - agent id と live session id の結び方は agmsg owner team が保持すること。
 - generation を unique key に含めないこと。
 - `orphan-release` の二信号と grace evidence。
+- `resume-owner` の fence evidence、新 session 解決、generation / token 回転、旧 token 拒否。
 - append-only event の RFC3339 timestamp。
 - command 不可時に scale2sheet が fallback しないこと。
 - 同時 claim、late release、store down の conformance fixture。
+- herdr host が受理する `auto-spawn-owner` action の field と、active claim token / generation / mode の三条件。
+- 同じ transition key と claim generation の spawn を一回に制限し、失敗時は再起動 loop へ入らず通知すること。
 
 agmsg 内部の path、table 名、実装言語は指定しない。
 
@@ -780,6 +809,7 @@ export function createClaimProvider({ command, spawn }) {
     listEvents: (payload) => call("list-events", payload),
     invalidate: (payload) => call("invalidate", payload),
     revalidate: (payload) => call("revalidate", payload),
+    resumeOwner: (payload) => call("resume-owner", payload),
     release: (payload) => call("release", payload),
     orphanRelease: (payload) => call("orphan-release", payload),
     notifyOnce: (payload) => call("notify-once", payload),
@@ -799,7 +829,7 @@ CLI または host が明示引数で渡す。
 npx vitest run test/goal-loop/claim-provider.test.ts
 ```
 
-Expected: success envelope、ENOENT、非 0、invalid JSON、schema mismatch、stale token が pass。
+Expected: success envelope、ENOENT、非 0、invalid JSON、schema mismatch、stale token、`resume-owner` の generation / token 回転、`FENCE_INCOMPLETE` が pass。
 
 - [ ] **Step 6: Task 5 を commit する**
 
@@ -833,6 +863,7 @@ import pilotPolicy from "../../scripts/goal-loop/pilot-policy.json" with { type:
 it.each([
   [{}, "POLICY_UNSET"],
   [{ ...pilotPolicy, orphanGraceMs: 0 }, "POLICY_INVALID"],
+  [{ ...pilotPolicy, seatRecoveryMode: "auto" }, "POLICY_INVALID"],
   [{ ...pilotPolicy, unknown: 10 }, "POLICY_INVALID"],
 ])("rejects incomplete or ambiguous policy", (input, code) => {
   expect(parsePolicy(input)).toMatchObject({ ok: false, code });
@@ -847,7 +878,7 @@ test は正本 JSON を読み、異常系は memory 上の copy を変異させ�
 
 同じ五値を持つ test fixture は作らない。
 
-- [ ] **Step 2: S-1 と invalidation の failing test を書く**
+- [ ] **Step 2: seat recovery と invalidation の failing test を書く**
 
 ```ts
 it("does not release when only pane disappearance is known", () => {
@@ -871,6 +902,37 @@ it("starts grace after both pane loss and ACK failure are known", () => {
     token: claim.token,
   }));
 });
+
+it("keeps a missing claimed owner notify-only before the mutation gate", () => {
+  const actions = reconcileGoalLoop(missingOwnerInput({
+    policy: { ...pilotPolicy, seatRecoveryMode: "notify-only" },
+    claims: [claim],
+  }));
+  expect(actions).not.toContainEqual(expect.objectContaining({ type: "auto-spawn-owner" }));
+});
+
+it("auto-spawns only the missing owner of an active claim after activation", () => {
+  const actions = reconcileGoalLoop(missingOwnerInput({
+    policy: { ...pilotPolicy, seatRecoveryMode: "claimed-owner-auto-spawn" },
+    claims: [claim],
+  }));
+  expect(actions).toContainEqual(expect.objectContaining({
+    type: "auto-spawn-owner",
+    agentId: claim.agentId,
+    claimToken: claim.token,
+    generation: claim.generation,
+  }));
+  expect(actions).not.toContainEqual(expect.objectContaining({ type: "orphan-release" }));
+});
+
+it("does not auto-spawn a role without an active claim", () => {
+  const actions = reconcileGoalLoop(missingSeatInput({
+    policy: { ...pilotPolicy, seatRecoveryMode: "claimed-owner-auto-spawn" },
+    claims: [],
+  }));
+  expect(actions).toContainEqual(expect.objectContaining({ type: "seat-missing" }));
+  expect(actions).not.toContainEqual(expect.objectContaining({ type: "auto-spawn-owner" }));
+});
 ```
 
 - [ ] **Step 3: red を保存する**
@@ -888,6 +950,7 @@ type GoalLoopAction =
   | { type: "invalidate"; claimToken: string; oldVersion: string; newVersion: string; reason: string }
   | { type: "orphan-release"; claimToken: string; paneMissingAt: string; ackFailedAt: string; graceSatisfiedAt: string }
   | { type: "seat-missing"; role: string; transitionKey: string }
+  | { type: "auto-spawn-owner"; agentId: string; claimToken: string; generation: number; transitionKey: string }
   | { type: "needs-decomposition"; goalNumber: number; allowedRoles: ["innovator", "architect"] }
   | { type: "blocked-decision"; goalNumber: number }
   | { type: "completion-ready"; goalNumber: number }
@@ -912,7 +975,11 @@ Expected:
 - herdr `unknown` は orphan にしない。
 - `decision:pending` 追加は `invalidate` を一回だけ返す。
 - acceptance 変更後の古い source version では publish 許可を返さない。
-- seat absent は `seat-missing` であり spawn action を返さない。
+- `notify-only` では、active claim の owner seat が absent でも `auto-spawn-owner` を返さない。
+- `claimed-owner-auto-spawn` では、active claim の owner seat が absent の場合だけ `auto-spawn-owner` を返す。
+- active claim の無い role が absent の場合は、mode にかかわらず `seat-missing` だけを返す。
+- `auto-spawn-owner` と `orphan-release` を同じ claim generation の同じ cycle で併記しない。
+- 同じ transition key と claim generation は provider の event ledger で一回だけ受理する。
 
 - [ ] **Step 6: Task 6 を commit する**
 
@@ -939,6 +1006,10 @@ git commit -m "feat: reduce goal queue and liveness states"
 - Produces: agent の `next / guard / progress / release` CLI と host の `supervise-once` CLI。
 
 **Entry Gate:** agmsg owner team が §3.1 と互換の provider command を提供し、pm が command path と version を Issue #209 へ記録するまで、この Task の live provider test と apply mode を開始しない。
+
+`auto-spawn-owner` の live test と実行は、herdr-agent-monitor owner team が §3.2 の host capability を受け入れるまで開始しない。
+
+それまでは `seatRecoveryMode=notify-only` とし、unit test と action JSON の検証だけを進める。
 
 - [ ] **Step 1: claim 直後の窓と pre-side-effect gate の failing test を書く**
 
@@ -1049,6 +1120,10 @@ source control が成功した cycle は、action が 0 件でも provider の `
 
 この observation stream を、発火しなかった alert の検出率を計る分母にする。
 
+`supervise-once` は `spawn.sh` を直接呼ばない。
+
+`auto-spawn-owner` は action JSON として出力し、§3.2 の host capability だけが実行する。
+
 - [ ] **Step 7: package script を追加する**
 
 ```json
@@ -1127,7 +1202,7 @@ it("does not call zero alerts safe when a known stall exceeded the threshold", (
 });
 ```
 
-- [ ] **Step 2: ledger の欠落と偽の KILLED を落とす failing test を書く**
+- [ ] **Step 2: control と mutation の混同を落とす failing test を書く**
 
 ```ts
 it("requires exactly N-1 through N-21", () => {
@@ -1135,9 +1210,19 @@ it("requires exactly N-1 through N-21", () => {
   expect(validateAcceptanceReport(report)).toContain("missing N-16");
 });
 
-it("does not count provider startup failure as KILLED", () => {
-  const report = parseAcceptanceReport(reportWith("N-1", "PROVIDER-UNAVAILABLE"));
-  expect(validateAcceptanceReport(report)).toContain("N-1 has no mutation result");
+it("does not count provider startup failure as HELD", () => {
+  const report = parseAcceptanceReport(reportWithControl("N-1", "NOT-RUN"));
+  expect(validateAcceptanceReport(report)).toContain("N-1 control is not HELD");
+});
+
+it("does not use HELD as a mutation result", () => {
+  const report = parseAcceptanceReport(reportWithMutation("M-N1-CAS", "HELD"));
+  expect(validateAcceptanceReport(report)).toContain("invalid mutation result HELD");
+});
+
+it("requires every S-2 activation mutation", () => {
+  const report = parseAcceptanceReport(readReportWithoutMutation("M-N8-FENCE"));
+  expect(validateAcceptanceReport(report)).toContain("missing M-N8-FENCE");
 });
 ```
 
@@ -1198,9 +1283,19 @@ agmsg history は第 3 引数を十分大きくして取得し、各 header の 
 
 message body の行数を message 件数に数えない。
 
-- [ ] **Step 5: acceptance runner と ledger を実装する**
+- [ ] **Step 5: acceptance runner と二層 ledger を実装する**
 
-`run-acceptance.mjs` は一件ずつ mutation を実行し、次の三値だけを書く。
+`run-acceptance.mjs` は最初に無変異の baseline scenario を実行し、N-1 から N-21 の各 control へ次の三値だけを書く。
+
+```text
+HELD
+FAILED
+NOT-RUN
+```
+
+`HELD` は期待する behavior と raw event が成立、`FAILED` は実行できたが期待する behavior が不成立、`NOT-RUN` は provider 不可、source 不可、timeout、runner 起動失敗のいずれかで behavior を判定できないことを表す。
+
+次に一件ずつ implementation mutation を当て、mutation ledger へ次の三値だけを書く。
 
 ```text
 KILLED
@@ -1212,20 +1307,60 @@ SURVIVED
 
 `.mjs`、JSON、GitHub fixture の mutation には適用しない。
 
-provider 不在、GitHub source 不可、timeout、runner 起動失敗は mutation result に数えず、ledger 全体を失敗させる。
+`KILLED` は、同じ probe が無変異の baseline で `HELD` であったことを先に確認し、変異後にその probe が期待どおり失敗し、変異を戻した後にもう一度 `HELD` へ戻った場合だけ記録する。
 
-`docs/GOAL_LOOP_ACCEPTANCE_REPORT.md` は OKF frontmatter の `type: VerificationReport`、固定窓、main SHA、provider version、各 mutation の command / exit / result を持つ。
+baseline が `FAILED` / `NOT-RUN`、provider 不在、GitHub source 不可、timeout、runner 起動失敗、復元後の再確認失敗は mutation result に数えず、ledger 全体を失敗させる。
+
+最低限、S-2 activation 用に次の三変異を登録する。
+
+| Mutation ID | 変異 | 対象 control | `KILLED` の条件 |
+| --- | --- | --- | --- |
+| M-N1-CAS | 隔離 provider の atomic CAS / unique transaction を last-write-wins に置換する | N-1 | 二席同時 claim の probe が active owner 一席という期待を満たさず失敗する |
+| M-N7-TOKEN | 隔離 provider の `resume-owner` から generation / token rotation を除く | N-7 | 旧 token が受理され、`STALE_TOKEN` を要求する probe が失敗する |
+| M-N8-FENCE | reducer / host test seam の fence 未確認分岐を release + auto-spawn action へ置換する | N-8 | release または auto-spawn が一件以上となり、0 件を要求する probe が失敗する |
+
+M-N1-CAS と M-N7-TOKEN は production claim store ではなく、owner team が提供する conformance 用の隔離 DB と provider process へ当てる。
+
+M-N8-FENCE は live seat を起動せず、固定 fixture と action sink を使う。
+
+いずれも test file の期待値だけを書き換える変異は認めない。
+
+`run-acceptance.mjs` は `REQUIRED_CONTROLS` と別に、次の固定集合を `REQUIRED_ACTIVATION_MUTATIONS` として持つ。
+
+```js
+const REQUIRED_ACTIVATION_MUTATIONS = ["M-N1-CAS", "M-N7-TOKEN", "M-N8-FENCE"];
+```
+
+report との双方向照合で欠落、重複、未知 ID を失敗させる。
+
+`docs/GOAL_LOOP_ACCEPTANCE_REPORT.md` は OKF frontmatter の `type: VerificationReport`、固定窓、main SHA、provider version、各 control の command / raw event / result と、各 mutation の base command / mutation command / restore command / exit / result を別 ledger として持つ。
+
+```ts
+type ControlResult = {
+  control: `N-${number}`;
+  result: "HELD" | "FAILED" | "NOT-RUN";
+  rawEvents: string[];
+};
+
+type MutationResult = {
+  mutation: string;
+  control: `N-${number}`;
+  result: "KILLED" | "KILLED-BY-TSC" | "SURVIVED";
+  baseline: "HELD";
+  restored: "HELD";
+};
+```
 
 N-16 は次の二条件を一つの control として順に実行する。
 
 - N-16.a cold start：pm process を最初から登録せず、programmer session と reviewer session だけを provider へ登録する。
 - N-16.b mid-run loss：pm process が在る状態で最初の Issue claim を成立させ、その後 pm process と pane を消失させてから PR review claim と次の Issue claim を続ける。
 
-両方で Issue claim、PR review claim、release 後の次 claim が続いた場合だけ N-16 を `KILLED` とする。
+両方で Issue claim、PR review claim、release 後の次 claim が続いた場合だけ N-16 を `HELD` とする。
 
-片方だけ通った場合は `SURVIVED` とし、subcase ごとの raw event sequence を report に残す。
+片方だけ通った場合は `FAILED` とし、subcase ごとの raw event sequence を report に残す。
 
-Issue claim、PR review claim、release 後の次 claim が続いた場合だけ KILLED とする。
+provider 不可または runner 失敗でいずれかの subcase を実行できない場合は `NOT-RUN` とする。
 
 - [ ] **Step 6: package script を追加する**
 
@@ -1255,6 +1390,10 @@ Expected: acceptance ledger test が `missing N-3` 以降を報告して失敗�
 
 元へ戻して再実行し、pass を確認する。
 
+さらに M-N1-CAS、M-N7-TOKEN、M-N8-FENCE は、各 baseline が先に `HELD`、変異中は対象 probe が失敗、復元後は再び `HELD` になる順で実行する。
+
+baseline が初めから失敗している状態を `KILLED` として記録しない。
+
 - [ ] **Step 8: Task 8 を commit する**
 
 ```bash
@@ -1272,8 +1411,8 @@ git commit -m "test: measure autonomous goal loop behavior"
 | N-4 | Task 1 body parser + Task 3 eligibility | unit fixture |
 | N-5 | Task 6 reducer | unit fixture |
 | N-6 | Task 6 reducer | unit fixture |
-| N-7 | Task 6 reducer + Task 8 runner | live provider / herdr fixture |
-| N-8 | Task 6 reducer + Task 8 runner | live provider / ACK failure fixture |
+| N-7 | Task 6 reducer + Task 8 runner | live provider / herdr fixture / 旧 token 拒否 |
+| N-8 | Task 6 reducer + Task 8 runner | live provider / ACK failure fixture / release 0 件 |
 | N-9 | Task 3 fingerprint + Task 7 guard | adapter fixture |
 | N-10 | Task 2 point-read + Task 7 supervisor | adapter fixture |
 | N-11 | Task 5 adapter + Task 7 supervisor | live provider failure |
@@ -1347,6 +1486,7 @@ npm run goal-loop:supervise-once -- --provider <provider-command>
 ```
 
 Expected: 三回とも同じ source state なら同じ transition key を返す。dry-run なので claim、wake、release は 0 件。
+auto-spawn も 0 件である。
 
 - [ ] **Step 6: real provider で N-1 から N-21 を実行する**
 
@@ -1354,17 +1494,40 @@ Expected: 三回とも同じ source state なら同じ transition key を返す�
 npm run acceptance:goal-loop -- --goal 209 --provider <provider-command>
 ```
 
-Expected: `docs/GOAL_LOOP_ACCEPTANCE_REPORT.md` に N-1 から N-21 が一件ずつ在り、SURVIVED 0 件。
+Expected: `docs/GOAL_LOOP_ACCEPTANCE_REPORT.md` の control ledger に N-1 から N-21 が一件ずつ在り、すべて `HELD`。
+
+mutation ledger は登録済み mutation が一件ずつ在り、すべて `KILLED`。
 
 N-16 は pm の cold start 不在と、稼働中の pm 消失を別 subcase で実行する。
 
-- [ ] **Step 7: herdr host の apply mode を一 Goal に限定して有効化する**
+- [ ] **Step 7: S-2 の有効化 gate を通す**
+
+`docs/GOAL_LOOP_ACCEPTANCE_REPORT.md` で次の二条件を確認する。
+
+- control ledger の N-1、N-7、N-8 がすべて `HELD`。
+- mutation ledger の M-N1-CAS、M-N7-TOKEN、M-N8-FENCE がすべて `KILLED`。
+
+control ledger の `HELD` は次の raw event まで含む結果として扱う。
+
+- N-1：同じ resource への同時 claim で active owner が一席だけである。
+- N-7：fence 後に新 generation の claim が一件だけ成立し、旧 owner token の `progress` と `release` が `STALE_TOKEN` で拒否される。
+- N-8：fence を確認できない場合は release と auto-spawn が 0 件である。
+
+三 control のいずれかが `FAILED` / `NOT-RUN`、または三 mutation のいずれかが `KILLED-BY-TSC` / `SURVIVED` / 未実行、provider 不可、runner 失敗なら、`seatRecoveryMode` は `notify-only` のままにする。
+
+三 control が `HELD` かつ三 mutation が `KILLED` の場合だけ、独立 PR で `seatRecoveryMode` を `claimed-owner-auto-spawn` へ変更する。
+
+PR 本文には、S-2 の採用決定を変更する PR ではなく、安全装置の成立後に有効化する PR であることと、三 control の raw event、三 mutation の baseline / mutation / restore result を記録する。
+
+日付、経過日数、通常 test の green、reviewer approve だけを mode 変更の根拠にしない。
+
+- [ ] **Step 8: herdr host の apply mode を一 Goal に限定して有効化する**
 
 host 設定は repository、Goal #209、正本 `scripts/goal-loop/pilot-policy.json` の絶対 path、provider command、supervisor command を明示する。
 
 Goal を省略した全 repository scan は pilot で有効化しない。
 
-- [ ] **Step 8: role protocol を project-specific AGENT.md へ反映する**
+- [ ] **Step 9: role protocol を project-specific AGENT.md へ反映する**
 
 各 role へ次を同じ語で追加する。
 
@@ -1374,11 +1537,12 @@ Goal を省略した全 repository scan は pilot で有効化しない。
 - push、review-ready、done の直前に `goal-loop:guard` を通す。
 - release 後は pm の次の指示を待たず、`goal-loop:next` をもう一度実行する。
 - `needs-decomposition` から child Issue を作れるのは innovator と architect だけである。
+- seat を意図して閉じる前に active claim を `release` する。release に失敗した状態で seat を閉じない。
 ```
 
 一 role だけ更新して pilot を始めない。
 
-- [ ] **Step 9: 24 時間と 7 日を固定窓で測る**
+- [ ] **Step 10: 24 時間と 7 日を固定窓で測る**
 
 ```bash
 npm run goal-loop:metrics -- --from <JST-RFC3339> --to <JST-RFC3339> --provider <provider-command>
@@ -1392,7 +1556,7 @@ alert は発火件数だけでなく、true positive、false positive、unclassi
 
 user wait nudge count は pm の `ctx` event export から別に記録し、Claude reviewer が再現していない値であることを明記する。
 
-- [ ] **Step 10: pilot の終了判定をユーザーへ提示する**
+- [ ] **Step 11: pilot の終了判定をユーザーへ提示する**
 
 次を同時に提示する。
 
@@ -1400,7 +1564,8 @@ user wait nudge count は pm の `ctx` event export から別に記録し、Clau
 - actionable stall count / seconds。
 - ready-to-claim と PR-ready-to-review-claim。
 - duplicate claim、blocked claim、stale-version publish（目標 0）。
-- N-1 から N-21 の三値。
+- N-1 から N-21 の `HELD` / `FAILED` / `NOT-RUN`。
+- 登録済み implementation mutation の `KILLED` / `KILLED-BY-TSC` / `SURVIVED`。
 - pm の cold start 不在と mid-run loss を分けた N-16 の raw event sequence。
 - 24 時間と 7 日で変化した値と、変化しなかった値。
 - 五つの pilot 閾値を維持、縮小、延長する根拠となる alert 検出率と誤検出率。
@@ -1421,6 +1586,7 @@ user wait nudge count は pm の `ctx` event export から別に記録し、Clau
 | F | 6 | policy と純粋 reducer | 不要 |
 | G | 7 | self-claim と supervise-once | agmsg provider が必要 |
 | H | 8 | metrics と acceptance ledger | live conformance には provider が必要 |
+| S-2 activation | 9 Step 7 | N-1 / N-7 / N-8 の `HELD` と M-N1-CAS / M-N7-TOKEN / M-N8-FENCE の `KILLED` 証跡、seat recovery mode の変更 | agmsg と herdr が必要 |
 | pilot | 9 | GitHub metadata と agent 運用 | agmsg と herdr が必要 |
 
 各 PR は前の PR を base に積まず、直前までの main から branch を切る。
@@ -1433,12 +1599,18 @@ user wait nudge count は pm の `ctx` event export から別に記録し、Clau
 - [ ] N-1 から N-21 の各 control が unit、adapter、live acceptance のどこで実行されるか一意である。
 - [ ] `ready` という保存 label を作っていない。
 - [ ] active claim の unique key に generation が入っていない。
+- [ ] `resume-owner` が resource と agent id を変えず、session、generation、token だけを原子的に更新している。
+- [ ] `resume-owner` 後の旧 token が `progress` と `release` の両方で `STALE_TOKEN` になる。
 - [ ] Issue fingerprint が comment と assignee の変更だけで変わらない。
 - [ ] PR source version が exact head SHA である。
 - [ ] GitHub、claim、herdr の source unavailable を work 0 件に変換していない。
 - [ ] pane/session 消失、ACK 不能、grace の三条件を一件ずつ変異できる。
 - [ ] Invalidated claim を自動 release していない。
-- [ ] seat absent から spawn action を生成していない。
+- [ ] `notify-only` では `auto-spawn-owner` を生成していない。
+- [ ] `claimed-owner-auto-spawn` でも、active claim の無い `seat-missing` から spawn action を生成していない。
+- [ ] N-1、N-7、N-8 がすべて `HELD` かつ M-N1-CAS、M-N7-TOKEN、M-N8-FENCE がすべて `KILLED` になる前に `seatRecoveryMode` を変更していない。
+- [ ] 同じ transition key と claim generation で auto-spawn を一回より多く実行していない。
+- [ ] 同じ claim generation の同じ cycle で `auto-spawn-owner` と `orphan-release` を併記していない。
 - [ ] pm の cold start 不在と mid-run loss の両方を N-16 live acceptance に含めている。
 - [ ] 0 events の metrics に sentinel event control が在る。
 - [ ] README、`src/`、`dist/` を変更対象にしていない。
@@ -1456,8 +1628,13 @@ user wait nudge count は pm の `ctx` event export から別に記録し、Clau
 - pane/session 消失と ACK 不能の片方だけでは release が 0 件である証拠。
 - 二条件が揃った後も grace 満了前は release 0 件、満了後は一回だけである証拠。
 - source version 変更後、古い token の push / done が guard で止まる証拠。
+- `resume-owner` 後に旧 owner token の progress / release が `STALE_TOKEN` で拒否される証拠。
 - pm の cold start 不在と mid-run loss の双方で Issue claim、PR review claim、次 claim が続く N-16 の event sequence。
-- N-1 から N-21 の KILLED / KILLED-BY-TSC / SURVIVED ledger。
+- N-1 から N-21 の `HELD` / `FAILED` / `NOT-RUN` control ledger。
+- 登録済み implementation mutation の `KILLED` / `KILLED-BY-TSC` / `SURVIVED` mutation ledger。
+- N-1、N-7、N-8 が `HELD` かつ M-N1-CAS、M-N7-TOKEN、M-N8-FENCE が `KILLED` になる前は auto-spawn 0 件であり、mode 変更 PR が三 control と三 mutation の raw result を参照する証拠。
+- mode 変更後も、active claim の無い seat-missing と同じ claim generation の再実行では auto-spawn 0 件である証拠。
+- active claim を release してから意図的に閉じた seat が auto-spawn されない証拠。
 - 24 時間と 7 日の fixed-window metrics。
 - user wait nudge、actionable stall、duplicate claim、blocked claim、stale-version publish の提示。
 
