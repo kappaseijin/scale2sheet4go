@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -80,6 +80,30 @@ describe("CLI: install/uninstall registration (Task 7, design §外部インタ�
 });
 
 describe("runInstallCommand (design §インストールフロー)", () => {
+  it("rejects an empty HOME before printing or applying a launchd plan", async () => {
+    const home = await makeTempHome();
+    const lines: string[] = [];
+    let leaseCalls = 0;
+    const deps = await makeDeps(home, {
+      acquireLease: async () => {
+        leaseCalls += 1;
+        throw new Error("lease must not be acquired");
+      },
+      logger: { log: (line: string) => lines.push(line), error: (line: string) => lines.push(line) },
+    });
+
+    const exitCode = await runInstallCommand(
+      { prefix: "~/.local", launchd: true, dryRun: true, force: true },
+      deps,
+    );
+
+    expect(exitCode).toBe(1);
+    expect(lines.some((line) => line.startsWith("[planned]"))).toBe(false);
+    expect(lines).toContain("failed:launchd-not-ready");
+    expect(leaseCalls).toBe(0);
+    await expect(stat(path.join(home, ".config", "scale2sheet"))).rejects.toThrow();
+  });
+
   it("dry-run plans without creating any file (design §計画: 生成しない)", async () => {
     const home = await makeTempHome();
     const lines: string[] = [];
@@ -133,6 +157,38 @@ describe("runInstallCommand (design §インストールフロー)", () => {
     expect(exitCode).toBe(1);
     expect(errors.some((line) => line.includes("missing-credentials.json"))).toBe(true);
     await expect(stat(path.join(home, ".local", "bin", "scale2sheet"))).rejects.toThrow();
+  });
+
+  it("leaves an existing registration untouched when launchd readiness becomes blocked", async () => {
+    const home = await makeTempHome();
+    let bootoutCalls = 0;
+    let bootstrapCalls = 0;
+    const deps = await makeDeps(home, {
+      executorDeps: fakeExecutorDeps({
+        bootout: async () => {
+          bootoutCalls += 1;
+          return { outcome: "done", message: "" };
+        },
+        bootstrap: async () => {
+          bootstrapCalls += 1;
+          return { outcome: "done", message: "" };
+        },
+      }),
+    });
+    await runInstallCommand({ prefix: "~/.local", launchd: false, dryRun: false, force: false }, deps);
+    const manifestPath = path.join(home, ".config", "scale2sheet", "install-manifest.json");
+    const before = await readFile(manifestPath, "utf8");
+    await unlink(path.join(home, ".config", "scale2sheet", "settings.json"));
+
+    const exitCode = await runInstallCommand(
+      { prefix: "~/.local", launchd: true, dryRun: false, force: true },
+      deps,
+    );
+
+    expect(exitCode).toBe(1);
+    expect(await readFile(manifestPath, "utf8")).toBe(before);
+    expect(bootoutCalls).toBe(0);
+    expect(bootstrapCalls).toBe(0);
   });
 });
 

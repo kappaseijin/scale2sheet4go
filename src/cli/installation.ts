@@ -25,7 +25,8 @@ import {
 import { runDoctor, type DoctorDeps, type DoctorReport } from "../installation/doctor.js";
 import type { InstallationOperation } from "../installation/model.js";
 import { DangerousPrefixError, formatInstallCommand, resolveInstallationPaths } from "../installation/paths.js";
-import { MissingAuthFilesError, planInstall, planUninstall } from "../installation/planner.js";
+import { evaluateLaunchdReadiness } from "../installation/launchd-readiness.js";
+import { LaunchdNotReadyError, MissingAuthFilesError, planInstall, planUninstall } from "../installation/planner.js";
 import { LaunchctlAdapter } from "../installation/process.js";
 import { readSettings } from "../installation/settings-read.js";
 import { GoogleSheetsReadAdapter, type SheetsReadPort } from "../installation/sheets-read.js";
@@ -214,6 +215,25 @@ function printPlan(logger: InstallationCliDeps["logger"], operations: readonly I
   }
 }
 
+function printLaunchdReadinessFailure(
+  logger: InstallationCliDeps["logger"],
+  settingsPath: string,
+  error: LaunchdNotReadyError,
+): void {
+  logger.error("failed:launchd-not-ready");
+  for (const issue of error.readiness.status === "blocked" ? error.readiness.issues : []) {
+    if (issue.code === "settings-missing" || issue.code === "auth-file-missing") {
+      logger.error(`${issue.code}: ${issue.path}`);
+    } else if (issue.code === "source-config-missing") {
+      logger.error(`${issue.code} (${issue.source}): ${issue.detail}`);
+    } else {
+      logger.error(`${issue.code}: ${issue.detail}`);
+    }
+  }
+  logger.error(`settings: ${settingsPath}`);
+  logger.error("run install without --launchd, complete settings and auth files, then re-run this command");
+}
+
 /** design §エラーと部分適用: Completed/Failed/Pending/Retry summary on partial application. */
 function printFailureSummary(
   logger: InstallationCliDeps["logger"],
@@ -292,6 +312,9 @@ export async function runInstallCommand(
 
   const currentManifest = await readManifest(paths.manifestPath);
   const settingsExists = readSettings(paths.settingsPath) !== undefined;
+  const launchdReadiness = options.launchd
+    ? await evaluateLaunchdReadiness({ settingsPath: paths.settingsPath, configDir: paths.configDir })
+    : { status: "not-requested" as const };
   const missingAuthFiles = settingsExists
     ? await resolveMissingAuthFiles(paths.settingsPath, paths.configDir)
     : [];
@@ -304,11 +327,24 @@ export async function runInstallCommand(
       currentManifest,
       settingsExists,
       missingAuthFiles,
+      launchdReadiness,
       binarySource,
     });
   } catch (error) {
     if (error instanceof MissingAuthFilesError) {
       deps.logger.error(`failed:missing-auth-files ${error.missingFiles.join(", ")}`);
+      return 1;
+    }
+    if (error instanceof LaunchdNotReadyError) {
+      printLaunchdReadinessFailure(deps.logger, paths.settingsPath, error);
+      if (error.readiness.status === "blocked") {
+        const missingAuthFiles = error.readiness.issues
+          .filter((issue): issue is Extract<typeof issue, { readonly code: "auth-file-missing" }> => issue.code === "auth-file-missing")
+          .map((issue) => issue.path);
+        if (missingAuthFiles.length > 0) {
+          deps.logger.error(`failed:missing-auth-files ${missingAuthFiles.join(", ")}`);
+        }
+      }
       return 1;
     }
     throw error;

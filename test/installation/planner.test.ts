@@ -15,6 +15,7 @@ const fsPromises = await import("node:fs/promises");
 
 import { DangerousPrefixError } from "../../src/installation/paths.js";
 import {
+  LaunchdNotReadyError,
   MissingAuthFilesError,
   planInstall,
   planUninstall,
@@ -128,6 +129,7 @@ describe("planInstall: side-effect-free planning", () => {
       currentManifest: undefined,
       settingsExists: true,
       missingAuthFiles: [],
+      launchdReadiness: { status: "ready" },
       binarySource: "/Users/example/checkout/dist/scale2sheet",
     });
 
@@ -168,6 +170,23 @@ describe("planInstall: side-effect-free planning", () => {
         binarySource: "/Users/example/checkout/dist/scale2sheet",
       })
     ).toThrow(MissingAuthFilesError);
+  });
+
+  it("rejects a blocked launchd readiness before creating any operation", () => {
+    expect(() =>
+      planInstall({
+        home: "/Users/example",
+        options: { ...defaultInstallOptions, launchd: true },
+        currentManifest: undefined,
+        settingsExists: false,
+        missingAuthFiles: [],
+        launchdReadiness: {
+          status: "blocked",
+          issues: [{ code: "settings-missing", path: "/Users/example/.config/scale2sheet/settings.json" }],
+        },
+        binarySource: "/Users/example/checkout/dist/scale2sheet",
+      }),
+    ).toThrow(LaunchdNotReadyError);
   });
 
   it("rejects a dangerous prefix at the planning stage before any operation is built", () => {

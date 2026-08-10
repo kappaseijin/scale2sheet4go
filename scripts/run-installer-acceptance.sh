@@ -126,20 +126,46 @@ run_isolated "$home1" install >"$root/install2.log" 2>&1 || {
 settings_after=$(cat "$home1/.config/scale2sheet/settings.json")
 [ "$settings_before" = "$settings_after" ] || fail "settings.json changed across a repeat install"
 
-# --- Check 4 / AC-19: dry-run tree is unchanged, and launchctl sees zero mutating calls, under network denial ---
+# --- Check 4 / #184: empty HOME blocks launchd without mutation; ready HOME can plan it ---
 home4="$root/home4"
 mkdir -p "$home4"
 before_tree=$(tree_snapshot "$home4")
-run_isolated "$home4" install --dry-run --launchd >"$root/install-dry.log" 2>&1 || {
-  cat "$root/install-dry.log" >&2
-  fail "install --dry-run --launchd failed"
-}
+blocked_status=0
+run_isolated "$home4" install --dry-run --launchd >"$root/install-dry.log" 2>&1 || blocked_status=$?
+[ "$blocked_status" -ne 0 ] || fail "empty HOME install --dry-run --launchd unexpectedly succeeded"
+grep -q '^failed:launchd-not-ready$' "$root/install-dry.log" || fail "empty HOME launchd rejection omitted readiness prefix"
 after_tree=$(tree_snapshot "$home4")
-[ "$before_tree" = "$after_tree" ] || fail "install --dry-run mutated the filesystem tree"
-grep -q '^\[planned\]' "$root/install-dry.log" || fail "install --dry-run printed no plan"
-if grep -Eq 'bootout|bootstrap' "$launchctl_log"; then
-  fail "install --dry-run invoked a mutating launchctl subcommand"
+[ "$before_tree" = "$after_tree" ] || fail "blocked install --dry-run mutated the filesystem tree"
+if grep -q '^\[planned\]' "$root/install-dry.log"; then
+  fail "blocked install --dry-run printed a plan"
 fi
+if grep -Eq 'bootout|bootstrap' "$launchctl_log"; then
+  fail "blocked install --dry-run invoked a mutating launchctl subcommand"
+fi
+
+home4_ready="$root/home4-ready"
+mkdir -p "$home4_ready/.config/scale2sheet"
+home4_credentials="$home4_ready/.config/scale2sheet/google-sheets-service-account.json"
+echo '{}' >"$home4_credentials"
+python3 - "$home4_ready/.config/scale2sheet/settings.json" "$home4_credentials" "$root/home4-published" <<'PYEOF'
+import json
+import sys
+
+settings_path, credentials_path, output_dir = sys.argv[1:]
+with open(settings_path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "source": "scale-exporter",
+        "sheet-id": "acceptance-fixture-not-a-real-spreadsheet",
+        "sheets-credentials": credentials_path,
+        "scale-exporter-output-dir": output_dir,
+    }, handle)
+    handle.write("\n")
+PYEOF
+run_isolated "$home4_ready" install --dry-run --launchd >"$root/install-ready-dry.log" 2>&1 || {
+  cat "$root/install-ready-dry.log" >&2
+  fail "ready install --dry-run --launchd failed"
+}
+grep -q '^\[planned\].*bootout' "$root/install-ready-dry.log" || fail "ready launchd install printed no bootout plan"
 
 run_isolated "$home1" uninstall --dry-run >"$root/uninstall-dry.log" 2>&1 || {
   cat "$root/uninstall-dry.log" >&2

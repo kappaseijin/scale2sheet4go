@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { buildPipelinePlist } from "./plist.js";
+import type { LaunchdReadiness } from "./launchd-readiness.js";
 import { LAUNCHD_LABEL_PREFIX, resolveInstallationPaths } from "./paths.js";
 import type { InstallManifest } from "./manifest.js";
 import type { InstallationOperation, InstallOptions } from "./model.js";
@@ -12,6 +13,13 @@ export class MissingAuthFilesError extends Error {
   }
 }
 
+export class LaunchdNotReadyError extends Error {
+  constructor(public readonly readiness: LaunchdReadiness) {
+    super("launchd installation is not ready");
+    this.name = "LaunchdNotReadyError";
+  }
+}
+
 export interface PlanInstallInput {
   readonly home: string;
   readonly options: InstallOptions;
@@ -20,6 +28,8 @@ export interface PlanInstallInput {
   readonly settingsExists: boolean;
   /** Absolute paths of required auth files that a `stat` check found missing. */
   readonly missingAuthFiles: readonly string[];
+  /** --launchd requires statically reproducible settings before planning any operation. */
+  readonly launchdReadiness?: LaunchdReadiness;
   /** Resolved by the caller (Task 5's BinaryCopySource); planner does not touch the running process. */
   readonly binarySource: string;
 }
@@ -40,6 +50,10 @@ const LAUNCHD_SCHEDULE: Record<"morning" | "evening", readonly { readonly hour: 
  */
 export function planInstall(input: PlanInstallInput): readonly InstallationOperation[] {
   const paths = resolveInstallationPaths({ home: input.home, prefix: input.options.prefix });
+
+  if (input.options.launchd && input.launchdReadiness?.status === "blocked") {
+    throw new LaunchdNotReadyError(input.launchdReadiness);
+  }
 
   /** AC-04: fail before the binary or launchd registration is touched. */
   if (input.missingAuthFiles.length > 0) {
