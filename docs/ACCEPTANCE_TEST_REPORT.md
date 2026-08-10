@@ -223,7 +223,7 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-16 | Slice 3 | 自動 | — | — | — | settings hash | PENDING | install前後の不変は検査するが、利用者の任意編集の保持は未検査 |
 | AC-17 | Slice 3 | 自動 | `npx vitest run test/installation/binary-copy-source.test.ts` | 200c8e8 | 2026-08-10T21:07:06+09:00 | old inode | PASS | atomic replace、old inode、直接overwrite負の制御、temp cleanupをassert |
 | AC-18 | Slice 3 | 自動 | `bash scripts/run-installer-acceptance.sh` | 200c8e8 | 2026-08-10T21:07:06+09:00 | active serve | PASS | 隔離Bun process側でserve lease保持中のinstall --launchd非zero、tree不変、mutating launchctlなしをassert。Vitest側のactive serve adapter経路は未検査 |
-| AC-19 | Slice 3 | 自動 | `bash scripts/run-installer-acceptance.sh` | 200c8e8 | 2026-08-10T21:07:06+09:00 | dry-run isolation | PASS | dry-runのplan出力、filesystem tree不変、mutating launchctlなしをassert |
+| AC-19 | Slice 3 | 自動 | `bash scripts/run-installer-acceptance.sh` | 200c8e8 | 2026-08-10T21:07:06+09:00 | dry-run isolation | PASS | dry-runのplan出力、filesystem tree不変、mutating launchctlなしをassert。**外部 API 通信の非発生は AC-25（network deny）で別途検査** |
 | AC-20 | Slice 7 | 自動 | — | — | — | all-slice isolation | PENDING | Slice 7 で最終集約 |
 | AC-21 | Slice 5 | 自動 | — | — | — | interruption points | PENDING | manifest rename中断とresumeは検査するが、全installation interruption pointsは網羅していない |
 | AC-22 | Slice 6 | 自動 | — | — | — | README path | PENDING | Slice 6 で判定 |
@@ -239,7 +239,7 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-32 | Slice 7 | 自動 | — | — | — | legacy reference removal | PENDING | Slice 7 で判定 |
 | AC-33 | Slice 4 | 自動 | `npx vitest run test/installation/doctor.test.ts test/cli/doctor.test.ts` | 200c8e8, 4001974 | 2026-08-10T08:11:33+09:00 | doctor diagnostics | **PASS** | 設定破損、認証切れ、権限不足を fake port/deps で検出。配置先・実行権限・version 不整合では共通の `scale2sheet install --prefix <prefix> --launchd` 復旧手順も表示する。設計との差異と将来の表示変更は Issue #201 で決定する。実行体欠落は適用範囲外 |
 | AC-34 | Slice 2 | 自動 | `npm test -- --run test/installation/plist.test.ts` | 9a3741b, f87ea12 | 2026-08-04 17:28 JST | plist stderr | PASS | period 別 `StandardErrorPath` を生成値で検査。spawn failure は対象外 |
-| AC-35 | Slice 6 | 自動、手動 | `npx vitest run test/installation/doctor.test.ts` | 200c8e8 | 2026-08-10T21:07:06+09:00 | registration check | PASS | morning/evening両labelのregistered PASS、未登録WARNをassert |
+| AC-35 | Slice 6 | 自動、手動 | `npx vitest run test/installation/doctor.test.ts` | — | 2026-08-10T21:07:06+09:00 | registration check | PENDING | doctor側の登録状態報告は検査済み。**installerによる登録直後の実行体検証は未実装** |
 | AC-36 | Slice 6 | 自動、手動 | `npx vitest run test/installation/doctor.test.ts` | 310b5bd | 2026-08-10T07:44:24+09:00 | status history | PENDING | status fixtureの対象日・成功時刻・結果は検査するが、実run後の履歴表示と超過判定は未検査 |
 | AC-37 | Slice 6 | 代理指標、手動 | — | — | — | normal active pipeline | PENDING | active receipt/latest runのfixture報告はあるが、normal active pipelineを実行して完了する経路は未検査 |
 | AC-38 | Slice 6 | 代理指標、手動 | — | — | — | force stop warning | PENDING | Slice 6 で判定 |
