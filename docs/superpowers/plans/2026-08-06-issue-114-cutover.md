@@ -8,8 +8,9 @@ tags:
   - issue-114
   - cutover
 timestamp: "2026-08-06T22:10:00+09:00"
-updated: "2026-08-09T21:50:00+09:00"
-status: proposed
+updated: "2026-08-10T19:31:27+09:00"
+status: accepted
+accepted_by: "user decisions recorded in Issue #114 comments https://github.com/kappaseijin/scale2sheet/issues/114#issuecomment-5190970060 (2026-08-05) and https://github.com/kappaseijin/scale2sheet/issues/114#issuecomment-5205039221 (2026-08-06T22:10:00+09:00)"
 ---
 
 # Issue #114 cutover（案B）実装計画
