@@ -503,10 +503,10 @@ grep -rn "EnvironmentVariables\|SCALE2SHEET_LAUNCHD_LABEL" src test
 | `settings-read.ts` の `readSettings(settingsPath)` | 設計書 §計画 の手順4。**ファイルを生成しない**契約がそのまま要る |
 | `run-lease.ts` の `acquireRunLease` | `kind: "maintenance"` と `origin: "maintenance"` が**既に型にある**。install / uninstall の lease をそのまま表現できる |
 | `run-lease.ts` の `requestCooperativeStop` | 設計書 §アンインストールフロー の協調停止 |
-| `version.ts` の `APP_VERSION` | manifest の `version` と Commander の `--version` を同じ値にする |
+| `src/version.ts` の `APP_VERSION` | manifest の `version` と Commander の `--version` を同じ値にする |
 | `scripts/run-runtime-safety-acceptance.sh` | Task 8 の harness の下敷き。一時 HOME・prefix・network deny・別 process の型がある |
 
-**`config/settings.ts` の `loadOrCreateSettings` は、通常 install の適用段階だけで呼ぶ**（設計書 §モジュール境界）。
+**`src/config/settings.ts` の `loadOrCreateSettings` は、通常 install の適用段階だけで呼ぶ**（設計書 §モジュール境界）。
 planner からは呼ばない。
 
 ## 7. 完了判定

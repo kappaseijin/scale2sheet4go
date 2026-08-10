@@ -606,13 +606,13 @@ Slice 3 以外からの再利用は次のとおりである。
 
 | 資産 | 使い方 |
 | --- | --- |
-| `installation/settings-read.ts` | `settings.json` の読取と schema 検証。**ファイルを生成しない**契約がそのまま要る |
-| `scheduler/run-lease.ts` の receipt 読取 | §診断契約「run receipt による `serve` の稼働状態」 |
-| `pipeline/status.ts` の parser | §診断契約「`pipeline-status.json` の直近開始、完了、結果」。**parser を再実装しない** |
-| `version.ts` の `APP_VERSION` | AC-48 の build identifier |
-| `installation/plist.ts` | §診断契約「二つの plist の構文と固定チェックアウトパスの不在」の期待値生成 |
+| `src/installation/settings-read.ts` | `settings.json` の読取と schema 検証。**ファイルを生成しない**契約がそのまま要る |
+| `src/scheduler/run-lease.ts` の receipt 読取 | §診断契約「run receipt による `serve` の稼働状態」 |
+| `src/pipeline/status.ts` の parser | §診断契約「`pipeline-status.json` の直近開始、完了、結果」。**parser を再実装しない** |
+| `src/version.ts` の `APP_VERSION` | AC-48 の build identifier |
+| `src/installation/plist.ts` | §診断契約「二つの plist の構文と固定チェックアウトパスの不在」の期待値生成 |
 
-**`sheets/adapter.ts` は再利用しない**（Task 1 の理由）。
+**`src/sheets/adapter.ts` は再利用しない**（Task 1 の理由）。
 
 ## 7. 完了判定
 
