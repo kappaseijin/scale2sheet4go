@@ -210,9 +210,9 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-03 | Slice 6 | 代理指標、手動 | — | — | — | checkout rename | PENDING | Slice 6 で判定 |
 | AC-04 | Slice 3 | 自動 | `npx vitest run test/installation/planner.test.ts test/cli/installation.test.ts` | 200c8e8 | 2026-08-10T21:07:06+09:00 | credential failure | PENDING | missing file名・nonzero終了・未変更はassert。取得方法の表示は未実装。settings不在の初回install経路はIssue #184 |
 | AC-05 | Slice 3 | 自動 | `npx vitest run test/installation/planner.test.ts` | 200c8e8 | 2026-08-10T21:07:06+09:00 | launchd opt-in | PASS | `--launchd`なしではplist/launchctl operationsがzeroであることをassert |
-| AC-06 | Slice 6 | 代理指標、手動 | — | — | — | temporary label | PENDING | Slice 6 で判定 |
+| AC-06 | Slice 6 | 代理指標、手動 | — | — | — | temporary label | PENDING | plannerの代理指標。ACのtemporary labelを実launchdへ登録することは未検査 |
 | AC-07 | Slice 2 | 自動 | `npm test -- --run test/installation/plist.test.ts` | 9a3741b, f87ea12 | 2026-08-04 17:28 JST | pure plist | PASS | direct pipeline arguments と shell 非参照を検査 |
-| AC-08 | Slice 3 | 自動 | — | — | — | fake launchctl | PENDING | Slice 3 で判定 |
+| AC-08 | Slice 3 | 自動 | — | — | — | fake launchctl | PENDING | bootout/plist removalを計画するassertはあるが、fake launchctlで実削除することは未検査 |
 | AC-09 | Slice 3 | 自動 | `bash scripts/run-installer-acceptance.sh` | 200c8e8 | 2026-08-10T21:07:06+09:00 | default uninstall | PASS | uninstall後もsettings/logの存在と内容を保持し、manifest/binを除去することをassert |
 | AC-10 | Slice 3 | 自動 | `npx vitest run test/installation/planner.test.ts` | 200c8e8 | 2026-08-10T21:07:06+09:00 | manifest prefix | PASS | prefix変更後もmanifest記録のbinary pathを使う計画をassert |
 | AC-11 | Slice 3 | 自動 | `npx vitest run test/cli/installation.test.ts` | 200c8e8 | 2026-08-10T21:07:06+09:00 | uninstall output | PASS | 残置absolute path、runtime artifact、manual rebuild+purge commandの出力をassert |
@@ -225,14 +225,14 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-18 | Slice 3 | 自動 | `bash scripts/run-installer-acceptance.sh` | 200c8e8 | 2026-08-10T21:07:06+09:00 | active serve | PASS | 隔離Bun process側でserve lease保持中のinstall --launchd非zero、tree不変、mutating launchctlなしをassert。Vitest側のactive serve adapter経路は未検査 |
 | AC-19 | Slice 3 | 自動 | `bash scripts/run-installer-acceptance.sh` | 200c8e8 | 2026-08-10T21:07:06+09:00 | dry-run isolation | PASS | dry-runのplan出力、filesystem tree不変、mutating launchctlなしをassert |
 | AC-20 | Slice 7 | 自動 | — | — | — | all-slice isolation | PENDING | Slice 7 で最終集約 |
-| AC-21 | Slice 5 | 自動 | — | — | — | interruption points | PENDING | Slice 5 で判定 |
+| AC-21 | Slice 5 | 自動 | — | — | — | interruption points | PENDING | manifest rename中断とresumeは検査するが、全installation interruption pointsは網羅していない |
 | AC-22 | Slice 6 | 自動 | — | — | — | README path | PENDING | Slice 6 で判定 |
 | AC-23 | Slice 5 | 自動 | `bash scripts/run-installer-acceptance.sh` | 200c8e8 | 2026-08-10T21:07:06+09:00 | dry-run tree | PASS | install/uninstall双方のdry-runでtree不変とmutationなしをassert |
-| AC-24 | Slice 6 | 代理指標、手動 | `npx vitest run test/installation/sheets-read.test.ts test/installation/doctor.test.ts` | 200c8e8 | 2026-08-10T08:04:29+09:00 | read-only fake Sheets port | PENDING | Slice 4 fake は認証→header→当日行の順、write method なしを自動検査。Slice 6 で実 Spreadsheet の read-only を確認 |
+| AC-24 | Slice 6 | 代理指標、手動 | `npx vitest run test/installation/sheets-read.test.ts test/installation/doctor.test.ts` | 200c8e8 | 2026-08-10T08:04:29+09:00 | read-only fake Sheets port | PENDING | fake Sheetsの認証→header→当日行順とwrite methodなしは検査するが、実Spreadsheetのread-onlyは未検査 |
 | AC-25 | Slice 4 | 自動 | `npm run acceptance:installer`、`npx vitest run test/cli/doctor.test.ts` | 200c8e8 | 2026-08-10T08:04:29+09:00 | compiled install under network deny | **PASS** | compiled install は network deny で成功し、install/uninstall は doctor deps を生成せず network adapter に到達しない |
 | AC-26 | Slice 2 | 自動 | `npm test -- --run test/pipeline/input-snapshot.test.ts` | ee89df3 | 2026-08-04 17:28 JST | bounded stable snapshot | PASS | fake delay で3 attempt・metadata 一致・missing/unstable/invalid を検査 |
-| AC-27 | Slice 6 | 代理指標、手動 | — | — | — | input failure notification | PENDING | missing/unstable/invalidの要求をSlice 2、実通知をSlice 6で判定 |
-| AC-28 | Slice 6 | 代理指標、手動 | — | — | — | input / transfer notification | PENDING | 2段階を区別。実行体欠落は対象外 |
+| AC-27 | Slice 6 | 代理指標、手動 | — | — | — | input failure notification | PENDING | 通知claim/state transitionは検査するが、missing/unstable/invalid全ての実通知は未検査 |
+| AC-28 | Slice 6 | 代理指標、手動 | — | — | — | input / transfer notification | PENDING | input failureとtransfer経路の分離は検査するが、両段階の実通知を区別して検査していない。実行体欠落は対象外 |
 | AC-29 | Slice 2 | 自動 | `npm run acceptance:pipeline-shadow` | ee89df3, e7d3b8a | 2026-08-04 17:28 JST | isolated compiled status | PASS | running の `startedAt` と terminal の `completedAt`、input-missing の `matchedFileCount=0` と未到達 count key 欠落、0600、atomic replacement を観測。transfer 未到達のため network deny は未検証 |
 | AC-30 | Slice 2 | 自動 | `npm test -- --run test/pipeline/pipeline.test.ts`、`npm run acceptance:pipeline-shadow` | ee89df3 | 2026-08-04 17:28 JST | no-data / missing input | PASS | present-but-zero は exit 0・転記なし、missing は bounded exit 1 を検査 |
 | AC-31 | Slice 2 | 自動 | `npm test -- --run test/pipeline/input-snapshot.test.ts test/pipeline/pipeline.test.ts test/cli/serve-lease.test.ts` | ee89df3 | 2026-08-04 17:28 JST | input/status/notifier/lease ports | PASS | snapshot・status・notifier・lease の差替えを検査。3件数の証跡は AC-29 に集約。#63/#65 の未決契約は対象外 |
@@ -240,8 +240,8 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-33 | Slice 4 | 自動 | `npx vitest run test/installation/doctor.test.ts test/cli/doctor.test.ts` | 200c8e8, 4001974 | 2026-08-10T08:11:33+09:00 | doctor diagnostics | **PASS** | 設定破損、認証切れ、権限不足を fake port/deps で検出。配置先・実行権限・version 不整合では共通の `scale2sheet install --prefix <prefix> --launchd` 復旧手順も表示する。設計との差異と将来の表示変更は Issue #201 で決定する。実行体欠落は適用範囲外 |
 | AC-34 | Slice 2 | 自動 | `npm test -- --run test/installation/plist.test.ts` | 9a3741b, f87ea12 | 2026-08-04 17:28 JST | plist stderr | PASS | period 別 `StandardErrorPath` を生成値で検査。spawn failure は対象外 |
 | AC-35 | Slice 6 | 自動、手動 | `npx vitest run test/installation/doctor.test.ts` | 200c8e8 | 2026-08-10T21:07:06+09:00 | registration check | PASS | morning/evening両labelのregistered PASS、未登録WARNをassert |
-| AC-36 | Slice 6 | 自動、手動 | `npx vitest run test/installation/doctor.test.ts` | 310b5bd | 2026-08-10T07:44:24+09:00 | status history | PENDING | Slice 4 で status fixture の対象日・成功時刻・結果を自動検査。超過判定は行わず、Slice 6 で実 run 後に履歴表示を確認 |
-| AC-37 | Slice 6 | 代理指標、手動 | — | — | — | normal active pipeline | PENDING | Slice 6 で判定 |
+| AC-36 | Slice 6 | 自動、手動 | `npx vitest run test/installation/doctor.test.ts` | 310b5bd | 2026-08-10T07:44:24+09:00 | status history | PENDING | status fixtureの対象日・成功時刻・結果は検査するが、実run後の履歴表示と超過判定は未検査 |
+| AC-37 | Slice 6 | 代理指標、手動 | — | — | — | normal active pipeline | PENDING | active receipt/latest runのfixture報告はあるが、normal active pipelineを実行して完了する経路は未検査 |
 | AC-38 | Slice 6 | 代理指標、手動 | — | — | — | force stop warning | PENDING | Slice 6 で判定 |
 | AC-39 | Slice 2 | 自動 | — | — | — | file-level skip | PENDING | Slice 2 で判定 |
 | AC-40 | Slice 2 | 自動 | — | — | — | excluded file diagnostics | PENDING | Slice 2 で判定 |
@@ -253,5 +253,5 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-45 | Slice 2 | 自動 | `npx vitest run test/pipeline/input-snapshot.test.ts test/pipeline/pipeline.test.ts` | 310b5bd | 2026-08-10T21:07:06+09:00 | missing vs no-data | PASS | missing input、present-but-zero no-data、input failure時transferなしを別経路でassert |
 | AC-46 | Slice 7 | 自動 | — | — | — | no-data observation exclusion | PENDING | Slice 7 で判定 |
 | AC-47 | Slice 2 | 自動 | `npx vitest run test/pipeline/status.test.ts` | 310b5bd | 2026-08-10T21:07:06+09:00 | status fields | PASS | v1 documentのperiod、terminal、counts/counters、health、atomic writeを構造でassert |
-| AC-48 | Slice 4 / 6 | 自動 | `npx vitest run test/installation/doctor.test.ts` | 310b5bd, 200c8e8 | 2026-08-10T08:04:29+09:00 | doctor build identifier / done・実転記・異常の経過日数 | PENDING | Slice 4 は build identifier、done・実転記・経過日数を報告。異常継続日数は開始時刻が status に無いため Issue #192 へ繰延し、Slice 6 判定も残す |
+| AC-48 | Slice 4 / 6 | 自動 | `npx vitest run test/installation/doctor.test.ts` | 310b5bd, 200c8e8 | 2026-08-10T08:04:29+09:00 | doctor build identifier / done・実転記・異常の経過日数 | PENDING | build/execution factsとdone/transfer/経過日数はfixtureで検査するが、実転記と異常継続日数は未検査（Issue #192） |
 | AC-49 | Slice 2 | 自動 | — | — | — | threshold notification distinction | PENDING | Slice 2 で判定 |
