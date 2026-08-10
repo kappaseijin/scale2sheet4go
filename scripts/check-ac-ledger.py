@@ -23,7 +23,6 @@ class Reservation:
 # AC-54a is a suffix-only legacy definition, not an integer range overlap.
 LEGACY_OVERLAPS = {frozenset(("#56 G-3 追補", "#66")), frozenset(("#66", "#65"))}
 
-
 def parse_reservations(ledger: str) -> list[Reservation]:
     reservations: list[Reservation] = []
     for line in ledger.splitlines():
