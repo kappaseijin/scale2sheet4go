@@ -15,6 +15,9 @@ set -euo pipefail
 #   KILLED-BY-TSC  typecheck failed before the test could run -> the
 #                  mutation wasn't actually exercised; inconclusive
 #   SURVIVED       tsc and vitest both passed -> the hole is open
+# Manual negative control; not called from preflight.
+# Corresponding tests: test/pipeline/pipeline.test.ts:705-790.
+# Run this mutation when those tests are suspect and confirm KILLED.
 
 pipeline_ts="src/pipeline/pipeline.ts"
 status_ts="src/pipeline/status.ts"
@@ -56,14 +59,11 @@ python3 - "$pipeline_ts" <<'PYEOF'
 import sys
 path = sys.argv[1]
 text = open(path, encoding="utf-8").read()
-old1 = '    if (result?.notification?.trigger === "state-transition") {'
-new1 = '    if (!outcome.startsWith("failed:input") && result?.notification?.trigger === "state-transition") {'
-old2 = '    } else if (result?.notification?.trigger === "notification-state-loss") {'
-new2 = '    } else if (!outcome.startsWith("failed:input") && result?.notification?.trigger === "notification-state-loss") {'
-for old in (old1, old2):
-    if old not in text:
-        raise SystemExit(f"NC-1 target line not found: {old!r}")
-text = text.replace(old1, new1, 1).replace(old2, new2, 1)
+old = '      if (entry.notification.trigger === "state-transition") {'
+new = '      if (entry.notification.trigger === "state-transition" && entry.notification.fromState !== "unobserved") {'
+if old not in text:
+    raise SystemExit(f"NC-1 target line not found: {old!r}")
+text = text.replace(old, new, 1)
 open(path, "w", encoding="utf-8").write(text)
 PYEOF
 judge "NC-1 (input-failure notify suppressed)" "AC-1"

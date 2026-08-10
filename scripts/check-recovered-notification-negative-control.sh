@@ -13,6 +13,9 @@ set -euo pipefail
 #   KILLED         the target test failed -> the hole is closed
 #   KILLED-BY-TSC  typecheck failed before the test could run -> inconclusive
 #   SURVIVED       tsc and vitest both passed -> the hole is open
+# Manual negative control; not called from preflight.
+# Corresponding tests: test/pipeline/pipeline.test.ts:593-651.
+# Run this mutation when those tests are suspect and confirm KILLED.
 
 pipeline_ts="src/pipeline/pipeline.ts"
 
