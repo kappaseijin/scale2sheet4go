@@ -10,8 +10,9 @@ tags:
   - cutover
   - issue-114
 timestamp: "2026-08-05T19:33:58+09:00"
-updated: "2026-08-05T20:01:12+09:00"
-status: proposed
+updated: "2026-08-10T19:31:27+09:00"
+status: accepted
+accepted_by: "user decision recorded in Issue #114 comment https://github.com/kappaseijin/scale2sheet/issues/114#issuecomment-5190970060 (2026-08-05)"
 ---
 
 # 運用経路と pipeline status 配線についての検討書
