@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-10（Ph.15 の Slice 4 着地を記録。AC-48 は Issue #192 へ繰延）
+最終更新: 2026-08-10（Ph.15 の Slice 4 着地、Issue #173 のレビュー観点、現在の担当席を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -18,7 +18,8 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 ## 担当エージェント
 
-`~/.agents/skills/agmsg/teams/scale2sheet/config.json` に登録済みの7役割体制（2026-07-28、派生命名へ移行）。
+`team.sh scale2sheet` で 2026-08-10 に実測したエージェント登録は、pm 1 席と architect / programmer / reviewer / worker の 4 席を合わせた **5 席**である。
+同じ出力に含まれる `kappa (agmsg-app)` は配送アプリであり、担当席の数に含めない。
 
 命名規約は `<プロジェクト名>_<役割>_<ベンダー>`（`~/.agents/rules/agent-team.rule.md`）。
 主人格（`claude_product_manager` / `codex_senior_architect` 等）は**派生元の定義であって、チームへ直接登録する識別子ではない**。
@@ -28,11 +29,13 @@ timestamp: "2026-07-04T18:00:00+09:00"
 | エージェント | タイプ | モデル / effort | 常駐 | 役割 |
 |------------|--------|------|------|------|
 | `scale2sheet_pm_claude` | claude-code | `claude-opus-5` / low | 常駐 | ユーザー窓口・他プロジェクトの pm との窓口・提示と承認の中継・PLAN/NOTES 記録 |
-| `scale2sheet_innovator_claude` | claude-code | `claude-opus-5` / xhigh | 短命 | 目標の明確化（サクセスストーリー・合格条件・選択肢の追加） |
 | `scale2sheet_architect_codex` | codex | `gpt-5.6-sol` / xhigh | 短命 | 調査・検討書/設計書の起草（アーキテクチャ・外部・内部・テスト設計） |
 | `scale2sheet_programmer_codex` | codex | `gpt-5.6-terra` / medium | 常駐 | 実装・計測・スクリプト化（TypeScript / vitest） |
 | `scale2sheet_reviewer_claude` | claude-code | `claude-opus-5` / xhigh | 常駐 | 敵対的検証（定量主張の独立再集計・決定前レビュー・PR レビュー）。**作成者のベンダーを問わず本席が担当する** |
 | `scale2sheet_worker_codex` | codex | `gpt-5.6-luna` / low | 短命 | 設計判断を伴わない定型作業 |
+
+innovator は役割として定義されているが、実測時点では agmsg に登録されていない。
+必要時に短命席として別途登録し、上表には登録後に加える。
 
 人格差分は `codex_monitor_agents/<派生名>/AGENT.md`、プロジェクト固有の差分と kaizen は同 `projects/scale2sheet/` に置く。
 
@@ -68,6 +71,9 @@ pm は**検討書・設計書を起草しない**（`~/.agents/rules/agent-role.
 検討書（`docs/decisions/`）と設計書は architect が起草してコミットする。
 
 PRレビュー・approveの運用（作成者と別LLM・別GitHubアカウントによるレビュー、GitHub Approve機能の使用）は [feedback_pr_review_workflow メモリ](#) の通り。
+
+検査を追加または変更する PR では、`~/.agents/rules/development.rule.md` の「検査の負のコントロール」節を必須のレビュー観点として適用する。
+具体的な手順と三値判定は同節を正本とし、本書へ複製しない。
 
 ---
 
@@ -277,15 +283,15 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 - **agmsg チーム**: `scale2sheet`（チーム = プロジェクト。他プロジェクトへはアクセスしない）
 - **herdr**: default セッション（ghostty）内の workspace `scale2sheet`
 
-| 役割 | agmsg 名（= herdr タブラベル） | 作業ディレクトリ | GitHub |
+| 登録済みの役割 | agmsg 名（= herdr タブラベル） | 作業ディレクトリ | GitHub |
 | --- | --- | --- | --- |
 | pm | scale2sheet_pm_claude | 本リポジトリ（dev/scale2sheet） | kappaseijin4claude |
-| innovator | scale2sheet_innovator_claude | codex_monitor_agents/scale2sheet-innovator-claude | kappaseijin4claude |
 | architect | scale2sheet_architect_codex | codex_monitor_agents/scale2sheet-architect | kappaseijin4codex |
 | programmer | scale2sheet_programmer_codex | codex_monitor_agents/scale2sheet-programmer | kappaseijin4codex |
 | reviewer（作成者のベンダーを問わず） | scale2sheet_reviewer_claude | codex_monitor_agents/scale2sheet-reviewer-claude | kappaseijin4claude |
-| reviewer（フォールバック時のみ） | scale2sheet_reviewer_codex | codex_monitor_agents/scale2sheet-reviewer-codex | kappaseijin4codex |
 | worker | scale2sheet_worker_codex | codex_monitor_agents/scale2sheet-worker | kappaseijin4codex |
+
+この表も `team.sh scale2sheet` の 2026-08-10 の実測に合わせ、未登録の役割を含めない。
 
 ### herdr 配置（2026-08-02 改訂・1エージェント = 1専用タブ ＋ PMタブ監視pane）
 
@@ -342,7 +348,7 @@ $H agent start scale2sheet_architect_codex --cwd $AG/scale2sheet-architect \
 $H pane close <architect タブの root pane_id>
 ```
 
-- 常駐は **pm / programmer / reviewer_claude** のみ。innovator / architect / worker は案件ごとに起動し、受け渡し後にタブを閉じる。reviewer_codex はフォールバック時のみ起動する
+- 常駐は **pm / programmer / reviewer_claude** のみ。登録済みの短命席である architect / worker は案件ごとに起動し、受け渡し後にタブを閉じる
 - タブの最後の pane を閉じるとタブごと消えるため、再起動は `tab create` からやり直す
 - 前提: 各エージェントディレクトリの agmsg delivery mode が `monitor` であること（`delivery.sh status <type> <dir>` で確認。off のまま起動するとブリッジ無しになる）
 - codex 側は `delivery.sh set monitor codex <dir>` 実行後に hooks の trust プロンプトが出るため、起動中のセッションは一度落として再 actas する
