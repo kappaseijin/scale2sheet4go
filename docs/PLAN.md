@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-10（Ph.15 の Slice 4 着地、Issue #173 のレビュー観点、現在の担当席を反映）
+最終更新: 2026-08-11（設計 4 本の着地と、ユーザー判断待ちの整理を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -207,6 +207,65 @@ Bun compiled binary の2 process 試験でしか実証できない（AC-15、AC-
 - 特に`googleapis`が`--compile`のバンドル過程で問題を起こさないこと → **確認済み**（`scripts/run-bun-binary-smoke.sh`のSheets認証欠如ケースが期待通り失敗することで、`googleapis`のロードとエラーパスがバイナリ内で機能していることを確認）
 
 ---
+
+## 2026-08-11 の設計着地と、待っているもの
+
+**設計が 4 本 main に入った。実装は #184 のみ着地し、残り 3 本は未着手である。**
+
+| Issue | 設計書（main） | 状態 |
+| --- | --- | --- |
+| #184 | `docs/superpowers/specs/2026-08-11-install-launchd-readiness-design.md`（`6277435`） | **実装着地**（PR #254 / `a586a5c`、2026-08-11T03:23:44+09:00）。変異 P1〜P7 と M1 / M2 が KILLED。**Issue は close 済み** |
+| #243 | `docs/superpowers/specs/2026-08-11-requested-cell-count-and-partial-transfer-design.md`（`7effe19` + `c692ae8`） | **ユーザー判断待ち** |
+| #246 / #182 | `docs/superpowers/specs/2026-08-11-file-level-input-skip-design.md`（`ed31239`） | **ユーザー判断待ち** |
+| #242 | `docs/superpowers/specs/2026-08-11-notification-result-completion-design.md`（`d77797f`） | 実装待ち。**判断は 2026-08-04 に済んでいる** |
+
+### #243 と #246 は独立ではない
+
+**どちらも `definitionsVersion` を上げる。上げると `rebaselineForDefinitions` が両 period の履歴を消す。**
+
+```
+両方を採ると版が 2 回上がり、**履歴が 2 回消える**
+```
+
+**1 回にまとめる条件**（設計書より）: 両方のユーザー決定が確定し、同じ aggregate head / binary /
+label / README / mutation gate に入り、**片方だけの中間 binary を一度も active writer にしない**こと。
+**片方を一度でも新 definition として書いた後は統合できない。**
+
+**したがって manager は 2 つを 1 つの設問として提示する。**
+
+### #46 の原因が判明した（2026-08-11）
+
+```
+(a) status が本番で書かれていない                    **#114**
+(b) 通知が 1 回きりで、失敗しても記録されない        **#242**
+(c) 起動したが結果行を出さない run が 43%（34/79）
+(d) (c) の原因 = **exporter の google-fit token refresh 失敗（HTTP 400）**で
+    結果行に到達する前に抜けた。**err.log には記録されていた**
+```
+
+**人へ届く経路は 3 本あり、3 本とも切れている。**
+
+| | 経路 | Issue |
+| --- | --- | --- |
+| 1 | pipeline -> status -> doctor | **#114** |
+| 2 | pipeline -> 通知 -> 人 | **#242** |
+| 3 | shell/exporter -> err.log -> ? | **#251**（本文を読む側が無い） |
+
+**3 は「壊れている」のではなく「最初から繋がっていない」。**
+
+### cutover の観測
+
+**08-11 と 08-12 が数える日。08-12 の夜に G-2 を判定する。**
+
+**G-2 と AC-46 は別のゲートである。**
+
+```
+G-2    exporter 自身のスケジュールだけで morning と evening 両方へ**公開**（連続 2 日）
+AC-46  pipeline が 7 日連続で**成功**
+```
+
+**G-2 は「公開」なので no-op の影響を受けない。**
+**AC-46 は「成功」の定義（実行か転記か）が未決である**（#38）。
 
 ## Bunを優先実行環境にする方針（Ph.13、2026-07-05計画）
 
