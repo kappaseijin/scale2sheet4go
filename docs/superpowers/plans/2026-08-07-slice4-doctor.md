@@ -146,7 +146,7 @@ doctor               findTodayRow(dateColumnIndex, deps.now())
 ```
 
 「measuredAt で上書きする」は**そのとおり**である。
-ただし `isReadingInPeriodWindow`（`measurements.ts:157`）が `measuredAt.hasSame(targetDate, "day")` を要求するため、
+ただし `isReadingInPeriodWindow`（`src/service/measurements.ts:157`）が `measuredAt.hasSame(targetDate, "day")` を要求するため、
 **通常経路では weight は referenceTime と同じ暦日に限られ、両者は一致する。**
 
 **食い違うのは次の場合だけである。**
@@ -466,7 +466,7 @@ doctor（現行実装）    findTodayRow(dateColumnIndex, deps.now())
 ```
 
 「measuredAt で上書きする」は**事実である。**
-**ただし通常経路では両者は一致する。** `isReadingInPeriodWindow`（`measurements.ts:157`）が
+**ただし通常経路では両者は一致する。** `isReadingInPeriodWindow`（`src/service/measurements.ts:157`）が
 `measuredAt.hasSame(targetDate, "day")` を要求するため、weight は referenceTime と同じ暦日に限られる。
 
 **食い違うのは次の 2 つの場合だけである。**

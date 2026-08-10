@@ -170,12 +170,12 @@ src/cli/index.ts:147                  run は syncMeasurements のみ
 | 条件 | `run` の終了コード | 通知 | 根拠 |
 | --- | --- | --- | --- |
 | 転記した | 0 | 出ない（正常） | — |
-| **対象時間帯に測定値が無い** | **0** | **出ない** | `measurements.ts:81-85` `hasAnyMeasurementValue` が偽 → `undefined` |
-| **当日行がシートに無い** | **0** | **出ない** | `sheets/adapter.ts:69-73` log して `{state:"not-written"}` を返す。**例外にしない** |
+| **対象時間帯に測定値が無い** | **0** | **出ない** | `src/service/measurements.ts:81-85` `hasAnyMeasurementValue` が偽 → `undefined` |
+| **当日行がシートに無い** | **0** | **出ない** | `src/sheets/adapter.ts:69-73` log して `{state:"not-written"}` を返す。**例外にしない** |
 | 転記が例外で失敗 | 1 | 出る | `run-pipeline.sh:61-63` |
 | 引数エラー | 2 | 出る（非 0 なので） | `src/cli/index.ts:134-137`（#79） |
 
-**「当日行がシートに無い」は新経路では `failed:transfer` として alert になる**（`pipeline.ts:173`）。
+**「当日行がシートに無い」は新経路では `failed:transfer` として alert になる**（`src/pipeline/pipeline.ts:173`）。
 **同じ事象を、現行経路は黙って通し、新経路は異常として扱う。**
 
 ## 3. 図の選定（決定済み・変更なし）

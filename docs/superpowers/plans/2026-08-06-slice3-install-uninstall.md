@@ -127,7 +127,7 @@ AC-04 AC-05 AC-08 AC-10 AC-16 AC-17 AC-18 AC-19
 | 成果物 | 実測 |
 | --- | --- |
 | `src/version.ts` の `APP_VERSION` | 実在（`"0.1.0"`） |
-| ファイルを生成しない `settings-read.ts` | 実在（`readSettings(settingsPath)` を export） |
+| ファイルを生成しない `src/installation/settings-read.ts` | 実在（`readSettings(settingsPath)` を export） |
 | `src/scheduler/run-lease.ts` | 実在 |
 | Darwin raw `O_EXLOCK_DARWIN = 0x0020` | 実在（`buildLockFlags()` が flag の生存を assert する） |
 | APFS allowlist、real path namespace、owner 固有 socket | 実在（`acquireRunLease` 内） |
