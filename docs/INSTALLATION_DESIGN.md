@@ -230,7 +230,7 @@ src/
     notifier.ts                 # macOS notifier port と osascript adapter
     status.ts                   # pipeline-status.json の atomic 更新
 scripts/
-  install.sh                    # npm ci、build:bun、install 呼び出しだけ
+  install.sh                    # npm ci、build:bun、install 呼び出しだけ（未実装。Issue #201）
 test/
   installation/
   pipeline/
@@ -1013,7 +1013,7 @@ ACCEPTANCE_TEST_REPORT には各条件を「自動」「代理指標」「手動
 1. `APP_VERSION`、読取専用設定ローダ、共通run leaseを追加する。
 2. pipeline、入力snapshot port、通知port、statusをTypeScriptへ移し、H-a、H-b、H-d、H-e、H-fとH-cの入力/転記2段階通知をfakeで検証する。
 3. planner、manifest、plist、executor、doctor を実装する。
-4. CLI と極薄 `scripts/install.sh` を接続する。
+4. CLI と極薄 `scripts/install.sh` を接続する（未実装。Issue #201）。
 5. 隔離統合テストと AC-32 の静的検査を追加する。
 6. 現行 revision、plist、`run-pipeline.sh` を rollback ディレクトリへ保存する。
 7. 新経路を一時 prefix と一時 label で受け入れた後、本番 label へ適用する。
