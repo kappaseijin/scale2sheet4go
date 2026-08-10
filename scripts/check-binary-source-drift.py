@@ -36,12 +36,18 @@ def main() -> int:
         print(f"source --help failed with exit {source_result.returncode}: {source_result.stderr}", file=sys.stderr)
         return 1
     expected = command_names_from_help(source_result.stdout)
+    if not expected:
+        print("FAIL: no commands parsed from source --help", file=sys.stderr)
+        return 1
 
     result = subprocess.run([binary, "--help"], text=True, capture_output=True)
     if result.returncode != 0:
         print(f"binary --help failed with exit {result.returncode}", file=sys.stderr)
         return 1
     actual = command_names_from_help(result.stdout)
+    if not actual:
+        print("FAIL: no commands parsed from binary --help", file=sys.stderr)
+        return 1
 
     binary_sha256 = hashlib.sha256(Path(binary).read_bytes()).hexdigest()
     source_head = "unknown"

@@ -48,6 +48,27 @@ if python3 "$checker" "$stale" "$source_entry"; then
   exit 1
 fi
 
+# Negative control for #205: if the command parser is mutated to return no
+# commands, the gate must fail rather than compare two empty sets.
+zero_command_checker="$root/checker-zero-commands.py"
+cp "$checker" "$zero_command_checker"
+python3 - "$zero_command_checker" <<'PYEOF'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = 're.compile(r"^  ([a-z][a-z0-9-]*)", re.MULTILINE)'
+new = 're.compile(r"^ZZZ  ([a-z][a-z0-9-]*)", re.MULTILINE)'
+if old not in text:
+    raise SystemExit("COMMAND_NAME_PATTERN mutation marker not found")
+path.write_text(text.replace(old, new, 1))
+PYEOF
+if python3 "$zero_command_checker" "$fresh" "$source_entry"; then
+  echo 'zero-command parser mutation unexpectedly passed' >&2
+  exit 1
+fi
+
 # Copies the whole src/ tree (not just index.ts) into an isolated
 # directory, since the checker now runs the source through tsx and needs
 # its own imports to resolve. node_modules/package.json/tsconfig.json are
