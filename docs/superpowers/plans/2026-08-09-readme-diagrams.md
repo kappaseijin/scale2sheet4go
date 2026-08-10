@@ -175,7 +175,7 @@ src/cli/index.ts:147                  run は syncMeasurements のみ
 | 転記が例外で失敗 | 1 | 出る | `run-pipeline.sh:61-63` |
 | 引数エラー | 2 | 出る（非 0 なので） | `src/cli/index.ts:134-137`（#79） |
 
-**「当日行がシートに無い」は新経路では `failed:transfer` として alert になる**（`src/pipeline/pipeline.ts:173`）。
+**「当日行がシートに無い」は新経路では `failed:transfer` として alert になる**（`src/pipeline/pipeline.ts:181-190`）。
 **同じ事象を、現行経路は黙って通し、新経路は異常として扱う。**
 
 ## 3. 図の選定（決定済み・変更なし）

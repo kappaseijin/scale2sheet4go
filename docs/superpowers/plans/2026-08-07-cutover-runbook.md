@@ -323,7 +323,7 @@ jq -c '.periods.evening.lastTerminal | {outcome, counts}' "$STATUS"
 
 #### 注記
 
-**cutover 前は `run` 経路が status を書かない**（`src/cli/index.ts:147`）。
+**cutover 前は `run` 経路が status を書かない**（`src/cli/index.ts:112-150`）。
 **したがって cutover 前にこのファイルが無いのは正常である。**
 
 > **初版は「ファイルが無い → 入力 missing の兆候 → 止める」と書いていた。これは誤りである。**
