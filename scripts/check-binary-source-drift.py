@@ -15,10 +15,11 @@ def command_names_from_help(help_text: str) -> set[str]:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print(f"usage: {sys.argv[0]} <binary> <source-entry>", file=sys.stderr)
+    if len(sys.argv) not in (3, 5) or (len(sys.argv) == 5 and sys.argv[3] != "--source-help-file"):
+        print(f"usage: {sys.argv[0]} <binary> <source-entry> [--source-help-file <file>]", file=sys.stderr)
         return 2
-    binary, source_path = sys.argv[1:]
+    binary, source_path = sys.argv[1:3]
+    source_help_file = Path(sys.argv[4]) if len(sys.argv) == 5 else None
     source_file = Path(source_path).resolve()
 
     # #128 follow-up: a previous version read src/cli/index.ts with a regex
@@ -29,13 +30,21 @@ def main() -> int:
     # the exact same Commander wiring the compiled binary uses, so any
     # command registered anywhere the program actually reaches shows up --
     # no file-by-file regex to fall behind as more helpers are added.
-    source_result = subprocess.run(
-        ["npx", "tsx", str(source_file), "--help"], text=True, capture_output=True
-    )
-    if source_result.returncode != 0:
-        print(f"source --help failed with exit {source_result.returncode}: {source_result.stderr}", file=sys.stderr)
-        return 1
-    expected = command_names_from_help(source_result.stdout)
+    if source_help_file is None:
+        source_result = subprocess.run(
+            ["npx", "tsx", str(source_file), "--help"], text=True, capture_output=True
+        )
+        if source_result.returncode != 0:
+            print(f"source --help failed with exit {source_result.returncode}: {source_result.stderr}", file=sys.stderr)
+            return 1
+        source_help = source_result.stdout
+    else:
+        try:
+            source_help = source_help_file.read_text(encoding="utf-8")
+        except OSError as error:
+            print(f"source --help cache could not be read: {error}", file=sys.stderr)
+            return 1
+    expected = command_names_from_help(source_help)
     if not expected:
         print("FAIL: no commands parsed from source --help", file=sys.stderr)
         return 1

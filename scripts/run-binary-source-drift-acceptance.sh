@@ -23,9 +23,15 @@ checker="$PWD/scripts/check-binary-source-drift.py"
 source_entry="$PWD/src/index.ts"
 fresh="$root/scale2sheet"
 stale="$root/stale-scale2sheet"
+source_help="$root/source-help.txt"
 
 bun build ./src/index.ts --compile --outfile "$fresh" >/dev/null
-if ! python3 "$checker" "$fresh" "$source_entry"; then
+# The source tree is unchanged for the fresh, stale, zero-command, and
+# no-git scenarios, so share one help snapshot among those checks. Scenarios
+# that mutate source (dirty/helper) deliberately omit the cache below; they
+# must execute the current source so a stale snapshot cannot hide drift.
+npx tsx "$source_entry" --help >"$source_help"
+if ! python3 "$checker" "$fresh" "$source_entry" --source-help-file "$source_help"; then
   echo 'fresh binary unexpectedly differs from source' >&2
   exit 1
 fi
@@ -43,7 +49,7 @@ Commands:
 HELP
 EOF
 chmod 700 "$stale"
-if python3 "$checker" "$stale" "$source_entry"; then
+if python3 "$checker" "$stale" "$source_entry" --source-help-file "$source_help"; then
   echo 'stale binary negative control unexpectedly passed' >&2
   exit 1
 fi
@@ -64,7 +70,7 @@ if old not in text:
     raise SystemExit("COMMAND_NAME_PATTERN mutation marker not found")
 path.write_text(text.replace(old, new, 1))
 PYEOF
-if python3 "$zero_command_checker" "$fresh" "$source_entry"; then
+if python3 "$zero_command_checker" "$fresh" "$source_entry" --source-help-file "$source_help"; then
   echo 'zero-command parser mutation unexpectedly passed' >&2
   exit 1
 fi
@@ -90,7 +96,7 @@ isolated_source_tree() {
 no_git_dir="$root/no-git-source"
 isolated_source_tree "$no_git_dir"
 status=0
-output=$(python3 "$checker" "$fresh" "$no_git_dir/src/index.ts" 2>&1) || status=$?
+output=$(python3 "$checker" "$fresh" "$no_git_dir/src/index.ts" --source-help-file "$source_help" 2>&1) || status=$?
 if [ "$status" -ne 0 ]; then
   echo "git-outside source unexpectedly failed (exit $status): $output" >&2
   exit 1
