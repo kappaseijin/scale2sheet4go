@@ -267,6 +267,71 @@ AC-46  pipeline が 7 日連続で**成功**
 **G-2 は「公開」なので no-op の影響を受けない。**
 **AC-46 は「成功」の定義（実行か転記か）が未決である**（#38）。
 
+## 2026-08-11 のユーザー決定（4 件）
+
+**manager 経由で受領。manager の証言であり、reviewer の検証範囲外である。**
+
+| 論点 | 決定 |
+| --- | --- |
+| **G-2 の解釈** | **exporter が動いていれば可**。launchctl の `runs` / `last exit code` で判定する |
+| **morning の時刻** | **時刻をずらす + 設定可能にする**（#259 / #179） |
+| **#243 + #246** | **両方採る。1 回の版上げにまとめる** |
+| **AC-46 の成功** | **転記した日だけを成功とする** |
+
+### G-2 は満たされている
+
+```
+判定に使うもの  **launchctl print gui/502/jp.seijin.kappa.scale-exporter の runs / last exit code**
+**公開の有無は判定条件にしない**
+```
+
+**08-10 も 08-11 も「実行され exit 0」を満たす。**
+**公開が無い日は、cutover 後 pipeline が `failed:input-missing` または `completed:no-data` として処理する。**
+
+### morning の時刻をずらしても、入力不在は大きく減らない
+
+```
+**43 日中 28 日は 11:30 までに独立した morning 公開を確認できない**
+-> **schedule delay では直らない**
+```
+
+**設計書は「本書は `70%` から `65%` への差を、alert 頻度そのものではなく morning 終了時点の入力不在 proxy の差として扱う」と明記している**
+（`docs/superpowers/specs/2026-08-11-launchd-schedule-design.md:157`）。
+
+**「入力が無い morning を failed とするか no-data とするか」は未決である。**
+
+### #243 + #246 は 1 本の release train
+
+```
+条件  同じ aggregate head / binary / label / README / mutation gate に入る
+      **片方だけの中間 binary を一度も active writer にしない**
+      片方を一度でも新 definition として書いた後は統合できない
+```
+
+**#182（partialInput の三値化）も #246 に含まれる。履歴の消去は 1 回。**
+
+### AC-46 は cutover 後にしか数えられない
+
+```
+判定に使う値  **uniqueMeasurementCount**（`docs/decisions/2026-08-04T151338_pipeline入力段階の失敗と部分成功の目標定義.md:694`）
+**この値は `pipeline` 経路でしか作られない**（production の status は #114 で 08-06 に凍結）
+-> **cutover 前の 7 日は数えられない**
+-> **Slice 7 の完了は cutover から最短 7 日後**
+```
+
+**cutover 前の実績（07-28 〜 08-10 の 14 日連続転記）は、見込みの根拠にはなるが成立日には数えない。**
+
+## 2026-08-11 に landing した設計（6 本）
+
+| Issue | 設計書 | 実装 |
+| --- | --- | --- |
+| #184 | `2026-08-11-install-launchd-readiness-design.md` | **landed**（`a586a5c`） |
+| #243 | `2026-08-11-requested-cell-count-and-partial-transfer-design.md` | release train |
+| #246 / #182 | `2026-08-11-file-level-input-skip-design.md` | release train |
+| #242 | `2026-08-11-notification-result-completion-design.md` | 待ち |
+| #251 | `2026-08-11-launchd-stderr-diagnostic-design.md` | 待ち |
+| #259 / #179 | `2026-08-11-launchd-schedule-design.md` | 待ち |
+
 ## Bunを優先実行環境にする方針（Ph.13、2026-07-05計画）
 
 目的・詳細な選択肢の検討は [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md) を参照。要点:
