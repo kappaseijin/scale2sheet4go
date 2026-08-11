@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
 
@@ -101,6 +102,9 @@ def classify_definition_statuses(root: Path, rows: list[Reservation]) -> dict[st
 def find_non_main_commit_evidence(ledger: str, root: Path) -> list[str]:
     """Reject result-table commit evidence that cannot be reached from origin/main."""
     errors: list[str] = []
+    if shutil.which("git") is None:
+        print("skipping target-commit ancestry check: git is not available")
+        return errors
     in_result_table = False
     for line in ledger.splitlines():
         cells = [cell.strip() for cell in line.split("|")]
@@ -127,6 +131,23 @@ def find_non_main_commit_evidence(ledger: str, root: Path) -> list[str]:
     return errors
 
 
+def find_sha_execution_methods(ledger: str) -> list[str]:
+    """Reject SHA-shaped values in the result table's execution-method column."""
+    errors: list[str] = []
+    in_result_table = False
+    for line in ledger.splitlines():
+        cells = [cell.strip() for cell in line.split("|")]
+        if "対象 commit" in cells:
+            in_result_table = True
+            continue
+        if not in_result_table or len(cells) < 10 or not re.fullmatch(r"AC-\d+[A-Za-z]*", cells[1]):
+            continue
+        method = cells[4]
+        if re.fullmatch(r"[0-9a-fA-F]{7,40}", method):
+            errors.append(f"{cells[1]}: execution method must be a command or —, not a SHA: {method}")
+    return errors
+
+
 if __name__ == "__main__":
     root = Path(__file__).resolve().parents[1]
     rows = parse_reservations((root / "docs/ACCEPTANCE_TEST_REPORT.md").read_text())
@@ -135,6 +156,7 @@ if __name__ == "__main__":
     errors.extend(missing)
     errors.extend(find_definition_count_mismatches(rows))
     errors.extend(find_actual_definition_mismatches(root, rows))
+    errors.extend(find_sha_execution_methods((root / "docs/ACCEPTANCE_TEST_REPORT.md").read_text()))
     errors.extend(find_non_main_commit_evidence((root / "docs/ACCEPTANCE_TEST_REPORT.md").read_text(), root))
     statuses = classify_definition_statuses(root, rows)
     if errors:
