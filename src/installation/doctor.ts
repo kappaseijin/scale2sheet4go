@@ -7,6 +7,7 @@ import { buildSheetColumnMapping } from "../sheets/adapter.js";
 import type { InstallManifest } from "./manifest.js";
 import type { InstallationPaths } from "./paths.js";
 import { formatInstallCommand, LAUNCHD_LABEL_PREFIX } from "./paths.js";
+import { expandHomePath } from "../config/settings.js";
 import type { SheetsReadPort } from "./sheets-read.js";
 
 export type DoctorStatus = "PASS" | "WARN" | "FAIL";
@@ -222,11 +223,12 @@ async function checkSheetsKeyFile(
   settings: SettingsFile,
   checks: DoctorCheckResult[],
 ): Promise<void> {
-  const credentialsPath = settings["sheets-credentials"];
-  if (!credentialsPath) {
+  const rawCredentialsPath = settings["sheets-credentials"];
+  if (!rawCredentialsPath) {
     checks.push(warn("sheets-key-file", "sheets-credentials is not configured"));
     return;
   }
+  const credentialsPath = expandHomePath(rawCredentialsPath);
   const stat = await deps.statFile(credentialsPath);
   if (!stat || !stat.readable) {
     checks.push(fail("sheets-key-file", `${credentialsPath} is missing or unreadable`, "KEY_MISSING"));
@@ -279,11 +281,12 @@ async function checkScaleExporterOutputDir(
   settings: SettingsFile,
   checks: DoctorCheckResult[],
 ): Promise<void> {
-  const outputDir = settings["scale-exporter-output-dir"];
-  if (!outputDir) {
+  const rawOutputDir = settings["scale-exporter-output-dir"];
+  if (!rawOutputDir) {
     checks.push(warn("scale-exporter-output-dir", "scale-exporter-output-dir is not configured"));
     return;
   }
+  const outputDir = expandHomePath(rawOutputDir);
   const stat = await deps.statFile(outputDir);
   if (!stat || !stat.readable) {
     checks.push(fail("scale-exporter-output-dir", `${outputDir} is missing or unreadable`));

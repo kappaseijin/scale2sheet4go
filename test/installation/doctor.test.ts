@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import os from "node:os";
 
 import { DateTime } from "luxon";
 import { describe, expect, it, vi } from "vitest";
@@ -278,6 +279,29 @@ describe("runDoctor: 4. Google Sheets key file existence and readability", () =>
     expect(check?.status).toBe("FAIL");
     expect(check?.stage).toBe("KEY_MISSING");
   });
+
+  it("WARN: sheets-credentials is not configured without throwing", async () => {
+    const report = await runDoctor(
+      baseDeps({ readSettings: () => healthySettings({ "sheets-credentials": undefined }) }),
+    );
+    expect(statusOf(report, "sheets-key-file")?.status).toBe("WARN");
+  });
+
+  it("PASS: expands a tilde in sheets-credentials before stat", async () => {
+    const report = await runDoctor(
+      baseDeps({
+        readSettings: () => healthySettings({ "sheets-credentials": "~/.config/scale2sheet/credentials.json" }),
+        statFile: async (filePath) =>
+          filePath === `${os.homedir()}/.config/scale2sheet/credentials.json`
+            || filePath === "/Users/example/exports"
+            || filePath === paths.binaryPath
+            || filePath === paths.settingsPath
+            ? { executable: filePath === paths.binaryPath, readable: true }
+            : undefined,
+      }),
+    );
+    expect(statusOf(report, "sheets-key-file")?.status).toBe("PASS");
+  });
 });
 
 describe("runDoctor: 5. source-specific extra auth file (google-fit only)", () => {
@@ -366,6 +390,39 @@ describe("runDoctor: 6. scale_exporter output directory existence and readabilit
       }),
     );
     expect(statusOf(report, "scale-exporter-output-dir")?.status).toBe("FAIL");
+  });
+
+  it("PASS: expands a tilde in the configured output directory before stat", async () => {
+    const report = await runDoctor(
+      baseDeps({
+        readSettings: () => healthySettings({ "scale-exporter-output-dir": "~/exports" }),
+        statFile: async (filePath) =>
+          filePath === `${os.homedir()}/exports` || filePath === paths.binaryPath || filePath === paths.settingsPath
+            ? { executable: filePath === paths.binaryPath, readable: true }
+            : undefined,
+      }),
+    );
+    expect(statusOf(report, "scale-exporter-output-dir")?.status).toBe("PASS");
+  });
+
+  it("FAIL: reports a missing expanded tilde output directory", async () => {
+    const report = await runDoctor(
+      baseDeps({
+        readSettings: () => healthySettings({ "scale-exporter-output-dir": "~/missing-exports" }),
+        statFile: async (filePath) =>
+          filePath === paths.binaryPath || filePath === paths.settingsPath
+            ? { executable: filePath === paths.binaryPath, readable: true }
+            : undefined,
+      }),
+    );
+    expect(statusOf(report, "scale-exporter-output-dir")?.status).toBe("FAIL");
+  });
+
+  it("WARN: scale-exporter-output-dir is not configured without throwing", async () => {
+    const report = await runDoctor(
+      baseDeps({ readSettings: () => healthySettings({ "scale-exporter-output-dir": undefined }) }),
+    );
+    expect(statusOf(report, "scale-exporter-output-dir")?.status).toBe("WARN");
   });
 });
 
