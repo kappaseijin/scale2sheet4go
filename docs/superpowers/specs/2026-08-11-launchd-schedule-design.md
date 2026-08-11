@@ -1,7 +1,7 @@
 ---
 type: Design
 title: launchd 実行時刻の設定可能化と既定値変更の設計
-description: Issue #179 と Issue #259 について、launchd 専用 schedule の settings 契約、観測分布に基づく既定値、再登録、readiness、通知頻度への影響を定義する。
+description: Issue #179 と Issue #259 について、launchd 専用 schedule の settings 契約、観測分布に基づく既定値、再登録、readiness、morning 入力不在の分類、通知頻度への影響を定義する。
 tags:
   - design
   - scale2sheet
@@ -9,7 +9,7 @@ tags:
   - schedule
   - issue-179
   - issue-259
-timestamp: "2026-08-11T08:24:24+09:00"
+timestamp: "2026-08-11T15:04:19+09:00"
 status: proposed
 ---
 
@@ -22,13 +22,14 @@ status: proposed
 | 項目 | 値 |
 | --- | --- |
 | 起点 | Issue #179、Issue #259 |
-| 基準 HEAD | `ad971e918a6ba7b983b6d427fdd8865f15fa5bf9` |
-| ユーザー決定 | morning の時刻をずらし、launchd の時刻を設定可能にする |
-| 決定の記録 | Issue #259 の 2026-08-11T08:17:27+09:00 の manager コメント |
+| 初版の基準 HEAD | `ad971e918a6ba7b983b6d427fdd8865f15fa5bf9` |
+| 本追記の基準 HEAD | `47f5cb127943c2dfe952436837e568e6e4975d8d` |
+| ユーザー決定 | morning の時刻をずらして launchd の時刻を設定可能にする。morning の対象日入力ファイル不在は no-data として扱う |
+| 決定の記録 | Issue #259 の 2026-08-11T08:17:27+09:00、2026-08-11T14:50:35+09:00 の manager コメント |
 | 決定の検証範囲 | manager の証言であり、reviewer の検証範囲外 |
-| 本書の推奨 | `settings.json` に launchd 専用 schedule を置き、既定値を `07:30 / 11:30` と `21:10 / 23:40` にする |
-| 未決事項 | 対象日の入力ファイルが無い morning を失敗のまま扱うか |
-| README への影響 | 設定表、JSON 例、launchd 導入手順、構成図、時刻表を同じ release train で更新する |
+| 本書の設計 | `settings.json` に launchd 専用 schedule を置き、既定値を `07:30 / 11:30` と `21:10 / 23:40` にする。morning の input-missing は `completed:no-data` と `v3.input=unavailable` の組で表す |
+| 未決事項 | なし。cutover の実行可否は本書と別の gate で判定する |
+| README への影響 | 設定表、JSON 例、launchd 導入手順、構成図、時刻表、period 別の input-missing 契約を該当 release train で更新する |
 
 ## 1. 対象と結論
 
@@ -56,6 +57,16 @@ Issue #179 の変更手段と Issue #259 の既定値変更は、同じ settings
 ただし、時刻変更だけでは morning の入力不在を解消しない。
 
 43 日中 28 日は `11:30` までに独立した morning 公開を確認できず、schedule をずらしても入力不在の分類は残る。
+
+このため、morning の対象日入力ファイル不在は `completed:no-data`、exit `0` とする。
+
+status では `v3.input=unavailable` を残し、ファイルが存在して window 適用後に零件だった `v3.input=ready` と区別する。
+
+evening の入力不在は、43 日の観測でほぼ毎日公開されている実態から異常の可能性が高いため、`failed:input-missing`、exit `1`、health alert を維持する。
+
+この outcome と counter の意味変更は schedule/settings の実装 head へ単独で入れない。
+
+Issue #243、Issue #246、Issue #182 の意味変更と同じ definitions release train へ載せ、`definitionsVersion` の版上げと履歴の再基準化を一回にまとめる。
 
 ## 2. 現行実装
 
@@ -155,6 +166,16 @@ percentile は nearest-rank で求めた。
 したがって、consumer が予定時刻直後に入力を列挙すれば、`07:10` までに公開される十三日でも race し得る。
 
 本書は `70%` から `65%` への差を、alert 頻度そのものではなく morning 終了時点の入力不在 proxy の差として扱う。
+
+### 3.5 no-data 判断に使った別の母集団
+
+ユーザー決定時に manager が示した `29 / 43`、約 `67%` は、07 時台に対象日ファイルが公開されなかった日の割合である。
+
+これは §3.2 の「`11:30` までに独立した公開を確認できない `28 / 43`」とは締切と判定条件が異なる。
+
+`67%` を schedule 変更後の alert 頻度や、`07:30` 時点の入力不在率へ読み替えない。
+
+本書で no-data とする条件は割合ではなく、実行時に morning の対象日入力ファイルが存在しないことである。
 
 ## 4. 方式比較
 
@@ -370,31 +391,116 @@ doctor は read-only を維持し、schedule を修復しない。
 
 ## 9. morning の入力不在
 
+### 9.1 採用する分類
+
 schedule 変更後も 28 / 43 日では `11:30` までの独立した morning 公開を確認できない。
 
-したがって、入力不在の outcome は別のユーザー判断として残す。
+ユーザー決定により、morning の対象日入力ファイル不在は no-data として扱う。
 
-| 案 | first slot | retry slot | AC-45 | 通知への影響 | 実装範囲 |
-| --- | --- | --- | --- | --- | --- |
-| N-1 現行維持 | `failed:input-missing` | `failed:input-missing` | 維持 | 初回の `normal -> alert` と後日の回復を通知 | schedule PR は outcome を変更しない |
-| N-2 retry まで pending | transient として永続失敗にしない | 無ければ `failed:input-missing` | 維持 | 同日回復の alert と recovery を抑える | slot identity、新状態、status、doctor、definitionsVersion が要る |
-| N-3 no-data | `completed:no-data` | `completed:no-data` | file 不在と present-zero を潰す | 三回連続までは normal、四回目で `consecutive-no-data` alert | AC と schema の変更が要る |
+period と入力状態ごとの契約は次のとおりである。
 
-本書は N-1 を推奨する。
+| period と入力状態 | outcome | `terminal.v3.input` | exit | `consecutiveNoDataCount` | health |
+| --- | --- | --- | ---: | --- | --- |
+| morning、対象日ファイル不在 | `completed:no-data` | `unavailable` | `0` | 前回値を維持し、増やさない | この事実だけでは alert にしない |
+| いずれかの period、ファイルは在るが window 適用後に零件 | `completed:no-data` | `ready` | `0` | 一つ増やす | 四回連続で `consecutive-no-data` alert |
+| evening、対象日ファイル不在 | `failed:input-missing` | `unavailable` | `1` | 前回値を維持する | `terminal-failure` alert |
+| いずれかの period、転記成立 | `completed:transferred` | `ready` | `0` | 零へ戻す | 他の異常が無ければ normal |
 
-N-1 は、対象日 file 不在と、file はあるが window 適用後に零件である状態を区別する AC-45 を維持する。
+morning の input-missing で counter を零へ戻さない。
 
-N-2 は transient race だけを抑えられるが、現在の plist は二つの slot を同じ `pipeline --period morning` として起動するため、どちらの slot かを runtime が知らない。
+零へ戻すと、実際に四回続いた present-zero の途中へ expected input-missing が一度入るだけで、AC-44 の連続 no-data 検知を解除するためである。
 
-時刻から slot を推定すると launchd の遅延起動で誤分類するため、明示的な slot identity が必要になる。
+前回から `consecutive-no-data` alert が継続している場合は、morning の input-missing だけで回復させない。
 
-N-3 はユーザーが決めた AC-46 の「転記した日だけを成功日とする」条件を満たさない。
+「この事実だけでは alert にしない」は、既存の別原因まで normal へ上書きする意味ではない。
 
-したがって、N-3 を採っても input-missing の日が連続観測 gate を通ることはない。
+### 9.2 AC-45 の判定を維持する
 
-ただし、status 上では producer の file 不在と正当な未測定を区別できなくなり、AC-45 と `failed:input-missing` の既存定義を改定する必要がある。
+AC-45 の要求は、対象日ファイル不在と、ファイルはあるが window 適用後に零件である状態が、status 上の別の値として区別できることである。
 
-N-2 または N-3 を採る場合は、schedule 実装とは別の設計と PR で扱う。
+変更後は両方の outcome が `completed:no-data` になるが、status の terminal は次の異なる値を持つ。
+
+| 観測 | status 上の値 |
+| --- | --- |
+| 対象日ファイル不在 | `(outcome=completed:no-data, v3.input=unavailable)` |
+| ファイル在り、window 適用後に零件 | `(outcome=completed:no-data, v3.input=ready)` |
+
+したがって、outcome 単独ではなく status の組で二状態を区別でき、AC-45 の acceptance の本質と PASS 判定を維持する。
+
+ただし、2026-08-04 の詳細定義は file 不在の具体値を `failed:input-missing` と明記している。
+
+この具体値は、2026-08-11 のユーザー決定により morning について supersede される。
+
+過去の決定本文は当時の記録として消さず、本書を後続決定の記録とする。
+
+区別の手段は次のように変わる。
+
+| period | 旧契約 | 新契約 |
+| --- | --- | --- |
+| morning | outcome の `failed:input-missing / completed:no-data` | `(completed:no-data, v3.input=unavailable / ready)` の組 |
+| evening | outcome の `failed:input-missing / completed:no-data` | 変更なし |
+
+morning の二状態は新契約でも status 上の別の値であり、evening の区別も失われない。
+
+このため AC-45 の acceptance 判定は PASS を維持できる。
+
+新しい `noDataReason` field は追加しない。
+
+同じ観測を `v3.input` と二重に保持すると、片方だけが更新される drift を作るためである。
+
+代わりに、現行 definitions の terminal では `v3` と `v3.input` を必須として検証する。
+
+旧 binary または不完全な writer が `v3` を落とした status を、reader が正常な no-data と推測して受理してはならない。
+
+### 9.3 不採用案
+
+| 案 | 不採用理由 |
+| --- | --- |
+| outcome を `failed:input-missing` のまま health だけ normal にする | ユーザー決定の `completed:no-data`、exit `0` と一致せず、failed が alert である既存の一貫性も崩す |
+| morning と evening の両方を no-data にする | evening は 43 日の観測でほぼ毎日公開され、入力不在が異常である可能性を隠す |
+| 新しい reason field を追加する | `v3.input` と同じ事実を重複して正本が二つになる |
+| first slot だけ pending にする | runtime は二つの launchd slot を識別せず、時刻からの推定は遅延起動を誤分類する |
+
+period によって input-missing の意味は異なる。
+
+この差を health の暗黙条件へ埋めず、pipeline の分類表と README の period 別契約へ明記する。
+
+### 9.4 AC-43、AC-44、AC-46
+
+AC-43 と AC-44 の no-data counter は、`completed:no-data` という outcome だけでなく `v3.input=ready` との組を対象にする。
+
+`v3.input=unavailable` は counter を増やさず、前回値を維持する。
+
+これは、2026-08-04 の AC-43、AC-44 にある outcome 単独の表現を、2026-08-11 のユーザー決定と矛盾しない対象集合へ supersede する。
+
+AC の識別子と N=4 の閾値は変えない。
+
+AC-46 の連続観測 gate では、転記が成立した period-day だけを成功として数える。
+
+判定には `uniqueMeasurementCount > 0` を使う。
+
+morning input-missing と present-zero は、どちらも `completed:no-data` であり成功日へ数えない。
+
+したがって、期待された morning input-missing を no-data に変えても、no-op のまま七日 gate を通る Issue #38 の経路は再導入しない。
+
+### 9.5 definitionsVersion と一回の再基準化
+
+本変更は outcome、no-data counter、health の意味を変えるため、`schemaVersion` ではなく `definitionsVersion` を上げる。
+
+次の番号を本書で固定しない。
+
+実装時点の次の未使用値を使い、その label に Issue #243、Issue #246、Issue #182、Issue #259 の morning input-missing 変更を列挙する。
+
+一回の版上げへまとめる条件は次のすべてである。
+
+- 同じ aggregate head、binary、definitions label、README、mutation gate に四つの意味変更を含める。
+- 四つのうち一部だけを含む中間 binary を active status writer に一度も使わない。
+- aggregate head の baseline が緑であることを確認してから、一回だけ active binary を置き換える。
+- 版上げによる period history の再基準化が一回であることを配備後に確認する。
+
+schedule/settings の設定可能化は definitions の意味を変えないため、この aggregate head とは分けてよい。
+
+morning no-data の semantic slice だけを schedule PR へ遅らせると、definitions の版上げと履歴消去が二回になるため禁止する。
 
 ## 10. 通知契約との関係
 
@@ -402,44 +508,45 @@ N-2 または N-3 を採る場合は、schedule 実装とは別の設計と PR �
 
 morning の alert は evening の成功では回復しない。
 
-同じ morning の後続実行で `alert -> normal` になったときに回復通知が生じる。
+変更後の morning input-missing は、それ自体では `normal -> alert` を作らない。
+
+既存の alert 原因が無くなり `alert -> normal` になったときだけ、同じ morning の後続実行で回復通知が生じる。
 
 ```mermaid
 stateDiagram-v2
   [*] --> Normal
-  Normal --> Alert: morning input missing, 通知 1 回
-  Alert --> Alert: 次の morning も missing, 通知なし
-  Alert --> Normal: morning input が回復, 通知 1 回
-  Normal --> Normal: input ready, 通知なし
+  Normal --> Normal: morning input missing、通知なし
+  Normal --> Alert: present-zero 4 回または evening input missing、通知 1 回
+  Alert --> Alert: alert 原因が継続、通知なし
+  Alert --> Normal: alert 原因が解消、通知 1 回
+  Normal --> Normal: 転記成立、通知なし
 ```
 
-| 公開条件 | 現行 `07:00 / 11:30` | 新既定 `07:30 / 11:30` |
+| 公開条件 | schedule 変更だけ | morning no-data 変更後 |
 | --- | --- | --- |
-| `07:15:04` までに公開 | `07:00` で race し、`11:30` で回復し得る | `07:30` の初回から ready |
-| `08:27:26` に公開 | 初回 alert、`11:30` で回復し得る | 同じ |
-| `11:30` まで公開なし | morning は alert のまま | morning は alert のまま |
+| `07:15:04` までに公開 | `07:30` の初回から ready | 同じ |
+| `08:27:26` に公開 | `07:30` は alert、`11:30` で回復し得る | `07:30` は no-data、`11:30` の転記成立まで通知なし |
+| `11:30` まで公開なし | morning は alert のまま | morning は no-data。入力不在だけでは通知なし |
 
-`07:30` は `07:00` cluster の十四日すべてで、初回 alert と同日 recovery の組を避ける。
+`07:30` は `07:00` cluster の十四日すべてで、初回の input-missing 自体を避ける。
 
-一日につき最大二つの state transition notification が減るため、43 日の観測集合に対する上限は二十八通知である。
+morning no-data 変更後は、schedule が捕捉できない input-missing も alert transition を作らない。
 
-これは上限であり、過去の exact 通知回数ではない。
+ただし、present-zero 四回、別の terminal failure、stale、anomaly による alert は維持する。
 
-初期 health、日ごとの並び、legacy `11:30` producer、通知実装の有無が過去期間で一定ではないためである。
+過去 43 日の input availability から変更後の exact 通知回数は算出しない。
 
-公開が無い 28 日も、`alert -> alert` では再通知しない。
-
-したがって、入力不在日数をそのまま通知回数として数えない。
+初期 health、日ごとの並び、別原因の health、legacy `11:30` producer、通知実装の有無が過去期間で一定ではないためである。
 
 Issue #242 は各 notification attempt の終了結果を記録するが、再送を追加しない。
 
-schedule 変更は notification delivery 契約を変えず、state transition が生じる回数だけを減らす。
+schedule 変更と morning no-data 変更は notification delivery 契約を変えず、state transition が生じる条件だけを変える。
 
 ## 11. README と設計正本の更新
 
 README はユーザーが目にする唯一の資料なので、実装だけを先に main へ入れない。
 
-manager が cutover 前後のどちらで有効化するかを決め、main へ入る release train で次を同時に更新する。
+main へ入る各 release train で、その head が変える契約を README へ同時に反映する。
 
 | 文書 | 更新 |
 | --- | --- |
@@ -447,8 +554,11 @@ manager が cutover 前後のどちらで有効化するかを決め、main へ�
 | `README.md` の JSON 例 | morning と evening の二時刻を追加する |
 | `README.md` の launchd 節 | dry-run、再 install、local wall clock、`serve` cron との違いを書く |
 | `README.md` の図と時刻表 | `07:30 / 11:30`、`21:10 / 23:40` へ更新する |
+| `README.md` の outcome と exit 表 | morning input-missing は no-data / exit `0`、evening input-missing は failed / exit `1` と明記する |
+| `README.md` の status 説明 | `v3.input=unavailable / ready` が二つの no-data を区別し、input-missing は連続 no-data counter を増やさないことを書く |
 | cutover 導入手順案 | 「時刻は固定で変更手段が無い」という旧説明を削除し、settings 編集と再 install を書く |
 | `docs/INSTALLATION_DESIGN.md` | launchd schedule の正本、readiness、表示、再登録を反映する |
+| accepted な acceptance 記録 | 過去の決定本文を消さず、AC-43、AC-44 の counter 対象、AC-45 の supersede と判定根拠、AC-46 の成功条件を新 definitions の追記として残す |
 
 cutover 前に実装を branch へ用意しても、現行の手動 plist 手順と installer 手順を README へ併記しない。
 
@@ -474,6 +584,12 @@ cutover 前に実装を branch へ用意しても、現行の手動 plist 手順
 | P-8 | doctor unit | settings と plist の schedule が一致または不一致 | 一致で `PASS`、不一致で `FAIL` と再 install 手順 |
 | P-9 | config unit | `morning-cron` と `evening-cron` を変更 | launchd schedule が変わらない |
 | P-10 | docs | README の key、nested field、四既定値、図、時刻表 | production 正本と一致する |
+| P-11 | pipeline unit | morning の対象日ファイル不在 | `completed:no-data`、exit `0`、`v3.input=unavailable`、transfer not-attempted |
+| P-12 | pipeline / status unit | evening の対象日ファイル不在 | `failed:input-missing`、exit `1`、`v3.input=unavailable`、`terminal-failure` alert |
+| P-13 | status unit | present-zero 三回、morning input-missing、present-zero の順に記録 | input-missing 後も counter は三のまま、最後の present-zero で四になり alert |
+| P-14 | status unit | present-zero を四回記録 | 四回目に `consecutive-no-data` alert |
+| P-15 | status parser | 現 definitions の terminal から `v3` または `v3.input` を欠落させる | status を正常として受理しない |
+| P-16 | observation gate | morning input-missing と present-zero だけの七日 | どちらも成功日へ数えず、`uniqueMeasurementCount > 0` の日だけを数える |
 
 P-4、P-6、P-7 は production の HOME、plist、label、`dist/scale2sheet` を使わない。
 
@@ -488,6 +604,7 @@ P-4、P-6、P-7 は production の HOME、plist、label、`dist/scale2sheet` を
 | L-3 | shell に schedule らしい環境変数が在る | NO-ALARM。settings または既定値だけを使う |
 | L-4 | settings と plist が同じ custom schedule | NO-ALARM。doctor は `PASS` |
 | L-5 | dry-run を二回実行 | NO-ALARM。filesystem と fake launchctl log が二回とも不変 |
+| L-6 | health normal で morning input-missing を四回記録 | NO-ALARM。counter は増えず、この入力不在だけでは alert にならない |
 
 非警報対照に `SURVIVED` を使わない。
 
@@ -507,6 +624,12 @@ P-4、P-6、P-7 は production の HOME、plist、label、`dist/scale2sheet` を
 | M-6 | `morning-cron` を launchd morning へ流用する | P-9、L-2 | `serve` と launchd の責務混同を捕捉する |
 | M-7 | doctor が plist の時刻を比較せず常に `PASS` にする | P-8 | settings を変えたが再 install していない状態を捕捉する |
 | M-8 | README の一時刻だけを旧値へ戻す | P-10 | source とユーザー向け記述の drift を捕捉する |
+| M-9 | morning input-missing を `failed:input-missing` のまま残す | P-11 | ユーザー決定が pipeline behavior へ届かない回帰を捕捉する |
+| M-10 | evening input-missing も `completed:no-data` にする | P-12 | morning 専用の意味変更を evening へ広げる回帰を捕捉する |
+| M-11 | morning input-missing の `v3.input` を `ready` にする | P-11、P-13 | AC-45 の二状態を潰す回帰を捕捉する |
+| M-12 | `v3.input=unavailable` で no-data counter を増やす、または零へ戻す | P-13、L-6 | expected input-missing が alert を作る回帰と、実際の present-zero streak を隠す回帰を捕捉する |
+| M-13 | 現 definitions の terminal で `v3` 欠落を受理する | P-15 | AC-45 の識別子が無い状態を正常とみなす回帰を捕捉する |
+| M-14 | `completed:no-data` を observation 成功日へ数える | P-16 | no-op で七日 gate が成立する Issue #38 の再発を捕捉する |
 
 各変異は `KILLED`、`KILLED-BY-TSC`、`SURVIVED` の三値で報告する。
 
@@ -526,26 +649,50 @@ timeout、Bun 欠落、runner 起動失敗、変異前から赤い baseline も 
 | `src/installation/model.ts` | `write-plist` に structured schedule を保持する |
 | `src/installation/executor.ts` | dry-run と実行結果へ四時刻を表示する |
 | `src/installation/doctor.ts` | settings と plist の schedule を比較し、四時刻を表示する |
+| `src/pipeline/pipeline.ts` | morning input-missing だけを no-data / exit `0` へ写し、evening の failure を維持する |
+| `src/pipeline/status.ts` | `v3.input=ready` の no-data だけを counter へ加算し、現 definitions の `v3` を必須検証する |
 | `test/config/` | nested schema、既定値、`serve` との分離を検査する |
 | `test/installation/`、`test/cli/` | readiness、plist、dry-run、再登録、doctor を検査する |
+| `test/pipeline/`、observation gate test | period 別の input-missing、AC-43 から AC-46、definitions 再基準化を検査する |
 | `README.md` と関連 docs | 同じ release train でユーザー向け契約を追随させる |
 
-実装順は次のとおりとする。
+実装は二つの release train に分ける。
+
+### 13.1 definitions release train
+
+Issue #243、Issue #246、Issue #182 と本書 §9 の semantic slice を同じ aggregate head に載せる。
+
+順序は次のとおりとする。
+
+1. morning input-missing、present-zero、evening input-missing の baseline を固定する。
+2. pipeline の period 別 outcome と exit を変更する。
+3. status の counter と現 definitions の `v3` 検証を変更する。
+4. AC-43 から AC-46、README、definitions label を同じ head で更新する。
+5. §12 の P-11 から P-16、L-6、M-9 から M-14 を実行する。
+6. 一部だけを含む binary を active writer にせず、aggregate head を一回だけ配備する。
+
+### 13.2 schedule/settings release train
+
+Issue #179 と Issue #259 の schedule/settings slice は次の順序で実装する。
 
 1. settings schema と唯一の既定値を追加する。
 2. readiness が structured schedule を返すようにする。
 3. planner と plist へ配線し、隔離 test で custom 値を確認する。
 4. dry-run、install 完了表示、doctor へ観測値を出す。
 5. README と設計正本を同じ head で更新する。
-6. baseline、非警報対照、変異を実行する。
+6. §12 の P-1 から P-10、L-1 から L-5、M-1 から M-8 を実行する。
 
-Issue #179 と Issue #259 を別 PR に分けると、一つ目の PR が固定値だけを変えるか、設定可能だが旧既定値の中間状態を main へ作る。
+Issue #179 と Issue #259 の schedule/settings slice を別 PR に分けると、一つ目の PR が固定値だけを変えるか、設定可能だが旧既定値の中間状態を main へ作る。
 
-ユーザー決定は設定可能化と時刻変更の組なので、一つの実装 head で成立させる。
+ユーザー決定は設定可能化と時刻変更の組なので、schedule/settings slice は一つの実装 head で成立させる。
+
+二つの release train を分けることは、morning no-data の semantic slice を分けることを意味しない。
+
+semantic slice は definitions release train から外さない。
 
 ## 14. 完了条件と残る判断
 
-schedule 実装の完了条件は次のとおりである。
+本設計の実装完了条件は次のとおりである。
 
 - 既存 settings が新既定値へ移行できる。
 - custom の四時刻が plist、dry-run、install 完了表示、doctor、README で一致する。
@@ -553,13 +700,20 @@ schedule 実装の完了条件は次のとおりである。
 - `serve` cron と launchd schedule が互いに影響しない。
 - settings 変更後の明示的な再 install で既存登録を置き換えられる。
 - baseline と非警報対照が緑で、M-1 から M-8 の三値が記録される。
+- morning input-missing と present-zero が status の組で区別でき、AC-45 が PASS のままである。
+- morning input-missing が no-data counter と observation 成功日を増やさない。
+- evening input-missing が failure と alert を維持する。
+- definitions release train の再基準化が一回だけである。
+- P-11 から P-16、L-6 が期待どおりで、M-9 から M-14 の三値が記録される。
 
-次は本書で決めない。
+次は本書の契約変更ではなく、運用時の観測で決める。
 
-- N-1、N-2、N-3 のどれを採るか。
-- 実装を cutover 前に用意するか、cutover と同じ release train で main へ入れるか。
 - observation で既定値の余裕を再評価する期間と閾値。
 
-schedule の設定可能化は採用済みである。
+schedule の設定可能化と morning input-missing の no-data 化は採用済みである。
 
-入力不在の outcome と適用時期は、manager がユーザーへ別に提示する。
+cutover は本変更を待たず、cutover 直後から本変更が配備されるまでは現行実装の morning alert が出る。
+
+この暫定 alert は想定済みの観測として扱い、本書の semantic slice を cutover の前提条件へ追加しない。
+
+実際の cutover は runbook の既存 gate が緑になった後に行う。
