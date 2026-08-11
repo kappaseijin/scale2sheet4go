@@ -13,7 +13,7 @@ import {
   type InstallationCliDeps,
 } from "../../src/cli/installation.js";
 import { defaultExecutorDeps, type ExecutorDeps } from "../../src/installation/executor.js";
-import { readManifest } from "../../src/installation/manifest.js";
+import { readManifest, writeManifest } from "../../src/installation/manifest.js";
 import { acquireRunLease } from "../../src/scheduler/run-lease.js";
 
 const temporaryDirectories: string[] = [];
@@ -279,5 +279,56 @@ describe("runUninstallCommand (design §アンインストールフロー §既�
 
     expect(exitCode).toBe(0);
     expect(lines.some((line) => line.includes("npm run build:bun") && line.includes("uninstall --purge"))).toBe(true);
+  });
+
+  it("reports the complete uninstall operation and completion output through the CLI", async () => {
+    const home = await makeTempHome();
+    const configDir = path.join(home, ".config", "scale2sheet");
+    const binaryPath = path.join(home, ".local", "bin", "scale2sheet");
+    const plistPath = path.join(home, "Library", "LaunchAgents", "jp.seijin.scale2sheet.morning.plist");
+    const manifestPath = path.join(configDir, "install-manifest.json");
+    await mkdir(configDir, { recursive: true });
+    const manifest = {
+      "schema-version": 1,
+      state: "installed",
+      version: "0.1.0",
+      prefix: path.join(home, ".local"),
+      "binary-path": binaryPath,
+      "config-dir": configDir,
+      "log-dir": path.join(home, "Library", "Logs", "scale-pipeline"),
+      launchd: {
+        enabled: true,
+        domain: "gui/501",
+        labels: ["jp.seijin.scale2sheet.morning"],
+        "plist-paths": [plistPath],
+      },
+      "applied-steps": [],
+      "created-paths": [],
+      "updated-at": "2026-08-11T10:00:00.000Z",
+    } as const;
+    await writeManifest(manifestPath, { ...manifest, state: "installing" });
+    await writeManifest(manifestPath, manifest);
+    const lines: string[] = [];
+    const deps = await makeDeps(home, {
+      logger: { log: (line: string) => lines.push(line), error: () => {} },
+      executorDeps: fakeExecutorDeps({
+        bootout: async () => ({ outcome: "done", message: "" }),
+        logger: { log: (line: string) => lines.push(line) },
+      }),
+    });
+
+    const exitCode = await runUninstallCommand({ prefix: "~/.local", dryRun: false }, deps);
+
+    expect(exitCode).toBe(0);
+    expect(lines).toEqual(expect.arrayContaining([
+      "[done] bootout jp.seijin.scale2sheet.morning",
+      `[done] remove-file ${plistPath}`,
+      `[done] remove-file ${manifestPath}`,
+      `[done] remove-file ${binaryPath}`,
+      `  ${configDir}`,
+      `  ${path.join(home, "Library", "Logs", "scale-pipeline")}`,
+      "a runtime artifact with no secrets remains under /tmp; macOS cleans it up on its own.",
+      "  npm run build:bun && ./dist/scale2sheet uninstall --purge",
+    ]));
   });
 });
