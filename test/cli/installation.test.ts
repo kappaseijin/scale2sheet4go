@@ -244,6 +244,7 @@ describe("runUninstallCommand (design §アンインストールフロー §既�
     const lines: string[] = [];
     const deps = await makeDeps(home, { logger: { log: (line: string) => lines.push(line), error: () => {} } });
     await runInstallCommand({ prefix: "~/.local", launchd: false, dryRun: false, force: false }, deps);
+    await writeFile(path.join(home, "Library", "Logs", "scale-pipeline", "evening.log"), "pipeline\n");
     lines.length = 0;
 
     const exitCode = await runUninstallCommand({ prefix: "~/.local", dryRun: false }, deps);
@@ -253,6 +254,19 @@ describe("runUninstallCommand (design §アンインストールフロー §既�
     const logDir = path.join(home, "Library", "Logs", "scale-pipeline");
     expect(lines.some((line) => line.includes(configDir))).toBe(true);
     expect(lines.some((line) => line.includes(logDir))).toBe(true);
+  });
+
+  it("does not report the log directory as remaining when uninstall removes it", async () => {
+    const home = await makeTempHome();
+    const lines: string[] = [];
+    const deps = await makeDeps(home, { logger: { log: (line: string) => lines.push(line), error: () => {} } });
+    await runInstallCommand({ prefix: "~/.local", launchd: false, dryRun: false, force: false }, deps);
+
+    const exitCode = await runUninstallCommand({ prefix: "~/.local", dryRun: false }, deps);
+
+    expect(exitCode).toBe(0);
+    expect(lines).not.toContain(`  ${path.join(home, "Library", "Logs", "scale-pipeline")}`);
+    await expect(stat(path.join(home, "Library", "Logs", "scale-pipeline"))).rejects.toThrow();
   });
 
   it("B-2 (reviewer, PR #139): completion output mentions the leftover /tmp runtime artifact and that it holds no secrets", async () => {

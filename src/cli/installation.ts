@@ -490,9 +490,16 @@ export async function runUninstallCommand(
     deps.logger.log(`uninstalled ${currentManifest["binary-path"]}`);
     // design §アンインストールフロー §既定 手順11: the completion screen lists
     // the absolute paths of what was left behind.
+    const logDirRemoved = result.results.some(
+      (entry) => entry.operation.kind === "remove-tree"
+        && entry.operation.path === currentManifest["log-dir"]
+        && entry.status === "done",
+    );
     deps.logger.log("settings, auth files, and logs remain at:");
     deps.logger.log(`  ${currentManifest["config-dir"]}`);
-    deps.logger.log(`  ${currentManifest["log-dir"]}`);
+    if (!logDirRemoved) {
+      deps.logger.log(`  ${currentManifest["log-dir"]}`);
+    }
     // design §共通run lease: the empty lock file and runtime directory under
     // /tmp are left for macOS's own cleanup rather than unlinked here
     // (unlinking risks a race with a lease still being acquired elsewhere).
