@@ -220,13 +220,21 @@ test、diagnostic、acceptance はこの正本を参照または production の�
 
 値を変えるときは、本書と同じ測定を取り直し、README の既知の制約と acceptance の上限を同じ PR で追随させる。
 
-### 6.2 `SheetsValuesPort` の再利用
+### 6.2 #248 の seam との関係
 
-#248 が定義した `SheetsValuesPort` を、timeout の unit seam としても使う。
+#280 の production 実装は #248 の landing を待たない。
 
-別の fake Google client を新設しない。
+deadline controller は adapter 一回を外側から覆い、現行の GoogleAuth と三 API call へ signal を渡せるためである。
 
-port の各 method は同じ signal を受け取る。
+#248 が landing した後は、同 issue が定義した `SheetsValuesPort` を timeout の unit seam としても使う。
+
+第二の production port や依存注入 option は新設しない。
+
+#248 より先に入る #280 の unit probe は、現行の `google.sheets()` import 境界を test-local fake に差し替える。
+
+その fake を production type として export せず、#248 landing 時に `SheetsValuesPort` へ置き換える。
+
+最終的な port の各 method は同じ signal を受け取る。
 
 ```ts
 interface SheetsRequestControl {
@@ -246,9 +254,9 @@ interface SheetsValuesPort {
 }
 ```
 
-fake port は、header、date column、batch update が同じ `AbortSignal` object を受けたことを検査する。
+test-local fake、または #248 landing 後の fake port は、header、date column、batch update が同じ `AbortSignal` object を受けたことを検査する。
 
-production port は Google API method の request option に同じ signal を渡す。
+現行の直接呼出しと、#248 landing 後の production port は、いずれも Google API method の request option に同じ signal を渡す。
 
 ### 6.3 遅延認証にも同じ signal を渡す
 
@@ -256,7 +264,9 @@ Google API method だけへ signal を渡しても、最初の request より前
 
 `createGoogleSheetsAuth` は signal を受け取り、`GoogleAuth` の `clientOptions.transporterOptions.signal` へ渡す。
 
-同じ signal を production port の `values.get` / `values.batchUpdate` にも明示的に渡す。
+同じ signal を現行の直接 `values.get` / `values.batchUpdate` 呼出しにも明示的に渡す。
+
+#248 landing 後は、その配線を production port が引き継ぐ。
 
 これにより、一つの controller が auth transport と Sheets transport の両方を中断する。
 
@@ -298,15 +308,15 @@ class GoogleSheetsOperationTimeoutError extends Error {
   readonly code = "google-sheets-operation-timeout";
   readonly stage: GoogleSheetsOperationStage;
   readonly deadlineMilliseconds: number;
-  readonly writeState: "not-attempted" | "unknown";
+  readonly writeConfirmation: "not-attempted" | "unconfirmed";
 }
 ```
 
-`auth-or-header-read` と `date-column-read` の `writeState` は `not-attempted` である。
+`auth-or-header-read` と `date-column-read` の `writeConfirmation` は `not-attempted` である。
 
-`batch-update` の `writeState` は `unknown` である。
+`batch-update` の `writeConfirmation` は `unconfirmed` である。
 
-error message は code、stage、deadline、write state だけを含める。
+error message は code、stage、deadline、write confirmation だけを含める。
 
 credential path、Spreadsheet ID、request URL、token、raw response は含めない。
 
@@ -319,6 +329,14 @@ controller 自身の signal が aborted のときだけ、元の error を timeo
 `runPipeline` は typed timeout も既存の transfer reject として捕捉する。
 
 persisted outcome は `failed:transfer`、exit は `1`、health は既存規則どおり alert である。
+
+persisted V-3 の `transfer.state` も既存 reject 経路の `failed` を維持する。
+
+V-3 の `unknown` は、API response が resolve したが `totalUpdatedCells` が欠落した observation を表す。
+
+timeout は response が resolve していないため、V-3 `unknown` へ読み替えない。
+
+timeout error の `writeConfirmation=unconfirmed` は、batch request が server へ適用されたか断定できないという diagnostic であり、V-3 state ではない。
 
 stage は diagnostic から人が読める。
 
@@ -393,11 +411,11 @@ pipeline timeout の受け入れ条件は「error が返った」だけではな
 
 | ID | 層 | 条件 | 期待 |
 | --- | --- | --- | --- |
-| P-1 | adapter | fake header が signal の abort まで待つ | typed timeout、stage `auth-or-header-read`、write `not-attempted` |
-| P-2 | adapter | header 成功、fake date read が待つ | stage `date-column-read`、write `not-attempted` |
-| P-3 | adapter | 二 read 成功、fake batch update が待つ | stage `batch-update`、write `unknown` |
+| P-1 | adapter | fake header が signal の abort まで待つ | typed timeout、stage `auth-or-header-read`、write confirmation `not-attempted` |
+| P-2 | adapter | header 成功、fake date read が待つ | stage `date-column-read`、write confirmation `not-attempted` |
+| P-3 | adapter | 二 read 成功、fake batch update が待つ | stage `batch-update`、write confirmation `unconfirmed` |
 | P-4 | adapter | 三呼び出しが期限内に成功 | 既存の requested / transferred outcome を変更しない |
-| P-5 | adapter | fake port が受けた control を記録 | 三呼び出しが同一 signal object を受ける |
+| P-5 | adapter | test-local fake、または #248 fake port が受けた control を記録 | 三呼び出しが同一 signal object を受ける |
 | P-6 | auth | 応答しない proxy で token または最初の read が止まる | production auth transport が同一期限で中断 |
 | P-7 | pipeline | typed timeout を transfer が投げる | `failed:transfer`、exit `1`、safe diagnostic |
 | P-8 | CLI acceptance | P-7 の直後に同じ namespace で再実行 | lease conflict 無し |
@@ -452,7 +470,7 @@ child watchdog が対象 child を回収し、「production deadline を超え�
 | M-4 | batch update へ signal を渡さない | P-3、P-5 | KILLED |
 | M-5 | GoogleAuth transporter へ signal を渡さない | P-6 | KILLED |
 | M-6 | timeout を `completed:transferred` または `not-written` にする | P-7 | KILLED |
-| M-7 | batch stage を `writeState=not-attempted` とする | P-3、P-7 | KILLED |
+| M-7 | batch stage を `writeConfirmation=not-attempted` とする | P-3、P-7 | KILLED |
 | M-8 | pipeline CLI の `finally` から `lease.release()` を外す | P-8 | KILLED |
 | M-9 | normal response でも timeout error を投げる | P-4 | KILLED |
 
@@ -470,13 +488,13 @@ L-1〜L-3 は `NO-ALARM` と記録し、SURVIVED と呼ばない。
 
 L-2 は本書の値を決めるために承認された一回の測定証拠であり、CI や反復 gate へ接続しない。
 
-継続 gate は production credential と production Spreadsheet を使わず、fake port と隔離 fixture で行う。
+継続 gate は production credential と production Spreadsheet を使わず、test-local fake または #248 landing 後の fake port と隔離 fixture で行う。
 
 ## 13. 実装対象
 
 | path | 変更 |
 | --- | --- |
-| `src/sheets/adapter.ts` | deadline 正本、controller、stage、typed error、同一 signal、#248 port の拡張 |
+| `src/sheets/adapter.ts` | deadline 正本、controller、stage、typed error、三 API call への同一 signal |
 | `src/auth/google-sheets-auth.ts` | production auth transporter へ同じ signal を渡す |
 | `test/sheets/adapter.test.ts` | P-1〜P-5、M-1〜M-4 / M-7 / M-9、normal control |
 | `test/pipeline/pipeline.test.ts` | timeout を既存 `failed:transfer` へ写す P-7 |
@@ -487,24 +505,30 @@ L-2 は本書の値を決めるために承認された一回の測定証拠で�
 | `README.md` | 外部 Sheets 操作には30秒の安全上限があり、batch timeout は結果未確認である制約 |
 | `docs/ACCEPTANCE_TEST_REPORT.md` | baseline、probe、変異三値、lease 再取得証拠 |
 
-#248 の `SheetsValuesPort` が先に landing した状態を基準に実装する。
+#280 は #248 と独立に先行実装する。
 
-#280 のためだけに競合する第二の port を作らない。
+timeout は adapter 一回を外側から覆う signal であり、`SheetsValuesPort` の存在を production 前提にしない。
+
+#280 のためだけに競合する第二の production port を作らない。
+
+#248 が landing したら、同 issue の `SheetsValuesPort` を unit test の注入点として使い、#280 の test-local fake を置き換える。
 
 timeout は定義版の意味変更ではないため、#243 + #246 + #182 と同じ definitionsVersion へ載せる条件は無い。
 
-ただし `src/sheets/adapter.ts` と `test/sheets/adapter.test.ts` は同じ変更点なので、release train を先に landing させ、その head を base に #280 を実装する。
+#248 を先にして pipeline-shadow を gate から一時的に外す案は採らない。
+
+検査を外すと、#280 が塞ぐべき hang を検出できないまま release train を通すためである。
 
 ## 14. 実装順序
 
-1. #248 の production port seam と response mapping が landing していることを確認する。
-2. P-1〜P-5 の unit baseline を作り、normal control が green であることを確認する。
-3. deadline controller と typed error を adapter へ入れる。
-4. production GoogleAuth と三 API call へ同じ signal を配線する。
-5. pipeline / run / serve の既存 error 境界を probe する。
-6. blackhole proxy を使う focused compiled acceptance で bounded exit と lease 再取得を確認する。
-7. M-1〜M-9 を一つずつ当て、三値 ledger を残す。
-8. README と acceptance report を同じ PR で追随させる。
+1. 現行の `google.sheets()` import 境界を test-local fake に差し替え、normal control が green、P-1〜P-3 / P-5 が deadline 未実装を理由に red であることを確認する。
+2. deadline controller と typed error を adapter へ入れる。
+3. production GoogleAuth と三 API call へ同じ signal を配線する。
+4. pipeline / run / serve の既存 error 境界を probe する。
+5. blackhole proxy を使う focused compiled acceptance で bounded exit と lease 再取得を確認する。
+6. #280 head で M-1〜M-9 を一つずつ当て、三値 ledger と lease 再取得証拠を残す。
+7. README と acceptance report を同じ PR で追随させ、#280 を #248 より先に landing させる。
+8. #248 landing 時に test-local fake を `SheetsValuesPort` へ置き換え、P-1〜P-5 と M-1〜M-4 / M-7 / M-9 を再実行する。
 9. 入力が在る実運用日の full transfer 所要を後日観測し、30秒の余裕を再評価する。
 
 ## 15. 完了条件
