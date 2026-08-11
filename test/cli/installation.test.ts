@@ -323,9 +323,10 @@ describe("runUninstallCommand (design §アンインストールフロー §既�
     expect(lines).toEqual(expect.arrayContaining([
       "[done] bootout jp.seijin.scale2sheet.morning",
       `[done] remove-file ${plistPath}`,
-      `[done] remove-file ${manifestPath}`,
-      `[done] remove-file ${binaryPath}`,
-      `  ${configDir}`,
+        `[done] remove-file ${manifestPath}`,
+        `[done] remove-file ${binaryPath}`,
+        `uninstalled ${binaryPath}`,
+        `  ${configDir}`,
       `  ${path.join(home, "Library", "Logs", "scale-pipeline")}`,
       "a runtime artifact with no secrets remains under /tmp; macOS cleans it up on its own.",
       "  npm run build:bun && ./dist/scale2sheet uninstall --purge",
