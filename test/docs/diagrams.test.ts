@@ -19,6 +19,7 @@ type PresentClaim = {
   claim: string;
   kind: "present";
   token: string;
+  diagramToken?: string;
   sourcePath: string;
 };
 
@@ -39,36 +40,38 @@ const claims: readonly Claim[] = [
     claim: "scale_exporter の公開ファイルを入力として確認する",
     kind: "present",
     token: "scale_exporter_",
-    sourcePath: "scripts/run-pipeline.sh",
+    sourcePath: "src/sources/scale-exporter/reader.ts",
   },
   {
     diagram: "composition",
-    claim: "run-pipeline.sh は exporter を起動しない",
+    claim: "installed binary は exporter を起動しない",
     kind: "absent",
-    sourceToken: '"$exporter"',
-    sourcePath: "scripts/run-pipeline.sh",
-    diagramForbiddenPattern: /SH\s*--?>\s*(?:\|[^|]*\|\s*)?EXP/,
+    sourceToken: "scale-exporter",
+    sourcePath: "src/installation/plist.ts",
+    diagramForbiddenPattern: /(?:LA|LB|BIN)\s*--?>\s*(?:\|[^|]*\|\s*)?EXP/,
   },
   {
     diagram: "run-path",
-    claim: "launchd は run-pipeline.sh を起動する",
+    claim: "launchd は installed binary の pipeline --period を起動する",
     kind: "present",
-    token: "run-pipeline.sh",
-    sourcePath: "scripts/launchd/jp.seijin.kappa.scale-pipeline.morning.plist",
+    token: "pipeline",
+    diagramToken: "pipeline --period",
+    sourcePath: "src/installation/plist.ts",
   },
   {
     diagram: "run-path",
-    claim: "run-pipeline.sh は run サブコマンドを呼ぶ",
+    claim: "installed binary は pipeline サブコマンドを呼ぶ",
     kind: "present",
-    token: "run --period",
-    sourcePath: "scripts/run-pipeline.sh",
+    token: "pipeline",
+    diagramToken: "pipeline --period",
+    sourcePath: "src/installation/plist.ts",
   },
   {
     diagram: "run-path",
-    claim: "当日行が無いとき run は not-written で終える",
+    claim: "転記失敗または当日行が無いとき pipeline は failed:transfer で終える",
     kind: "present",
-    token: "not-written",
-    sourcePath: "src/sheets/adapter.ts",
+    token: "failed:transfer",
+    sourcePath: "src/pipeline/pipeline.ts",
   },
 ];
 
@@ -89,6 +92,24 @@ function parseReadmeDiagrams(readme: string): Map<string, string> {
     diagrams.set(match[1], match[2]);
   }
   return diagrams;
+}
+
+function validateRunPathExitCodes(diagram: string): string[] {
+  const errors: string[] = [];
+  for (const [outcome, exitCode] of [
+    ["completed:no-data", 0],
+    ["completed:transferred", 0],
+    ["failed:input-missing", 1],
+    ["failed:input-unstable", 1],
+    ["failed:input-invalid-or-partial", 1],
+    ["failed:transfer", 1],
+  ] as const) {
+    const outcomePattern = new RegExp(`${outcome}[^\\n]*exit ${exitCode}\\b`);
+    if (!outcomePattern.test(diagram)) {
+      errors.push(`${outcome} は exit ${exitCode} で終わる必要があります`);
+    }
+  }
+  return errors;
 }
 
 function validateDiagrams(
@@ -127,8 +148,9 @@ function validateDiagrams(
       if (!source.includes(claim.token)) {
         errors.push(`${claim.claim}: source に ${claim.token} がありません`);
       }
-      if (!diagram.includes(claim.token)) {
-        errors.push(`${claim.claim}: diagram に ${claim.token} がありません`);
+      const diagramToken = claim.diagramToken ?? claim.token;
+      if (!diagram.includes(diagramToken)) {
+        errors.push(`${claim.claim}: diagram に ${diagramToken} がありません`);
       }
     } else {
       if (source.includes(claim.sourceToken)) {
@@ -138,6 +160,10 @@ function validateDiagrams(
         errors.push(`${claim.claim}: diagram が exporter 起動の矢印を含みます`);
       }
     }
+  }
+  const runPath = diagrams.get("run-path");
+  if (runPath) {
+    errors.push(...validateRunPathExitCodes(runPath));
   }
   return errors;
 }
@@ -156,41 +182,43 @@ describe("README diagrams (#157)", () => {
     );
   });
 
-  it("rejects a claim whose token appears only in a shell comment", () => {
+  it("rejects a claim whose token appears only in a source comment", () => {
     expect(
       validateDiagrams(readme, {
-        "scripts/run-pipeline.sh": "# run --period is intentionally comment-only\n",
+        "src/installation/plist.ts": "// pipeline is intentionally comment-only\n",
       }),
-    ).toContain("run-pipeline.sh は run サブコマンドを呼ぶ: source に run --period がありません");
+    ).toContain("installed binary は pipeline サブコマンドを呼ぶ: source に pipeline がありません");
   });
 
   it("rejects the implementation mutation from run to pipeline", () => {
-    const script = readRepositoryFile("scripts/run-pipeline.sh");
+    const script = readRepositoryFile("src/installation/plist.ts");
     expect(
       validateDiagrams(readme, {
-        "scripts/run-pipeline.sh": script.replace('"$scale2sheet_bin" run --period', '"$scale2sheet_bin" pipeline --period'),
+        "src/installation/plist.ts": script.replace("<string>pipeline</string>", "<string>run</string>"),
       }),
-    ).toContain("run-pipeline.sh は run サブコマンドを呼ぶ: source に run --period がありません");
+    ).toContain("installed binary は pipeline サブコマンドを呼ぶ: source に pipeline がありません");
   });
 
   it("rejects a restored exporter invocation", () => {
-    const script = readRepositoryFile("scripts/run-pipeline.sh");
+    const script = readRepositoryFile("src/installation/plist.ts");
     expect(
       validateDiagrams(readme, {
-        "scripts/run-pipeline.sh": `${script}\n"$exporter" --source google-fit\n`,
+        "src/installation/plist.ts": `${script}\nscale-exporter\n`,
       }),
-    ).toContain('run-pipeline.sh は exporter を起動しない: source に "$exporter" が残っています');
+    ).toContain("installed binary は exporter を起動しない: source に scale-exporter が残っています");
   });
 
   it("rejects a labeled exporter-start arrow", () => {
-    expect(validateDiagrams(readme.replace("SH -->|起動| BIN", "SH -->|起動| EXP\n  SH -->|起動| BIN"))).toContain(
-      "run-pipeline.sh は exporter を起動しない: diagram が exporter 起動の矢印を含みます",
+    expect(validateDiagrams(readme.replace("LA -->|起動| BIN", "LA -->|起動| EXP\n  LA -->|起動| BIN"))).toContain(
+      "installed binary は exporter を起動しない: diagram が exporter 起動の矢印を含みます",
     );
   });
 
-  it("rejects a run-path diagram that claims pipeline instead of run", () => {
-    expect(validateDiagrams(readme.replace("scale2sheet run --period P", "scale2sheet pipeline --period P"))).toContain(
-      "run-pipeline.sh は run サブコマンドを呼ぶ: diagram に run --period がありません",
+  it("rejects a run-path diagram that claims run instead of pipeline", () => {
+    const mutatedReadme = readme.replaceAll("pipeline --period", "run --period");
+    expect(mutatedReadme).not.toBe(readme);
+    expect(validateDiagrams(mutatedReadme)).toContain(
+      "installed binary は pipeline サブコマンドを呼ぶ: diagram に pipeline --period がありません",
     );
   });
 
@@ -205,22 +233,23 @@ describe("README diagrams (#157)", () => {
       diagram: "removed-diagram",
       claim: "孤立 claim は許可しない",
       kind: "present",
-      token: "run --period",
-      sourcePath: "scripts/run-pipeline.sh",
+      token: "pipeline",
+      sourcePath: "src/installation/plist.ts",
     };
     expect(validateDiagrams(readme, {}, [...claims, orphan])).toContain(
       "孤立 claim は許可しない: diagram removed-diagram がありません",
     );
   });
 
-  it("documents that the wrapper maps every run failure to exit 1", () => {
-    const script = readRepositoryFile("scripts/run-pipeline.sh");
+  it("documents exit codes for every current pipeline outcome", () => {
+    const plist = readRepositoryFile("src/installation/plist.ts");
     const runPath = parseReadmeDiagrams(readme).get("run-path");
 
-    expect(script).toContain('if ! "$scale2sheet_bin" run --period "$period"; then');
-    expect(script).toContain("exit 1");
-    expect(runPath).toContain("exit 1");
-    expect(runPath).not.toContain("exit 2");
-    expect(runPath).toMatch(/RN\s*--?>\s*\w+\(\["exit 1"\]\)/);
+    expect(plist).toContain("<string>pipeline</string>");
+    expect(runPath).toBeDefined();
+    expect(validateRunPathExitCodes(runPath ?? "")).toEqual([]);
+    const mutatedReadme = readme.replace("failed:input-missing<br/>exit 1", "failed:input-missing<br/>exit 0");
+    expect(mutatedReadme).not.toBe(readme);
+    expect(validateDiagrams(mutatedReadme)).toContain("failed:input-missing は exit 1 で終わる必要があります");
   });
 });

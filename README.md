@@ -28,8 +28,7 @@ flowchart LR
   subgraph s2s["scale2sheet（launchd で日次実行）"]
     LA["scale-pipeline.morning<br/>07:00 / 11:30"]
     LB["scale-pipeline.evening<br/>21:00 / 23:30"]
-    SH["scripts/run-pipeline.sh"]
-    BIN["dist/scale2sheet<br/>run --period P"]
+    BIN["~/.local/bin/scale2sheet<br/>pipeline --period P"]
   end
 
   subgraph cfg["~/.config/scale2sheet/"]
@@ -42,15 +41,13 @@ flowchart LR
   GS["Google スプレッドシート<br/>当日行の 朝* / 夜* 列"]
 
   EXP -->|JSONL 出力| OUT
-  LA --> SH
-  LB --> SH
-  SH -->|本日ぶんの公開を確認| OUT
-  SH -->|起動| BIN
+  LA -->|起動| BIN
+  LB -->|起動| BIN
   OUT -->|読込| BIN
   CFG --> BIN
   SEC --> BIN
   BIN -->|行を更新| GS
-  SH -.->|標準出力・エラー| LOG
+  BIN -.->|標準出力・エラー| LOG
 ```
 
 デフォルトのデータソースは `scale-exporter`（[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した分割 JSONL ファイルの読み込み）です。Google Fit REST API 直接取得（`--source google-fit`）も残っていますが、同 API は 2026 年末で終了するため非推奨です。launchd による朝夕の自動実行（本実行＋拾い直し）に対応します（後述）。
@@ -231,82 +228,115 @@ curl -fsSL https://bun.sh/install | bash
 ```mermaid
 %% verify: run-path
 flowchart TD
-  S(["launchd が run-pipeline.sh を起動"]) --> D{"scale-exporter-output-dir を解決<br/>環境変数 → settings.json"}
-  D -->|解決できない| DN["通知: 解決できません"]
-  D -->|ディレクトリが無い| DM["通知: 存在しないかディレクトリではありません"]
-  D -->|解決できた| P{"本日ぶんの google-fit<br/>公開ファイルが在るか"}
-  P -->|無い| PN["通知: 本日ぶん見当たりません"]
-  DN --> B
-  DM --> B
-  PN --> B
-  P -->|在る| B{"dist/scale2sheet が<br/>実行可能か"}
-  B -->|無い| BN["通知: バイナリが見つかりません"]
-  BN --> X2(["exit 1"])
-  B -->|在る| R["scale2sheet run --period P"]
-  R --> RC{"run の終了コード"}
-  RC -->|"非0 : run が失敗"| RN["通知: シート転記が失敗しました"]
-  RN --> X3(["exit 1"])
-  RC -->|"0 : 転記した"| OK(["正常終了"])
-  RC -->|"0 : 対象時間帯に測定値が無い"| Q1(["終了。通知は出ない"])
-  RC -->|"0 : 当日行がシートに無い"| Q2(["not-written。通知は出ない"])
+  S(["launchd が scale2sheet pipeline --period を起動"]) --> C{"設定を解決できるか"}
+  C -->|できない| CE(["exit 1<br/>status は書かれない"])
+  C -->|できた| P{"対象日の公開ファイルが在るか"}
+  P -->|無い| PM(["failed:input-missing<br/>exit 1"])
+  P -->|在るが読めない| PI(["failed:input-invalid-or-partial<br/>または failed:input-unstable<br/>exit 1"])
+  P -->|読めた| W{"window 内に体重の測定値が在るか"}
+  W -->|無い| ND(["completed:no-data<br/>exit 0"])
+  W -->|在る| T{"Spreadsheet へ転記"}
+  T -->|失敗・当日行が無い| TF(["failed:transfer<br/>exit 1"])
+  T -->|成功| OK(["completed:transferred<br/>exit 0"])
+  PM --> ST["pipeline-status.json を更新"]
+  PI --> ST
+  ND --> ST
+  TF --> ST
+  OK --> ST
+  ST --> NOTIF{"health が遷移したか"}
+  NOTIF -->|した| N(["macOS 通知を 1 回"])
+  NOTIF -->|しない| E(["通知は出ない"])
 ```
 
-`scripts/run-pipeline.sh` が `scale2sheet run --period` による転記を1回分実行します。launchd が本実行と拾い直し実行の計 2 回/期を起動します（本体は冪等なので重複実行しても当日行を上書きするだけ）。異常は `osascript` の macOS 通知で知らせるため、LLM やログ監視に依存しません。
+インストールした `scale2sheet pipeline --period` が転記を1回分実行し、結果を `pipeline-status.json` へ記録します。launchd が本実行と拾い直し実行の計 2 回/期を起動します（本体は冪等なので重複実行しても当日行を上書きするだけ）。**通知は health が遷移したときだけ 1 回出ます**（毎回は出ません）。
 
-`scale_exporter` の起動はこのスクリプトの責任ではありません。`scale_exporter` 自身のスケジュールで `scale-exporter-output-dir` へ公開された JSONL を読み込むだけです。当日ぶんの公開ファイルがまだ無い場合や、`scale-exporter-output-dir` 自体が解決できない・存在しない場合は通知が出ます（`run` は失敗させず、通知のみです）。
+`scale_exporter` の起動は `pipeline` の責任ではありません。`scale_exporter` 自身のスケジュールで `scale-exporter-output-dir` へ公開された JSONL を読み込むだけです。当日ぶんの公開ファイルが無い場合は **`failed:input-missing` で終了します**（exit 1）。`scale-exporter-output-dir` を解決できない場合は**設定エラーで終了し**（exit 1）、**このときは `pipeline-status.json` が作られません**（status を書く前に落ちるため）。status が書かれた場合は、health が遷移したときだけ通知が 1 回出ます。
 
-| ファイル | 役割 |
+| 実行体 | 役割 |
 | --- | --- |
-| `scripts/run-pipeline.sh <morning\|evening>` | パイプライン本体（公開済みJSONLの読込 → `run --period`） |
-| `scripts/launchd/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 本実行 + 11:30 拾い直し |
-| `scripts/launchd/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 本実行 + 23:30 拾い直し |
+| `~/.local/bin/scale2sheet pipeline --period <morning\|evening>` | パイプライン本体（公開済みJSONLの読込 → 転記 → 実行状態の記録） |
+| `~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 本実行 + 11:30 拾い直し |
+| `~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 本実行 + 23:30 拾い直し |
+
+**plist は `scale2sheet install --launchd` が生成します。**手で置く必要はありません。
+**実行時刻は固定です**（変更する手段は現在ありません）。`morning-cron` / `evening-cron` は
+`serve` 用の設定であり、launchd の実行時刻を変えません。
 
 拾い直し実行は「測定が実行時刻より後になり本実行で取りこぼす」ケースを OS 側で自動的に補う（従来は手動再実行していた作業を launchd に移管）。
 
 ### インストール
 
+**2 段階です。**設定が揃うまで launchd へ登録されません（Issue #184）。
+
 ```sh
 npm install
 npm run build:bun
-mkdir -p ~/Library/LaunchAgents ~/Library/Logs/scale-pipeline
-cp scripts/launchd/*.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
+./dist/scale2sheet install            # 1. binary を ~/.local/bin へ置き、settings.json を作る
 ```
 
-ログは `~/Library/Logs/scale-pipeline/` に出力されます。Apple Health ソースは HealthKit 署名後に `run-pipeline.sh` のコメントアウトを外して有効化してください。
+`~/.config/scale2sheet/settings.json` に `sheet-id` と `scale-exporter-output-dir`、
+`sheets-credentials` を設定し、認証ファイルを配置してから登録します。
+
+```sh
+~/.local/bin/scale2sheet install --launchd   # 2. launchd へ登録する
+```
+
+**設定が足りないと登録は拒否されます。**表示される内容は、何が足りないかで変わります。
+
+| 足りないもの | 表示 |
+| --- | --- |
+| `settings.json` 自体が無い | `settings-missing: <path>` |
+| `sheet-id` / `sheets-credentials` の設定 | `sheets-config-missing: <detail>` |
+| `source` に応じた入力の設定 | `source-config-missing (<source>): <detail>` |
+| 認証ファイルの実体 | `auth-file-missing: <path>` と、集約行 `failed:missing-auth-files <path[, path...]>` |
+
+いずれの場合も先頭に `failed:launchd-not-ready` が出て、末尾に次が表示されます。
+
+```text
+run install without --launchd, complete settings and auth files, then re-run this command
+```
+
+**拒否された場合、plist も binary も変更されません。**設定を揃えて再実行してください。
+
+登録の前に、何が行われるかだけを確認できます。
+
+```sh
+~/.local/bin/scale2sheet install --launchd --dry-run
+```
+
+登録後の状態は `doctor` で確認できます。
+
+```sh
+~/.local/bin/scale2sheet doctor
+```
 
 ### アンインストール
 
-launchd 自動実行を止めて登録解除します。
-
 ```sh
-launchctl bootout gui/$(id -u)/jp.seijin.kappa.scale-pipeline.morning
-launchctl bootout gui/$(id -u)/jp.seijin.kappa.scale-pipeline.evening
-rm ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
-rm ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
+~/.local/bin/scale2sheet uninstall
 ```
 
-上記で自動実行のみ解除されます。設定・認証情報・ログは残るため、完全に削除する場合は加えて以下も実行してください。
+**launchd の登録解除・plist の削除・binary の削除**を行い、画面に列挙します。
+
+**設定・認証情報・ログは残ります。**残る場所も画面に表示されます。
+完全に削除する場合は、表示された path を手で削除してください。
 
 ```sh
 rm -rf ~/Library/Logs/scale-pipeline/   # 実行ログ
 rm -rf ~/.config/scale2sheet/           # settings.json・認証情報（scale_exporterの設定とは別ディレクトリ）
 ```
 
-リポジトリのクローン（`node_modules/` / `dist/` を含む）を削除すればアプリ本体も完全にアンインストールされます。
-
-注意: 常駐モード（`serve`）と併用すると二重書き込みになるため、launchd 運用時は `serve` を起動しないでください。
+**Google API キーや Spreadsheet の共有設定は取り消されません。**各コンソールで別途取り消してください。
 
 ### 実行状態と検知の限界
 
 `pipeline` サブコマンドで実行したパイプラインの状態は `~/.config/scale2sheet/pipeline-status.json` に記録されます。現行のv1文書は `schemaVersion`、`definitionsVersion`、`definitionsLabel`、`updatedAt`、`periods`（`morning` / `evening`）を持ち、各期間の `lastTerminal` 以下に outcome・開始/完了時刻・対象日・入力件数・診断情報など、期間単位に連続失敗回数・連続no-data回数・healthを保持します。Spreadsheetの値そのものではなく、パイプラインがどこまで到達したかを確認するために使います。
 
-なお、READMEのlaunchd手順が呼び出す `run` サブコマンドは現在このファイルを書きません。したがって、launchdの起動状態をこのファイルだけで監視することはできません。
+launchd が起動する `pipeline` は、実行のたびにこのファイルを更新します。ただし**パイプライン自体が起動しない期間は更新されない**ため、launchd の起動状態をこのファイルだけで監視することはできません。
 
 次の制約があります。
 
-- パイプライン自体が起動しない期間は、`pipeline-status.json` を更新できないため検知できません（READMEのlaunchd手順では `run` がこのファイルを書かないため、なおさら対象外です）。
+- パイプライン自体が起動しない期間は、`pipeline-status.json` を更新できないため検知できません。
 - macOS通知が表示・到達したことは記録できますが、利用者が通知を既読にしたことは証明できません。
 - シートの空欄だけでは転記失敗を検知できません。Issue #46 の実測では、2026-07-18〜27のパイプライン未到達期間でも、夜の値は07-20を除く9日分が人手で埋まっていました。
 - Google Sheets の認証、ヘッダ読取、日付列読取、書込みは、転記試行全体で共有する30秒の上限を超えると中断します。`pipeline` では `failed:transfer` と診断情報を状態ファイルへ残して終了し、`run` は終了コード `1` を返します。`serve` は同じ失敗をログに出して、次の予定実行を待ちます。
