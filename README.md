@@ -219,7 +219,7 @@ npm test
 npm run build:node
 ```
 
-`npm test` は `bun build --compile` で実際にバイナリをビルドして検証する acceptance 試験を5本含みます（コマンドセット乖離 #128、pipeline shadow 経路・run lease・install/uninstall・CLI smoke #168）。そのぶん通常のユニットテストだけより時間がかかり、5本が並列で `bun build` を回すため**実行環境のCPU負荷によって所要時間が変動します**（複数環境での実測: 約20〜45秒。この5本を除くユニットテストのみなら約2秒）。#175 以降、各 acceptance 試験には既定の30秒より十分長い明示的タイムアウト（90秒）を設定しており、環境差による誤検知（実際は正常なのに時間切れで赤くなる）を防いでいます。[Bun](https://bun.sh/) が PATH に無い場合、これらの検査はスキップではなく**失敗**します（インストール手順をエラーメッセージに表示します）。
+`npm test` は `bun build --compile` で実際にバイナリをビルドして検証する acceptance 試験を6本含みます（コマンドセット乖離 #128、pipeline shadow 経路・run lease・install/uninstall・CLI smoke #168、Google Sheets 無応答時の期限とlease回復 #280）。そのぶん通常のユニットテストだけより時間がかかり、6本が並列で `bun build` を回すため**実行環境のCPU負荷によって所要時間が変動します**。#280のfocused acceptanceだけは180秒の明示的タイムアウトを持ちます。これは60秒startup、45秒のblackhole接続後deadline watchdog、30秒のpost-reacquire watchdogが、test runnerより先に原因別の診断を出すための上限です。製品のGoogle Sheets操作上限30秒とは別の検査上限です。ほかのacceptance試験の上限は変更していません。[Bun](https://bun.sh/) が PATH に無い場合、これらの検査はスキップではなく**失敗**します（インストール手順をエラーメッセージに表示します）。
 
 ```sh
 curl -fsSL https://bun.sh/install | bash
@@ -309,3 +309,5 @@ rm -rf ~/.config/scale2sheet/           # settings.json・認証情報（scale_e
 - パイプライン自体が起動しない期間は、`pipeline-status.json` を更新できないため検知できません（READMEのlaunchd手順では `run` がこのファイルを書かないため、なおさら対象外です）。
 - macOS通知が表示・到達したことは記録できますが、利用者が通知を既読にしたことは証明できません。
 - シートの空欄だけでは転記失敗を検知できません。Issue #46 の実測では、2026-07-18〜27のパイプライン未到達期間でも、夜の値は07-20を除く9日分が人手で埋まっていました。
+- Google Sheets の認証、ヘッダ読取、日付列読取、書込みは、転記試行全体で共有する30秒の上限を超えると中断します。`pipeline` では `failed:transfer` と診断情報を状態ファイルへ残して終了し、`run` は終了コード `1` を返します。`serve` は同じ失敗をログに出して、次の予定実行を待ちます。
+- 書込み（batch update）の途中で上限に達した場合、Google 側で反映されたかは**結果未確認**です。直ちに自動再試行せず、先に対象行を確認してください。必要なら、確認後に通常の転記を改めて実行します。

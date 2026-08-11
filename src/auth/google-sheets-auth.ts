@@ -8,9 +8,11 @@ export const googleSheetsScopes = [
 
 export async function createGoogleSheetsAuth(
   config: GoogleSheetsAuthConfig,
+  signal?: AbortSignal,
 ): Promise<InstanceType<typeof google.auth.GoogleAuth>> {
   return new google.auth.GoogleAuth({
     keyFile: config.applicationCredentialsPath,
     scopes: [...googleSheetsScopes],
+    ...(signal ? { clientOptions: { transporterOptions: { signal } } } : {}),
   });
 }

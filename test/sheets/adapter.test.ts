@@ -1,13 +1,111 @@
 import { DateTime } from "luxon";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  googleSheets: vi.fn(),
+  GoogleAuth: vi.fn(),
+}));
+
+vi.mock("googleapis", () => ({
+  google: {
+    sheets: mocks.googleSheets,
+    auth: { GoogleAuth: mocks.GoogleAuth },
+  },
+}));
 
 import {
   buildMeasurementUpdateData,
   buildSheetColumnMapping,
   columnIndexToA1,
   findTodayRowNumber,
+  updateSpreadsheetMeasurements,
 } from "../../src/sheets/index.js";
 import type { LatestMeasurementSet } from "../../src/domain/index.js";
+
+const deadlineMilliseconds = 30_000;
+const config = {
+  applicationCredentialsPath: "/tmp/credentials.json",
+  spreadsheetId: "test-spreadsheet",
+  sheetName: "測定値",
+};
+const latestSet: LatestMeasurementSet = {
+  period: "morning",
+  capturedAt: "2026-08-11T00:00:00.000Z",
+  source: "scale_exporter",
+  weightKg: 70.2,
+  sourcesByKind: {},
+};
+
+type OperationOutcome =
+  | { readonly kind: "resolved"; readonly value: unknown }
+  | { readonly kind: "rejected"; readonly error: unknown }
+  | { readonly kind: "still-pending" };
+
+function waitForAbort(signal: AbortSignal | undefined): Promise<never> {
+  return new Promise((_, reject) => {
+    if (!signal) {
+      return;
+    }
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+}
+
+async function outcomeByDeadline(operation: Promise<unknown>): Promise<OperationOutcome> {
+  const outcome = Promise.race<OperationOutcome>([
+    operation.then(
+      (value) => ({ kind: "resolved", value }),
+      (error) => ({ kind: "rejected", error }),
+    ),
+    new Promise<OperationOutcome>((resolve) => {
+      setTimeout(() => resolve({ kind: "still-pending" }), deadlineMilliseconds + 1);
+    }),
+  ]);
+  await vi.advanceTimersByTimeAsync(deadlineMilliseconds + 1);
+  return outcome;
+}
+
+function configureSheetsFake({
+  header,
+  dateColumn,
+  batchUpdate,
+}: {
+  readonly header: (
+    request: unknown,
+    options?: { signal?: AbortSignal },
+  ) => Promise<unknown>;
+  readonly dateColumn: (
+    request: unknown,
+    options?: { signal?: AbortSignal },
+  ) => Promise<unknown>;
+  readonly batchUpdate: (
+    request: unknown,
+    options?: { signal?: AbortSignal },
+  ) => Promise<unknown>;
+}): void {
+  let readCount = 0;
+  mocks.googleSheets.mockReturnValue({
+    spreadsheets: {
+      values: {
+        get: (request: unknown, options?: { signal?: AbortSignal }) => {
+          readCount += 1;
+          return readCount === 1
+            ? header(request, options)
+            : dateColumn(request, options);
+        },
+        batchUpdate,
+      },
+    },
+  });
+}
+
+function resolvedFakeResponse(values: unknown[][]) {
+  return async () => ({ data: { values } });
+}
+
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.useRealTimers();
+});
 
 describe("sheet adapter helpers", () => {
   it("builds mappings from Japanese morning/evening headers", () => {
@@ -123,5 +221,121 @@ describe("sheet adapter helpers", () => {
     expect(columnIndexToA1(0)).toBe("A");
     expect(columnIndexToA1(25)).toBe("Z");
     expect(columnIndexToA1(26)).toBe("AA");
+  });
+});
+
+describe("Google Sheets operation deadline", () => {
+  it("P-1: stops a header read that does not respond", async () => {
+    vi.useFakeTimers();
+    configureSheetsFake({
+      header: (_request, options) => waitForAbort(options?.signal),
+      dateColumn: resolvedFakeResponse([["月日"], ["2026-08-11"]]),
+      batchUpdate: async () => ({ data: { totalUpdatedCells: 1 } }),
+    });
+
+    await expect(outcomeByDeadline(updateSpreadsheetMeasurements({
+      config,
+      latestSet,
+      timeZone: "Asia/Tokyo",
+    }))).resolves.toMatchObject({
+      kind: "rejected",
+      error: {
+        code: "google-sheets-operation-timeout",
+        stage: "auth-or-header-read",
+        writeConfirmation: "not-attempted",
+      },
+    });
+  });
+
+  it("P-2: stops a date-column read that does not respond", async () => {
+    vi.useFakeTimers();
+    configureSheetsFake({
+      header: resolvedFakeResponse([["月日", "朝体重"]]),
+      dateColumn: (_request, options) => waitForAbort(options?.signal),
+      batchUpdate: async () => ({ data: { totalUpdatedCells: 1 } }),
+    });
+
+    await expect(outcomeByDeadline(updateSpreadsheetMeasurements({
+      config,
+      latestSet,
+      timeZone: "Asia/Tokyo",
+    }))).resolves.toMatchObject({
+      kind: "rejected",
+      error: {
+        code: "google-sheets-operation-timeout",
+        stage: "date-column-read",
+        writeConfirmation: "not-attempted",
+      },
+    });
+  });
+
+  it("P-3: treats a batch-update response lost at the deadline as unconfirmed", async () => {
+    vi.useFakeTimers();
+    configureSheetsFake({
+      header: resolvedFakeResponse([["月日", "朝体重"]]),
+      dateColumn: resolvedFakeResponse([["月日"], ["2026-08-11"]]),
+      batchUpdate: (_request, options) => waitForAbort(options?.signal),
+    });
+
+    await expect(outcomeByDeadline(updateSpreadsheetMeasurements({
+      config,
+      latestSet,
+      timeZone: "Asia/Tokyo",
+    }))).resolves.toMatchObject({
+      kind: "rejected",
+      error: {
+        code: "google-sheets-operation-timeout",
+        stage: "batch-update",
+        writeConfirmation: "unconfirmed",
+      },
+    });
+  });
+
+  it("P-5: gives header, date-column, and batch-update the same signal", async () => {
+    const signals: Array<AbortSignal | undefined> = [];
+    configureSheetsFake({
+      header: async (_request, options) => {
+        signals.push(options?.signal);
+        return { data: { values: [["月日", "朝体重"]] } };
+      },
+      dateColumn: async (_request, options) => {
+        signals.push(options?.signal);
+        return { data: { values: [["月日"], ["2026-08-11"]] } };
+      },
+      batchUpdate: async (_request, options) => {
+        signals.push(options?.signal);
+        return { data: { totalUpdatedCells: 1 } };
+      },
+    });
+
+    await expect(updateSpreadsheetMeasurements({
+      config,
+      latestSet,
+      timeZone: "Asia/Tokyo",
+    })).resolves.toEqual({ state: "written", transferredCellCount: 1 });
+
+    expect(signals).toHaveLength(3);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[1]).toBe(signals[0]);
+    expect(signals[2]).toBe(signals[0]);
+    expect(mocks.GoogleAuth).toHaveBeenCalledWith(expect.objectContaining({
+      clientOptions: {
+        transporterOptions: { signal: signals[0] },
+      },
+    }));
+  });
+
+  it("P-4: preserves the confirmed written outcome when all calls respond", async () => {
+    configureSheetsFake({
+      header: resolvedFakeResponse([["月日", "朝体重"]]),
+      dateColumn: resolvedFakeResponse([["月日"], ["2026-08-11"]]),
+      batchUpdate: async () => ({ data: { totalUpdatedCells: 1 } }),
+    });
+
+    await expect(updateSpreadsheetMeasurements({
+      config,
+      latestSet,
+      timeZone: "Asia/Tokyo",
+    })).resolves.toEqual({ state: "written", transferredCellCount: 1 });
   });
 });

@@ -8,6 +8,7 @@ import type { MeasurementReading } from "../../src/domain/index.js";
 import { InputSnapshotError } from "../../src/pipeline/input-snapshot.js";
 import { runPipeline } from "../../src/pipeline/pipeline.js";
 import { AtomicPipelineStatusWriter } from "../../src/pipeline/status.js";
+import { GoogleSheetsOperationTimeoutError } from "../../src/sheets/index.js";
 
 const referenceTime = new Date("2026-08-03T03:00:00.000Z");
 const tempDirs: string[] = [];
@@ -17,6 +18,50 @@ afterEach(async () => {
 });
 
 describe("runPipeline", () => {
+  it("P-7: persists a Sheets operation timeout as failed:transfer", async () => {
+    const statuses: Record<string, unknown>[] = [];
+    const timeout = new GoogleSheetsOperationTimeoutError(
+      "batch-update",
+      30_000,
+      "unconfirmed",
+    );
+    const weight: MeasurementReading = {
+      kind: "weight",
+      value: 68.4,
+      unit: "kg",
+      measuredAt: "2026-08-03T06:30:00+09:00",
+      source: "scale_exporter",
+    };
+
+    await expect(runPipeline({
+      period: "morning",
+      timeZone: "Asia/Tokyo",
+      referenceTime,
+      readInput: async () => ({ matchedFileCount: 1, readLineCount: 1, readings: [weight] }),
+      transfer: async () => {
+        throw timeout;
+      },
+      statusWriter: {
+        write: async (status: Record<string, unknown>) => {
+          statuses.push(status);
+        },
+      },
+    })).resolves.toEqual({ exitCode: 1, outcome: "failed:transfer" });
+
+    expect(statuses).toEqual([
+      expect.objectContaining({ outcome: "running" }),
+      expect.objectContaining({
+        outcome: "failed:transfer",
+        diagnostic: "google-sheets-operation-timeout stage=batch-update deadlineMilliseconds=30000 writeConfirmation=unconfirmed",
+        v3: {
+          input: "ready",
+          windowedWeightCount: 1,
+          transfer: { state: "failed" },
+        },
+      }),
+    ]);
+  });
+
   it("does not call the transfer port when the input snapshot fails", async () => {
     let transfers = 0;
     const statuses: unknown[] = [];

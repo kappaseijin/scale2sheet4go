@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const acceptanceScripts = [
   "scripts/run-pipeline-shadow-acceptance.sh",
+  "scripts/run-google-sheets-deadline-acceptance.sh",
   "scripts/run-installer-acceptance.sh",
   "scripts/run-runtime-safety-acceptance.sh",
   "scripts/run-bun-binary-smoke.sh",

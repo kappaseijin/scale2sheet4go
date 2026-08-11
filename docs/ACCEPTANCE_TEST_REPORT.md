@@ -3,7 +3,7 @@ type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）と AC 番号予約台帳
 timestamp: "2026-07-05T00:00:00+09:00"
-updated: "2026-08-05T10:50:33+09:00"
+updated: "2026-08-11T21:40:13+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
@@ -82,6 +82,43 @@ tags: [acceptance-test, scale2sheet]
 - AT-12（`--period`不正値のCLIレベル検証）はユニットテストの追加候補（`test/cli/index.test.ts`にcommanderのバリデーションを直接テストするケースを足す）。
 - AT-13（Spreadsheetに当日行がない場合に`undefined`を返すこと）もユニットテストの追加候補（`test/sheets/adapter.test.ts`の`findTodayRowNumber`に該当なしケースを足す）。
 - secret / token の実値はレポートに含めない。
+
+## #280 Google Sheets 操作期限の回帰検証（2026-08-11）
+
+この節は実クレデンシャル／実Spreadsheetを使う AT-01〜AT-06 を置き換えない。`googleapis` の test-local fake と既存の command 境界で、Google Sheets 転記が無応答の場合に安全に終端することを検証する。
+
+| Probe | 確認した観測可能な契約 |
+| --- | --- |
+| P-1〜P-3 | ヘッダ読取・日付列読取・batch update が無応答でも、同一の30秒deadlineで stage と write confirmation を持つ typed timeout になる |
+| P-4〜P-5 | 正常応答は従来どおり `written` となり、auth と三つの request に同一 `AbortSignal` が渡る |
+| P-7 | typed timeout は pipeline の `failed:transfer` / safe diagnostic / V3 `transfer.state: failed` / exit `1` になる |
+| P-9〜P-10 | `run` は nonzero を返し、`serve` は失敗を記録して以後のスケジュールを維持する |
+
+### Mutation ledger
+
+各 mutation は無変異の対応probeが成立すること、mutation中にprobeが失敗すること、復元後に同じprobeが再び成立することを確認した。`KILLED` はbehavior probeで検出されたことを示す。コンパイルエラーを `KILLED` として数えていない。
+
+| Mutation | 変更 | 対象 probe | 結果 |
+| --- | --- | --- | --- |
+| M-1 | deadline callback から `abort()` を除く | P-1〜P-3 | KILLED |
+| M-2 | ヘッダ読取の request signal を除く | P-1, P-5 | KILLED |
+| M-3 | 日付列読取の request signal を除く | P-2, P-5 | KILLED |
+| M-4 | batch update の request signal を除く | P-3, P-5 | KILLED |
+| M-5 | GoogleAuth transport の signal を除く | P-5 | KILLED |
+| M-6 | pipeline timeout の terminal outcome を `completed:transferred` に置換 | P-7 | KILLED |
+| M-7 | batch timeout の write confirmation を `not-attempted` に置換 | P-3 | KILLED |
+| M-8 | pipeline の finally から lease release を除く | lease release probe | KILLED |
+| M-9 | 正常応答時にも typed timeout を送出 | P-4 | KILLED |
+
+compiled binary を隔離HOME、構文上有効な偽service account、TCP blackholeで起動する focused acceptance は、blackholeの接続を正の制御として確認し、timeout terminal、receipt消滅、次runのlease再取得までを確認する。実機 Google Sheets の書込み結果は未確認である。
+
+| 実行 | build | startup | deadline（blackhole接続→exit） | post（terminal確認→lease再取得） | 合計 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 単独 1 | 1.58s | 6.68s | 30.88s | 10.96s | 50.10s |
+| 単独 2 | 1.44s | 6.85s | 30.87s | 11.95s | 51.12s |
+| 単独 3 | 1.37s | 6.64s | 30.57s | 10.85s | 49.43s |
+
+normal pathのphase最大値合計は51.27秒、probe不成立は0/3だった。focused runnerの180秒はnormal値からは導出しない。内部diagnosticが先に発火するよう、startup 60秒、blackhole接続後deadline watchdog 45秒、post-reacquire 30秒の計135秒に、build/fixture/cleanupの45秒backstopを足して決めた。postが30秒を超えればchildを回収して `post-reacquire-timeout` として失敗する。`npx vitest run test/acceptance/google-sheets-deadline.test.ts` は180秒上限内で2 tests / 51.02秒・PASSだった。phase logは child PID/lstart、receipt/pipelineのstartedAt、blackhole accept monotonic時刻、terminal completedAt/child exit、lease再取得までを個別に出す。startup positive controlの失敗は製品timeoutとは数えず、receipt・running status・blackhole接続の三条件がmonotonic clockの上限内に揃わない場合は、phase記録を出して失敗する。
 
 ## AC 番号予約台帳
 

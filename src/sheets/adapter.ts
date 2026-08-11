@@ -9,6 +9,30 @@ import type {
   TransferOutcome,
 } from "../domain/index.js";
 
+export const GOOGLE_SHEETS_OPERATION_DEADLINE_MS = 30_000;
+
+export type GoogleSheetsOperationStage =
+  | "auth-or-header-read"
+  | "date-column-read"
+  | "batch-update";
+
+type GoogleSheetsWriteConfirmation = "not-attempted" | "unconfirmed";
+
+export class GoogleSheetsOperationTimeoutError extends Error {
+  readonly code = "google-sheets-operation-timeout";
+
+  constructor(
+    readonly stage: GoogleSheetsOperationStage,
+    readonly deadlineMilliseconds: number,
+    readonly writeConfirmation: GoogleSheetsWriteConfirmation,
+  ) {
+    super(
+      `google-sheets-operation-timeout stage=${stage} deadlineMilliseconds=${deadlineMilliseconds} writeConfirmation=${writeConfirmation}`,
+    );
+    this.name = "GoogleSheetsOperationTimeoutError";
+  }
+}
+
 interface Logger {
   log(message: string): void;
   error(message: string): void;
@@ -42,68 +66,90 @@ export async function updateSpreadsheetMeasurements({
   timeZone,
   logger = console,
 }: UpdateSpreadsheetMeasurementsOptions): Promise<TransferOutcome> {
-  const auth = await createGoogleSheetsAuth(config);
-  const sheets = google.sheets({ version: "v4", auth });
-  const sheetName = quoteSheetName(config.sheetName);
-
-  const headerResponse = await sheets.spreadsheets.values.get({
-    spreadsheetId: config.spreadsheetId,
-    range: `${sheetName}!1:1`,
-  });
-  const headerRow = headerResponse.data.values?.[0] ?? [];
-  const mapping = buildSheetColumnMapping(headerRow);
-
-  const dateColumn = columnIndexToA1(mapping.dateColumnIndex);
-  const dateColumnResponse = await sheets.spreadsheets.values.get({
-    spreadsheetId: config.spreadsheetId,
-    range: `${sheetName}!${dateColumn}:${dateColumn}`,
-  });
-  const targetDate = DateTime.fromISO(latestSet.capturedAt, {
-    zone: "utc",
-  }).setZone(timeZone);
-  const rowNumber = findTodayRowNumber(
-    dateColumnResponse.data.values ?? [],
-    targetDate,
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    GOOGLE_SHEETS_OPERATION_DEADLINE_MS,
   );
+  let stage: GoogleSheetsOperationStage = "auth-or-header-read";
 
-  if (!rowNumber) {
-    logger.error(
-      `No row found in ${config.sheetName} for ${targetDate.toFormat("yyyy-MM-dd")}. Nothing was written.`,
+  try {
+    const auth = await createGoogleSheetsAuth(config, controller.signal);
+    const sheets = google.sheets({ version: "v4", auth });
+    const sheetName = quoteSheetName(config.sheetName);
+
+    const headerResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: config.spreadsheetId,
+      range: `${sheetName}!1:1`,
+    }, { signal: controller.signal });
+    const headerRow = headerResponse.data.values?.[0] ?? [];
+    const mapping = buildSheetColumnMapping(headerRow);
+
+    const dateColumn = columnIndexToA1(mapping.dateColumnIndex);
+    stage = "date-column-read";
+    const dateColumnResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: config.spreadsheetId,
+      range: `${sheetName}!${dateColumn}:${dateColumn}`,
+    }, { signal: controller.signal });
+    const targetDate = DateTime.fromISO(latestSet.capturedAt, {
+      zone: "utc",
+    }).setZone(timeZone);
+    const rowNumber = findTodayRowNumber(
+      dateColumnResponse.data.values ?? [],
+      targetDate,
     );
-    return { state: "not-written", transferredCellCount: 0 };
+
+    if (!rowNumber) {
+      logger.error(
+        `No row found in ${config.sheetName} for ${targetDate.toFormat("yyyy-MM-dd")}. Nothing was written.`,
+      );
+      return { state: "not-written", transferredCellCount: 0 };
+    }
+
+    const data = buildMeasurementUpdateData({
+      sheetName: config.sheetName,
+      rowNumber,
+      latestSet,
+      mapping,
+    });
+
+    if (data.length === 0) {
+      logger.log("No defined measurement values matched sheet columns. Nothing was written.");
+      return { state: "not-written", transferredCellCount: 0 };
+    }
+
+    stage = "batch-update";
+    const batchUpdateResponse = await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: config.spreadsheetId,
+      requestBody: {
+        valueInputOption: "USER_ENTERED",
+        data,
+      },
+    }, { signal: controller.signal });
+    const transferredCellCount = batchUpdateResponse.data.totalUpdatedCells ?? undefined;
+
+    logger.log(
+      `Updated ${data.length} ${latestSet.period} measurement cell(s) in row ${rowNumber}.`,
+    );
+    if (transferredCellCount === undefined) {
+      return { state: "unknown" };
+    }
+    /** Design §7.2's table pairs `written` with a positive count; a confirmed zero is `not-written`. */
+    return transferredCellCount >= 1
+      ? { state: "written", transferredCellCount }
+      : { state: "not-written", transferredCellCount };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new GoogleSheetsOperationTimeoutError(
+        stage,
+        GOOGLE_SHEETS_OPERATION_DEADLINE_MS,
+        stage === "batch-update" ? "unconfirmed" : "not-attempted",
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = buildMeasurementUpdateData({
-    sheetName: config.sheetName,
-    rowNumber,
-    latestSet,
-    mapping,
-  });
-
-  if (data.length === 0) {
-    logger.log("No defined measurement values matched sheet columns. Nothing was written.");
-    return { state: "not-written", transferredCellCount: 0 };
-  }
-
-  const batchUpdateResponse = await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId: config.spreadsheetId,
-    requestBody: {
-      valueInputOption: "USER_ENTERED",
-      data,
-    },
-  });
-  const transferredCellCount = batchUpdateResponse.data.totalUpdatedCells ?? undefined;
-
-  logger.log(
-    `Updated ${data.length} ${latestSet.period} measurement cell(s) in row ${rowNumber}.`,
-  );
-  if (transferredCellCount === undefined) {
-    return { state: "unknown" };
-  }
-  /** Design §7.2's table pairs `written` with a positive count; a confirmed zero is `not-written`. */
-  return transferredCellCount >= 1
-    ? { state: "written", transferredCellCount }
-    : { state: "not-written", transferredCellCount };
 }
 
 export function buildSheetColumnMapping(

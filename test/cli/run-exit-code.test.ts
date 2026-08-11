@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { GoogleSheetsOperationTimeoutError } from "../../src/sheets/index.js";
+
 const mocks = vi.hoisted(() => ({
   loadConfig: vi.fn(),
   syncMeasurements: vi.fn(),
@@ -57,6 +59,23 @@ describe("run command exit codes (#79: argument errors distinct from input failu
     // the real entry point (src/index.ts has no wrapping try/catch around
     // runCli()). It must NOT be exit 2 — that would make argument errors
     // and input/transfer failures indistinguishable again, defeating #79.
+    expect(process.exitCode).not.toBe(2);
+  });
+
+  it("P-9: propagates a Sheets operation timeout as a non-argument failure", async () => {
+    mocks.loadConfig.mockReturnValue({
+      timeZone: "Asia/Tokyo",
+      defaultSource: "scale-exporter",
+    });
+    const timeout = new GoogleSheetsOperationTimeoutError(
+      "auth-or-header-read",
+      30_000,
+      "not-attempted",
+    );
+    mocks.syncMeasurements.mockRejectedValue(timeout);
+
+    await expect(runCli(["node", "scale2sheet", "run", "--period", "morning"])).rejects.toBe(timeout);
+
     expect(process.exitCode).not.toBe(2);
   });
 
