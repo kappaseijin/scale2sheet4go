@@ -146,6 +146,31 @@ describe("applyOperations: sequencing and classification", () => {
     ]);
   });
 
+  it("reports uninstall operations including launchd bootout and plist removal", async () => {
+    const dir = await makeTempDir();
+    const manifestPath = path.join(dir, "install-manifest.json");
+    await writeManifest(manifestPath, baseManifest());
+    const lines: string[] = [];
+
+    const result = await applyOperations({
+      operations: [
+        { kind: "bootout", domain: "gui/501", label: "jp.seijin.scale2sheet.morning" },
+        { kind: "remove-file", path: "/Users/example/Library/LaunchAgents/jp.seijin.scale2sheet.morning.plist" },
+      ],
+      manifestPath,
+      deps: fakeDeps({
+        bootout: async () => ({ outcome: "done", message: "" }),
+        logger: { log: (line: string) => lines.push(line) },
+      }),
+    });
+
+    expect(result.failed).toBeUndefined();
+    expect(lines).toEqual([
+      "[done] bootout jp.seijin.scale2sheet.morning",
+      "[done] remove-file /Users/example/Library/LaunchAgents/jp.seijin.scale2sheet.morning.plist",
+    ]);
+  });
+
   it("updates the manifest's applied-steps after each operation, in order (resume contract)", async () => {
     const dir = await makeTempDir();
     const manifestPath = path.join(dir, "install-manifest.json");
