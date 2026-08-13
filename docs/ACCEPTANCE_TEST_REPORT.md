@@ -3,7 +3,7 @@ type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）と AC 番号予約台帳
 timestamp: "2026-07-05T00:00:00+09:00"
-updated: "2026-08-13T14:55:27+09:00"
+updated: "2026-08-13T14:59:31+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
@@ -114,6 +114,7 @@ Staticcheck は `2023.1.7 (v0.4.7)` で exit 1、18 指摘を再現したため�
 | `python3 scripts/check-doc-refs.py` | PASS |
 | `python3 scripts/check-ac-ledger.py` | PASS |
 | `git diff --check` | PASS |
+| PR #9 GitHub Actions `Go quality gates` | PASS（`macos-14`、48秒） |
 
 ## #280 Google Sheets 操作期限の回帰検証（2026-08-11）
 

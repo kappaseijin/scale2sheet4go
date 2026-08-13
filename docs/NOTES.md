@@ -27,6 +27,7 @@ source/binary drift の stale/empty source 負の制御は意図した FAIL を�
 
 GitHub Actions workflow は `push`/`pull_request` の `main`、`macos-14`、`actions/checkout@v6`、`actions/setup-go@v5`、`go-version-file: go.mod`、`contents: read` を設定した。
 ローカルと CI は同じ checker を実行し、Staticcheck、race detector、coverage は採用しない。
+PR #9 の [Go quality gates](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31672153786/job/94358875187) は `macos-14` 上で 48 秒、PASS した。
 
 ---
 

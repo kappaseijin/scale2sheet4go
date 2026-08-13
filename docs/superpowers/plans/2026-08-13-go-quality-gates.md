@@ -8,7 +8,7 @@ tags:
   - quality-gate
   - ci
 timestamp: "2026-08-13T14:48:32+09:00"
-status: active
+status: completed
 ---
 
 # Go 開発品質ゲートと CI 実装計画
@@ -131,10 +131,10 @@ status: active
 
   Run `bash scripts/run-bun-binary-smoke.sh`, `bash scripts/run-pipeline-shadow-acceptance.sh`, `bash scripts/run-installer-acceptance.sh`, `bash scripts/run-runtime-safety-acceptance.sh`, `bash scripts/run-google-sheets-deadline-acceptance.sh`, `bash scripts/run-binary-source-drift-acceptance.sh`, `node scripts/verify-readme-config-keys.mjs`, `python3 scripts/check-doc-refs.py`, and `python3 scripts/check-ac-ledger.py`.
 
-- [ ] **Step 3: Record evidence and close the plan**
+- [x] **Step 3: Record evidence and close the plan**
 
   Add exact commands, timestamps, runner/tool versions, normal PASS results, and the intentional negative-control failure to `docs/ACCEPTANCE_TEST_REPORT.md`. Change this plan frontmatter to `status: completed` and mark all steps checked.
 
-- [ ] **Step 4: Commit, PR, merge, and synchronize**
+- [x] **Step 4: Commit, PR, merge, and synchronize**
 
   Commit only Issue #5 files, push `issue-5-go-quality-gates`, create one PR with `Closes #5`, inspect the exact head and available CI result, merge autonomously after all gates pass, synchronize local `main` with `origin/main`, delete the merged local branch, and verify a clean tree.
