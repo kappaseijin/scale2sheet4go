@@ -14,6 +14,16 @@ timestamp: "2026-08-03T10:30:00+09:00"
 
 ---
 
+## 2026-08-13T21:19:19+09:00 Issue #37 Apple=3 判断の資料同期
+
+Issue #10 の後続コメントでユーザーが Apple=3 を選択し、Developer ID 署名、Hardened Runtime、公証、staple、Gatekeeper 正常系受入を本プロジェクトの対象外へ変更した。この判断を [Apple=3 の判断記録](./decisions/2026-08-13T211919_Apple3_macOS公開配布正常系を対象外とする判断.md) として正本化し、旧検討書は調査履歴として `superseded` にした。
+
+現行の対応範囲は `scripts/build-macos-release.sh` の unsigned universal artifact、install、doctor、LaunchAgent、uninstall、および秘密情報なしの distribution contract acceptance である。`build-macos-distribution.sh` と workflow は fail-closed 契約資産として残すが、Apple credentials の取得・投入・正常系 acceptance は行わない。README、PLAN、外部設計、インストール設計、受入報告、関連計画をこの境界へ同期する作業を Issue #37 として受け付けた。
+
+2026-08-13T21:31:05+09:00 に `check-go-quality-gates.sh`、現行 Go 受入マトリクス 8 本、macOS distribution contract acceptance、文書参照、AC 台帳、README 設定キー、`git diff --check` を再実行し、全て PASS とした。Apple の公開配布正常系は対象外のため、受入報告では OUT_OF_SCOPE と契約 acceptance PASS を分離して記録した。
+
+---
+
 ## 2026-08-13T15:30:00+09:00 Issue #6 macOS 本番運用の調査・実装開始
 
 Issue #6 の目的を、Go 移植後の pilot artifact を Apple Silicon と Intel の両方で同じ手順から作成し、現在の per-user LaunchAgent installer と同じ prefix 契約で診断・撤去できるようにする課題として妥当化した。公開配布の署名・公証まで含めると目的が二つになるため、Developer ID、Hardened Runtime、notarytool、stapler、Gatekeeper 検証は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) へ分割した。

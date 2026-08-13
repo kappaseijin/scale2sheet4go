@@ -2,7 +2,7 @@
 type: Decision
 title: Developer ID署名とnotarytool公証の採否についての検討書
 description: Issue #10 の公開配布向け macOS 署名、DMG、公証、staple、Gatekeeper、CI secret 境界を確定する。
-status: adopted
+status: superseded
 tags:
   - macos
   - signing
@@ -90,3 +90,8 @@ credentials 無しで成功扱いにする代替や Apple Development 署名で�
 
 Issue #10 は、`scripts/build-macos-distribution.sh` と手動/tag workflow により、Developer ID 署名済み universal binary を DMG 化し、notarytool の submit/wait/log、stapler、hdiutil、spctl を同じ順序で再現する。
 Apple credentials が無い環境では、出力を生成せず理由を明示して失敗する。
+
+## 後続のユーザー判断
+
+Issue #10 の後続コメントでユーザーが **Apple=3** を選択し、Developer ID署名・notarytool公証・Gatekeeper正常系受入を本プロジェクトの対象外へ変更した。
+本書の外部調査、署名順序、fail-closed 契約の記録は履歴として保持するが、採否と未完了条件の現行状態は [Apple=3 の判断記録](./2026-08-13T211919_Apple3_macOS公開配布正常系を対象外とする判断.md) を正本とする。
