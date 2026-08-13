@@ -9,8 +9,8 @@ tags:
   - google
   - scale2sheet
 timestamp: "2026-08-13T16:46:49+09:00"
-updated: "2026-08-13T16:59:15+09:00"
-status: in-progress
+updated: "2026-08-13T17:09:41+09:00"
+status: completed
 issue: 18
 ---
 
@@ -70,11 +70,20 @@ issue: 18
 
 ## Task 6: PR と同期
 
-- [ ] 差分が Issue #18 の目的だけであることを確認する。
-- [ ] Issue #18 の一つの PR を作成する。
-- [ ] reviewer の検証が完了するまで merge しない。
-- [ ] PR merge 後に main を origin と同期し、作業 branch を削除する。
-- [ ] Issue #18 を完了条件に従って close する。
+- [x] 差分が Issue #18 の目的だけであることを確認する。
+- [x] Issue #18 の一つの PR（PR #21）を作成する。
+- [x] 対向 LLM を配置しないユーザー方針に従い、`scale2sheet_owner_codex` の自己レビュー、ローカル検査、GitHub Actions の全 gate 成功を確認する。
+- [x] PR merge 後に main を origin と同期し、作業 branch を削除する。
+- [x] Issue #18 を完了条件に従って close する。
+
+## 完了記録
+
+- Issue: [#18](https://github.com/kappaseijin/scale2sheet4go/issues/18)
+- PR: [#21](https://github.com/kappaseijin/scale2sheet4go/pull/21)
+- merge commit: `7deb919`
+- main: `origin/main` と一致、作業 branch は削除済み
+- CI: `Go quality gates` PASS
+- ローカル: runner contract、Go quality gates、現行 Go acceptance 8本、README／docs／AC検査 PASS
 
 ## 完了時の残存ブロッカー
 
