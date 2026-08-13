@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-13（Issue #10 の macOS 公開配布署名・公証の実装を反映）
+最終更新: 2026-08-13（Issue #18 の実 Google 外部受入 runner 設計・契約テストを反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -122,6 +122,14 @@ Issue #13 では、旧 AT-01〜AT-18 の記録を現行 Go の証跡へ対応付
 
 対応表と設計判断は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md)、実測結果は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) を参照する。AT-10a の A-0/A-1 は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) で別途確定する。
 
+### 現行 Go 外部受入境界（Issue #18）
+
+AT-01〜AT-06 の実 Google Sheets／Google Fit／実時刻 `serve` は、隔離 fake の成功を根拠に `AUTO_PASS` へ昇格させない。専用 Google 検証環境を明示的に指定した場合だけ、`scripts/run-google-external-acceptance.sh` で Go binary の外部受入を再実行する。
+
+runner は opt-in、current HOME と異なる marker 付き owner-only HOME、fixture でない Spreadsheet ID、current HOME 外の owner-only service-account JSON、専用入力、実行可能な Go binary を検査する。不足時は child binary を起動せず fail-closed する。設計は [専用検証環境向け Google 外部受入 runner 設計](./superpowers/specs/2026-08-13-google-external-acceptance.md)、計画は [Issue #18 計画](./superpowers/plans/2026-08-13-google-external-acceptance.md) に保存する。
+
+契約テスト `bash scripts/test-google-external-acceptance.sh` は、実 Google API を呼ばずに境界と引数を検査する。実 Spreadsheet のセル、Google Fit の実データ、cron callback は手動観測が必要であり、外部環境が未提供の間は `BLOCKED_EXTERNAL` のままとする。
+
 ---
 
 ## Git 管理ルール
@@ -186,6 +194,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.18 | Go 開発品質ゲートと CI（Issue #5） | ローカルと macOS GitHub Actions が同じ標準 Go 品質ゲートを実行する | **完了（2026-08-13、PR #9）**。Staticcheck、race、coverage の必須化は別 Issue |
 | Ph.19 | macOS 本番 artifact と LaunchAgent 運用（Issue #6） | universal Go binary、custom prefix doctor、per-user LaunchAgent、plist lint、状態確認、uninstall、README runbook | **完了（PR #11、2026-08-13）**。macOS CI の Go quality gates と universal artifact 検査が PASS。公開配布の署名・公証は Issue #10 |
 | Ph.20 | macOS 公開配布署名と公証（Issue #10） | Developer ID Application、Hardened Runtime、署名済み UDZO DMG、notarytool submit/wait/log、staple、Gatekeeper 検査、CI secret 境界、README runbook | **実装中（credentials 未投入のため正常系は未実施）** |
+| Ph.21 | 実 Google 外部受入境界（Issue #18） | 専用 HOME／credentials／Spreadsheet を fail-closed で検査し、AT-01〜AT-06 の Go binary 実行と手動観測導線を固定 | **実装中（専用外部環境未提供）** |
 
 ---
 

@@ -59,16 +59,57 @@ macOS の隔離 fixture を使い、各 child script が個別に Go binary を 
 すべての acceptance script は、ビルドに失敗した場合や期待された負の制御が成立しない場合に non-zero で終了する。
 `run-bun-binary-smoke.sh` というファイル名は既存呼び出しとの互換性のために残しているだけで、Bun は実行しない。
 
+## 専用環境の実 Google 受入
+
+AT-01〜AT-06 を実サービスで確認する入口は `scripts/run-google-external-acceptance.sh` である。詳細な契約は [専用検証環境向け Google 外部受入 runner 設計](./superpowers/specs/2026-08-13-google-external-acceptance.md) に保存する。
+
+runner は次の条件をすべて満たさない限り child binary を起動しない。
+
+- `SCALE2SHEET_EXTERNAL_ACCEPTANCE=1` の明示的 opt-in。
+- 現在のユーザー HOME と異なる、事前作成済み marker 付き、owner-only の `SCALE2SHEET_EXTERNAL_HOME`。
+- fixture placeholder ではない専用 `SCALE2SHEET_EXTERNAL_SHEET_ID`。
+- 現在のユーザー HOME 配下ではない、symlink でない、owner-only の service-account JSON。
+- 実行可能な Go binary、必要な専用 scale_exporter input directory。
+
+runner は専用 HOME 内へ settings を生成または指定値との一致を検査し、child の stdout/stderr は一時領域へ隔離する。結果ファイルには case、状態、終了時刻だけを保存し、secret、token、Spreadsheet ID、測定値を残さない。認証 token は専用 HOME の `google-fit-token.json` に固定し、mode `0600` を検査する。
+
+```sh
+external_home="$(mktemp -d "${TMPDIR:-/tmp}/scale2sheet-external-home.XXXXXX")"
+chmod 700 "$external_home"
+printf '%s\n' 'scale2sheet-external-acceptance-v1' >"$external_home/.scale2sheet-external-acceptance"
+chmod 600 "$external_home/.scale2sheet-external-acceptance"
+export SCALE2SHEET_EXTERNAL_ACCEPTANCE=1
+export SCALE2SHEET_EXTERNAL_HOME="$external_home"
+export SCALE2SHEET_EXTERNAL_SHEET_ID='<dedicated Spreadsheet ID>'
+export SCALE2SHEET_EXTERNAL_SHEETS_CREDENTIALS='/secure/acceptance/google-sheets-service-account.json'
+export SCALE2SHEET_EXTERNAL_INPUT_DIR='/secure/acceptance/scale-exporter-output'
+export SCALE2SHEET_EXTERNAL_BINARY="$PWD/dist/scale2sheet"
+```
+
+ケース別の入口は次である。
+
+| AT | runner | 自動で確認すること | 外部で確認すること |
+| --- | --- | --- | --- |
+| AT-01 | `... at-01` | morning command exit `0` | 対象日の朝列と値 |
+| AT-02 | `... at-02` | evening command exit `0` | 対象日の夜列と値 |
+| AT-03 | `... at-03` | `SCALE2SHEET_EXTERNAL_PAST_DATE` の command exit `0` | 指定日の対象行と値 |
+| AT-04 | `... at-04` | Google Fit token、mode `0600`、command exit `0` | Fit 実データと転記値 |
+| AT-05 | `... at-05` | serve 起動、SIGTERM、active-run lease 回収 | cron callback と Spreadsheet 更新 |
+| AT-06 | `... at-06` | OAuth command exit `0`、token、mode `0600` | consent、localhost callback 完了 |
+
+AT-05 は `SCALE2SHEET_EXTERNAL_SERVE_CRON` と `SCALE2SHEET_EXTERNAL_SERVE_SECONDS` を必須とする。`all` は AT-06、AT-04、AT-01、AT-02、AT-03、AT-05 の順に実行する。runner の `PASS` は最終的な外部受入 `PASS` ではなく、手動観測が残る場合は `OBSERVATION_REQUIRED` として扱う。
+
 ## 手動受け入れ試験
 
 実 API の手動試験は、検証用 Google Cloud project、検証用 Spreadsheet、テスト用 `HOME` を用意した場合だけ実施する。
 
-1. `settings.json` と service-account key を設定する。
+1. README の「実 Google 連携の外部受入」に従い、専用 HOME、marker、service-account key、Spreadsheet ID、入力 directory を設定する。
 2. Spreadsheet の対象シートに README 記載の見出しと対象日の行を用意する。
-3. `scale2sheet run --period morning` または `evening` を実行する。
-4. 更新されたセル、`pipeline-status.json`、終了コードを確認する。
-5. Google Fit を試す場合は先に `scale2sheet auth` を実行し、callback 後の token が mode `0600` で保存されることを確認する。
-6. 実値・token・認証ファイルをレポートへ転載しない。
+3. `bash scripts/run-google-external-acceptance.sh at-01`、`at-02`、`at-03` を実行する。
+4. 更新されたセル、終了コードを確認する。pipeline を併用した場合は `pipeline-status.json` と lease 回収も確認する。
+5. Google Fit を試す場合は先に `at-06` を実行し、callback 後の token が専用 HOME 内 mode `0600` で保存されることを確認して `at-04` を実行する。
+6. `at-05` は専用 cron と観測秒数を指定し、実時刻 callback、lease 回収、Spreadsheet 更新を確認する。
+7. 実値・token・認証ファイル・Spreadsheet ID をレポートへ転載しない。
 
 ## 判定
 

@@ -307,10 +307,63 @@ bash scripts/run-go-acceptance-matrix.sh
 
 `run-bun-binary-smoke.sh` という名前は既存呼び出しとの互換性のため残っていますが、実際に build・実行するのは Go バイナリです。
 
+## 実 Google 連携の外部受入
+
+通常の開発検証は `bash scripts/run-go-acceptance-matrix.sh` で完結します。実 Google Sheets／Google Fit／`serve` の受入は、本番とは別の Google Cloud project、Spreadsheet、service-account key、Google Fit OAuth client、入力データを用意した場合だけ、専用 HOME へ隔離して実行します。本番の `~/.config/scale2sheet`、本番 token、既存 Spreadsheet はこの runner から自動選択されません。
+
+専用 service-account は対象 Spreadsheet だけへ必要な権限で共有し、鍵ファイルは owner-only（mode `0400` または `0600`）で保存します。Google Fit の OAuth client ID／secret は環境変数から渡し、runner は専用 HOME 内の `google-fit-token.json` だけを使います。値を README、Issue、ログへ記録しないでください。
+
+まず、現在の HOME とは異なる一時 HOME を作り、marker を置きます。credentials と input directory も本番領域ではない専用パスを指定してください。
+
+```sh
+external_home="$(mktemp -d "${TMPDIR:-/tmp}/scale2sheet-external-home.XXXXXX")"
+chmod 700 "$external_home"
+printf '%s\n' 'scale2sheet-external-acceptance-v1' >"$external_home/.scale2sheet-external-acceptance"
+chmod 600 "$external_home/.scale2sheet-external-acceptance"
+
+export SCALE2SHEET_EXTERNAL_ACCEPTANCE=1
+export SCALE2SHEET_EXTERNAL_HOME="$external_home"
+export SCALE2SHEET_EXTERNAL_SHEET_ID='<専用Spreadsheet ID>'
+export SCALE2SHEET_EXTERNAL_SHEETS_CREDENTIALS='/secure/acceptance/google-sheets-service-account.json'
+export SCALE2SHEET_EXTERNAL_INPUT_DIR='/secure/acceptance/scale-exporter-output'
+export SCALE2SHEET_EXTERNAL_BINARY="$PWD/dist/scale2sheet"
+```
+
+`SCALE2SHEET_EXTERNAL_SHEETS_CREDENTIALS` は現在のユーザー HOME 配下に置けません。runner は指定値を検査し、設定ファイルを `SCALE2SHEET_EXTERNAL_HOME/.config/scale2sheet/settings.json` に生成します。既存の settings がある場合は、指定した専用 Spreadsheet／credential／input と一致しなければ実行しません。
+
+各ケースは個別に実行できます。
+
+```sh
+bash scripts/run-google-external-acceptance.sh at-01  # morning
+bash scripts/run-google-external-acceptance.sh at-02  # evening
+export SCALE2SHEET_EXTERNAL_PAST_DATE='2026-08-12'
+bash scripts/run-google-external-acceptance.sh at-03  # 指定日
+```
+
+Google Fit は OAuth client を環境変数へ設定し、先に認証を実行します。macOS では認証ブラウザが開き、callback 完了後に token が専用 HOME 内へ mode `0600` で保存されます。
+
+```sh
+export GOOGLE_FIT_CLIENT_ID='<専用OAuth client ID>'
+export GOOGLE_FIT_CLIENT_SECRET='<専用OAuth client secret>'
+bash scripts/run-google-external-acceptance.sh at-06
+bash scripts/run-google-external-acceptance.sh at-04
+```
+
+`serve` は一分単位の cron tick を観測するため、cron と観測時間を明示します。次の例では専用 Spreadsheet と入力データへ約75秒間、実時刻のスケジュール実行を行います。
+
+```sh
+export SCALE2SHEET_EXTERNAL_SERVE_CRON='* * * * *'
+export SCALE2SHEET_EXTERNAL_SERVE_SECONDS=75
+bash scripts/run-google-external-acceptance.sh at-05
+```
+
+全ケースを順に実行する場合は、`SCALE2SHEET_EXTERNAL_PAST_DATE`、Google Fit の client credentials、`SCALE2SHEET_EXTERNAL_SERVE_CRON`、`SCALE2SHEET_EXTERNAL_SERVE_SECONDS` を設定してから `bash scripts/run-google-external-acceptance.sh all` を実行します。runner の `PASS` はコマンド終了、token mode、lease 回収などのローカル境界だけを示します。Spreadsheet の対象セル、Google Fit の実データ、cron callback を確認するまで、AT の最終判定を `PASS` に更新しないでください。runner は専用 HOME・認証ファイルを削除しないため、確認後にパスを再確認して利用者が後片付けします。
+
 ## 既知の制約
 
 - 公開配布用の正常系は Apple Developer ID identity と notarytool credentials が必要です。credentials が無い環境では build-macos-distribution.sh は fail-closed し、署名なし・Apple Development・ad hoc へのフォールバックは行いません。
 - `pipeline` は現在 `scale-exporter` の安定 snapshot を対象にします。Apple Health と Google Fit は `run` と `serve` の source adapter として利用します。
 - launchd 登録と Darwin 固有の `O_EXLOCK` lease は macOS 専用です。
 - Google API の認証・読み書きはネットワークと外部サービスの状態に依存します。期限超過時は Sheets 側の反映結果を自動再試行せず、対象行を確認してください。
+- 実 Google 外部受入は専用環境と手動観測が必要です。偽 credential、blackhole、隔離 fake の成功は実サービス成功の証跡になりません。
 - 状態ファイルが更新されない場合、プロセス自体が起動していない可能性までは状態ファイルだけで検知できません。
