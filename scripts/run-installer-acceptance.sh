@@ -9,6 +9,7 @@ set -euo pipefail
 # evidence; doctor fake-API behavior is covered by the injected read-only
 # port tests. purge/wipe remain Slice 5 scope.
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 root=$(mktemp -d /private/tmp/scale2sheet-installer-acceptance.XXXXXX)
 holder_pid=""
 # #188: a concurrent full test run observed startup at 9.25s. 60 seconds is
@@ -44,7 +45,7 @@ dump_diagnostic_file() {
 
 # Keep this freshly compiled acceptance binary isolated from checkout dist/.
 binary="$root/scale2sheet"
-CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$binary" ./cmd/scale2sheet
+bash "$repo_root/scripts/build-macos-release.sh" "$binary"
 
 fake_bin="$root/fake-bin"
 mkdir -p "$fake_bin"

@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-13（Issue #1 の派生席名変更と対向 LLM 非配置を反映）
+最終更新: 2026-08-13（Issue #6 の macOS 本番 artifact・LaunchAgent 運用を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -102,6 +102,12 @@ Issue #5 では `scripts/check-go-quality-gates.sh` をローカルと GitHub Ac
 CI は Darwin 固有 lease を検査できる `macos-14` runner と `actions/setup-go` の `go-version-file: go.mod` を使う。
 Staticcheck、race detector、coverage は今回の必須ゲートへ追加せず、必要性が生じた場合は別 Issue で判断する。
 
+### 現行 Go macOS 本番運用（Issue #6）
+
+Issue #6 では macOS 13+ の app-bundle 前提の `SMAppService` へ移行せず、現行の GUI を持たない Go CLI に適合する per-user LaunchAgent (`~/Library/LaunchAgents`、`gui/<uid>` domain) を維持する。製品 artifact は `scripts/build-macos-release.sh` で `darwin/arm64` と `darwin/amd64` を `CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` 付きで build し、`lipo` で universal 化する。
+
+`doctor --prefix <dir>` は install と同じ prefix を解決し、manifest の prefix と binary path の整合性を検査する。README は build、dry-run、install、`launchctl print`、`launchctl kickstart -k`、`plutil -lint`、uninstall、残置ファイルまでを自己完結で説明する。pilot acceptance は ad hoc/local artifact を対象とし、Developer ID / Hardened Runtime / notarytool / stapler は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) へ分割した。
+
 ---
 
 ## Git 管理ルール
@@ -164,6 +170,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.16 | Go ポート（Issue #2） | 既存の scale2sheet 契約を `cmd/scale2sheet` と `internal/` へ移植し、Go 単一バイナリ・unit test・vet・acceptance harness・README を正式経路にする | **完了（2026-08-13、PR #7）**。`CGO_ENABLED=0 go test ./...`、`go vet ./...`、6 本の Go binary acceptance、README/文書/AC 台帳検査が PASS。旧 TypeScript 資産は比較履歴として保持し、既定経路からは参照しない |
 | Ph.17 | Go 正本ツールチェーン整理（Issue #4） | `go.mod` / `go.sum` と Go CLI を唯一の build/test/依存管理経路にし、package.json/package-lock と現行 Node fallback を除去する | **完了（2026-08-13、PR #8）**。旧 TypeScript 資産の削除、Go toolchain version policy、CI、本番 macOS 配布は別 Issue |
 | Ph.18 | Go 開発品質ゲートと CI（Issue #5） | ローカルと macOS GitHub Actions が同じ標準 Go 品質ゲートを実行する | **完了（2026-08-13、PR #9）**。Staticcheck、race、coverage の必須化は別 Issue |
+| Ph.19 | macOS 本番 artifact と LaunchAgent 運用（Issue #6） | universal Go binary、custom prefix doctor、per-user LaunchAgent、plist lint、状態確認、uninstall、README runbook | **完了（PR #11、2026-08-13）**。macOS CI の Go quality gates と universal artifact 検査が PASS。公開配布の署名・公証は Issue #10 |
 
 ---
 

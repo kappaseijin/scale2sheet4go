@@ -53,6 +53,11 @@ func TestParseInvocation(t *testing.T) {
 			want: Invocation{Command: CommandInstall, Launchd: true, DryRun: true},
 		},
 		{
+			name: "doctor with custom prefix",
+			args: []string{"doctor", "--prefix", "/tmp/scale2sheet-custom"},
+			want: Invocation{Command: CommandDoctor, Prefix: "/tmp/scale2sheet-custom"},
+		},
+		{
 			name:    "unknown command",
 			args:    []string{"not-a-command"},
 			wantErr: "unknown command",
