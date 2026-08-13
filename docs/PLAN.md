@@ -10,13 +10,34 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-11（設計 4 本の着地と、ユーザー判断待ちの整理を反映）
+最終更新: 2026-08-13（Issue #1 のパイロット一席運用と Issue #2 への Go ポート分離を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
 ---
 
 ## 担当エージェント
+
+### 現行パイロット運用（Issue #1）
+
+通常の実装作業は一つの派生エージェントで進め、ユーザーとの対話を最小限にする。
+複数の実装方法がある場合、または決断条件が不足する場合は、派生席が独断せずユーザーへ確認する。
+課題はすべて GitHub Issue に起票し、1 Issue = 1 課題 = 1 PR とする。
+Go 製品移植は [Issue #2](https://github.com/kappaseijin/scale2sheet4go/issues/2) の専用課題であり、本 Issue #1 の運用資料変更へ混ぜない。
+
+現在の agmsg roster は `kappa (agmsg-app)` と `scale2sheet_programmer_codex` であり、製品作業を担う派生席は後者の一席である。
+主人格 `codex_product_owner` はチームへ直接登録せず、派生席へ継承する。
+
+| 項目 | 内容 |
+| --- | --- |
+| 主人格 | `codex_product_owner`（`gpt-5.5-terra` / effort `max`） |
+| 派生席 | `scale2sheet_programmer_codex`（実装・計測・Go ポート） |
+| 検証 | `scale2sheet_reviewer_claude`（別ベンダーの formal reviewer） |
+| 連絡 | agmsg。チーム外は manager 同士のみ |
+
+詳細な定義と実施証跡は [Issue #1 計画](./superpowers/plans/2026-08-13-pilot-operation-policy.md) と `docs/NOTES.md` を参照する。
+
+### 過去の複数席構成（履歴）
 
 `team.sh scale2sheet` で 2026-08-10 に実測したエージェント登録は、pm 1 席と architect / programmer / reviewer / worker の 4 席を合わせた **5 席**である。
 同じ出力に含まれる `kappa (agmsg-app)` は配送アプリであり、担当席の数に含めない。

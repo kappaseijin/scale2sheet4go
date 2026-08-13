@@ -14,6 +14,37 @@ timestamp: "2026-08-03T10:30:00+09:00"
 
 ---
 
+## 2026-08-13 agmsg 主人格・派生席の確定
+
+ユーザー指定に従い、主人格 `codex_product_owner` を
+`/Users/kappa/Dropbox/data/dev/codex_monitor_agents/codex_product_owner/AGENT.md` に定義した。
+モデルは `gpt-5.5-terra`、effort は `max` とし、設定を `~/.codex/product_owner.config.toml` に保存した。
+
+このプロジェクトでは、命名規約 `<プロジェクト名>_<役割>_<ベンダー>` に従う派生席
+`scale2sheet_programmer_codex` を `scale2sheet` チームへ登録し、現在の作業セッションを claim した。
+派生席のプロジェクト差分は同席の `projects/scale2sheet/AGENT.md` に保存している。
+通常は一つの派生席で自律的に進め、Go ポートの実装を担当し、Claude reviewer へクロスレビューを引き渡す。
+
+---
+
+## 2026-08-13 Issue #1 着手前の現状確認
+
+ユーザー依頼を [Issue #1](https://github.com/kappaseijin/scale2sheet4go/issues/1) として受付し、作業ブランチ `issue-1-pilot-policy-clean` を作成した。
+
+依頼で明示された前提は次のとおり。
+
+- 本リポジトリは `scale2sheet` を Go で実装するパイロットプロジェクトである。
+- 通常は 1 エージェントで進め、ユーザーとの対話を最小限にする。
+- エージェントは自律的にループして進捗する。
+- 複数の実装方法がある場合、または決断条件が不足している場合は、エージェントだけで決めずユーザーへ確認する。
+- 課題は小さくても Issue に分け、1 Issue を 1 課題・1 PR に対応させる。
+
+現状確認では、製品コード・README・計画書は TypeScript/Bun の既存実装を前提としており、計画書の担当体制も複数席である。Issue #1 はこの運用方針の固定だけを扱い、製品移植は別目的の [Issue #2](https://github.com/kappaseijin/scale2sheet4go/issues/2) へ分離した。
+
+2026-08-13、ユーザーは「既存コードを go-lang へポーティングし、受け入れテストが全て成功すること」を目標として明示した。この製品移植の移行範囲と完了条件は Issue #2 の計画へ引き継ぎ、Issue #1 の PR には製品コードを含めない。
+
+---
+
 ## 2026-08-09
 
 ### マージ（6 本、reviewer による判定）
