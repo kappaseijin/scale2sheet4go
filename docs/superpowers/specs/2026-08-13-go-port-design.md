@@ -17,7 +17,7 @@ status: approved-by-user-scope
 
 既存の `src/` にある scale2sheet の製品実装を Go へ移植する。移植後も、利用者から見える CLI、設定ファイル、終了コード、パイプライン状態、launchd 運用、Google Sheets 転記、入力ソースの契約を維持し、受け入れテストを Go の実行経路で全件成功させる。
 
-対象 Issue は [#1](https://github.com/kappaseijin/scale2sheet4go/issues/1) であり、今回のポート全体を 1 課題・1 PR として扱う。
+対象 Issue は [#2](https://github.com/kappaseijin/scale2sheet4go/issues/2) であり、今回のポート全体を 1 課題・1 PR として扱う。
 
 ## 現行コードから引き継ぐ外部契約
 
@@ -98,7 +98,7 @@ flowchart LR
 - scale_exporter の実装やリポジトリを変更しない。
 - Google Sheets/Google Fit の外部契約を変更しない。
 - Go 化と無関係な機能追加、UI 変更、agent 自動化機能の製品組込みを行わない。
-- 現行テストが隠していない新しい仕様を独断で追加しない。判断が必要な仕様差は Issue #1 の未解決事項として記録し、ユーザーへ確認する。
+- 現行テストが隠していない新しい仕様を独断で追加しない。判断が必要な仕様差は Issue #2 の未解決事項として記録し、ユーザーへ確認する。
 
 ## 検証の順序
 
@@ -111,8 +111,8 @@ flowchart TD
   E --> F[Go unit + integration]
   F --> G[既存 acceptance を Go binary へ切替]
   G --> H[全 acceptance + vet + docs gate]
-  H --> I[別ベンダー review]
-  I --> J[Issue #1 の PR を merge]
+  H --> I[派生席の自己検査結果を記録]
+  I --> J[Issue #2 の PR を merge]
 ```
 
 各段階はテスト先行で進め、失敗の出力を保存する。完了判定は狭い focused test ではなく、最終的な `go test ./...`、`go vet ./...`、acceptance 全件、README/ドキュメント検査の実測で行う。
