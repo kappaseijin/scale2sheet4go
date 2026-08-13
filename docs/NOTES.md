@@ -14,6 +14,20 @@ timestamp: "2026-08-03T10:30:00+09:00"
 
 ---
 
+## 2026-08-13 ユーザー修正: 派生席名と対向 LLM 配置
+
+ユーザーの修正指示により、Issue #1 の同一目的（パイロット運用方針とエージェントメタデータ）を次のとおり確定した。
+
+- 主人格は `codex_product_owner`（`gpt-5.5-terra` / effort `max`）のままとする。
+- 派生席は `scale2sheet_owner_codex` とし、旧 `scale2sheet_programmer_codex` の agmsg 登録を rename した。
+- 対向 LLM エージェントは配置しない。`scale2sheet_reviewer_claude` の起動はレビュー開始前に停止し、チーム登録も残していない。
+- 現在の roster は `kappa (agmsg-app)` と `scale2sheet_owner_codex` の 2 登録である。
+
+直前の「programmer 席と Claude reviewer 席」を記録した項目は、その時点の作業履歴として保持し、本項で現行方針を上書きする。
+Issue #1 の目的から外れる製品 Go ポートは引き続き Issue #2 で扱う。
+
+---
+
 ## 2026-08-13 agmsg 主人格・派生席の確定
 
 ユーザー指定に従い、主人格 `codex_product_owner` を

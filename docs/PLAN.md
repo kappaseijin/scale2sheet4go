@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-13（Issue #1 のパイロット一席運用と Issue #2 への Go ポート分離を反映）
+最終更新: 2026-08-13（Issue #1 の派生席名変更と対向 LLM 非配置を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -25,15 +25,15 @@ timestamp: "2026-07-04T18:00:00+09:00"
 課題はすべて GitHub Issue に起票し、1 Issue = 1 課題 = 1 PR とする。
 Go 製品移植は [Issue #2](https://github.com/kappaseijin/scale2sheet4go/issues/2) の専用課題であり、本 Issue #1 の運用資料変更へ混ぜない。
 
-現在の agmsg roster は `kappa (agmsg-app)` と `scale2sheet_programmer_codex` であり、製品作業を担う派生席は後者の一席である。
+現在の agmsg roster は `kappa (agmsg-app)` と `scale2sheet_owner_codex` であり、製品作業を担う派生席は後者の一席である。
 主人格 `codex_product_owner` はチームへ直接登録せず、派生席へ継承する。
 
 | 項目 | 内容 |
 | --- | --- |
 | 主人格 | `codex_product_owner`（`gpt-5.5-terra` / effort `max`） |
-| 派生席 | `scale2sheet_programmer_codex`（実装・計測・Go ポート） |
-| 検証 | `scale2sheet_reviewer_claude`（別ベンダーの formal reviewer） |
-| 連絡 | agmsg。チーム外は manager 同士のみ |
+| 派生席 | `scale2sheet_owner_codex`（Issue 選択・資料・実装・計測・テスト・Go ポート） |
+| 対向 LLM | 配置しない。派生席がテスト・静的検査・目的確認を実施する |
+| 連絡 | agmsg。チーム外連絡が必要な場合は manager 同士のみ |
 
 詳細な定義と実施証跡は [Issue #1 計画](./superpowers/plans/2026-08-13-pilot-operation-policy.md) と `docs/NOTES.md` を参照する。
 
@@ -91,7 +91,7 @@ pm は**検討書・設計書を起草しない**（`~/.agents/rules/agent-role.
 決定・合意の結果を反映する `PLAN.md` の記録と `NOTES.md` の作業ログに限る。
 検討書（`docs/decisions/`）と設計書は architect が起草してコミットする。
 
-PRレビュー・approveの運用（作成者と別LLM・別GitHubアカウントによるレビュー、GitHub Approve機能の使用）は [feedback_pr_review_workflow メモリ](#) の通り。
+現行パイロットでは対向 LLM エージェントを配置しない。PR の目的・差分・テスト・静的検査は派生席が確認し、仕様上の決断条件が不足する場合だけユーザーへ確認する。
 
 検査を追加または変更する PR では、`~/.agents/rules/development.rule.md` の「検査の負のコントロール」節を必須のレビュー観点として適用する。
 具体的な手順と三値判定は同節を正本とし、本書へ複製しない。
@@ -419,7 +419,9 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 
 ---
 
-## 開発体制：エージェント構成（herdr + agmsg、2026-07-03 確立）
+## 開発体制：過去の複数席構成（履歴、herdr + agmsg、2026-07-03 確立）
+
+> 本節は過去の複数席構成を保存する履歴である。現在のプロジェクトでは、上の「現行パイロット運用」に従い、`scale2sheet_owner_codex` 一席だけを製品作業へ使用し、対向 LLM エージェントを配置しない。
 
 運用の正本は `/Users/kappa/Dropbox/data/dev/codex_monitor_agents/README.md`。本プロジェクト固有の構成は以下。
 

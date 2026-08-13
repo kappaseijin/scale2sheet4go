@@ -32,7 +32,7 @@ scale2sheet4go は Go ポートを受け入れテスト全件成功まで進め�
 | エージェントの参加・役割宣言 | `~/.agents/skills/agmsg/scripts/join.sh` / `actas-claim.sh` | チーム登録とセッション排他を既に提供している |
 | 受信・連絡 | agmsg の `inbox.sh` / `send.sh` | チーム内の配送経路を再実装しない |
 | 課題と変更の追跡 | GitHub Issue / PR | Issue と PR の一対一をリポジトリ側で確認できる |
-| ベンダー跨ぎ検証 | `scale2sheet_reviewer_claude` | Codex producer の成果物を同一エージェントで自己検証しない |
+| 作業と検査 | 派生席のローカル検査（`python3 scripts/check-doc-refs.py`、`git diff --check`、対象言語のテスト） | 対向 LLM エージェントを配置せず、実測可能な検査を同じ席で完結する |
 
 調査結果として、追加の daemon・DB・リポジトリ内エージェント管理コードは不要と判断した。
 
@@ -42,15 +42,15 @@ scale2sheet4go は Go ポートを受け入れテスト全件成功まで進め�
 flowchart LR
   U[ユーザー] --> I[GitHub Issue #1]
   I --> P[codex_product_owner<br/>主人格]
-  P --> D[scale2sheet_programmer_codex<br/>派生席・実装]
-  D --> R[scale2sheet_reviewer_claude<br/>別ベンダー検証]
-  D --> N[docs/NOTES.md と docs/PLAN.md]
+  P --> D[scale2sheet_owner_codex<br/>派生席・一席運用]
+  D --> N[資料・実装・テスト・セルフチェック]
 ```
 
 - 主人格は `codex_product_owner` とし、モデル `gpt-5.5-terra`、effort `max` を設定する。
 - 主人格はチームへ直接登録しない。
-- 現プロジェクトでは命名規約に従い `scale2sheet_programmer_codex` を派生席として登録する。
+- 現プロジェクトではユーザー指定の派生席名 `scale2sheet_owner_codex` を登録する。
 - 通常はこの一席で作業し、別席の増員は必要性と担当範囲が明確になった場合だけ別 Issue にする。
+- 対向 LLM エージェントは配置しない。派生席が実装・テスト・静的検査・Issue/PR の目的確認を行う。
 - 仕様上の決定が必要な場合はユーザーへ確認し、派生席が独断で採否を決めない。
 
 ## 実施手順
@@ -60,15 +60,16 @@ flowchart LR
 3. `docs/PLAN.md` の現行担当席と開発順を、パイロットの一席運用に合わせて更新する。
 4. 主人格 AGENT.md、主人格 config、派生席 AGENT.md、プロジェクト差分を作成・確認する。
 5. `scale2sheet` へ派生席を `join.sh` で登録し、現在のセッションを `actas-claim.sh` で claim する。
-6. team roster、identity、受信箱、ファイル実在を確認し、Issue #1 専用 PR のレビューへ進む。
+6. team roster、identity、受信箱、ファイル実在を確認し、Issue #1 専用 PR の自己検査結果を記録する。
 
 ## 完了条件
 
 - Issue #1 の資料が運用方針だけを扱い、Issue #2 の製品移植を含まない。
 - `codex_product_owner` の model / effort と派生席の責務がファイルから確認できる。
-- `scale2sheet_programmer_codex` が `scale2sheet` の一席として登録・claim されている。
+- `scale2sheet_owner_codex` が `scale2sheet` の一席として登録・claim されている。
+- 対向 LLM エージェントが `scale2sheet` に登録されていない。
 - 開発資料に、全課題の Issue 化、1 Issue = 1 課題 = 1 PR、ユーザー確認境界が残る。
-- Issue #1 の変更だけを一つの PR にまとめ、Codex と別ベンダーの reviewer による検証を受ける。
+- Issue #1 の変更だけを一つの PR にまとめ、派生席の自己検査結果を記録する。
 
 ## 非目標
 
