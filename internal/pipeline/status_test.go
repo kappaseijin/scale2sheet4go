@@ -55,6 +55,38 @@ func TestAtomicPipelineStatusWriterRecordsFailureAndClaimsOnlyFirstAlert(t *test
 	}
 }
 
+func TestAtomicPipelineStatusWriterAnnotatesInputInvalidNotification(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pipeline-status.json")
+	writer := NewAtomicPipelineStatusWriter(path, "run-input-invalid")
+	started := "2026-06-18T06:00:00.000Z"
+	completed := "2026-06-18T06:01:00.000Z"
+	if _, err := writer.Write(PipelineStatus{Period: PeriodMorning, Outcome: "running", StartedAt: started, TargetDate: "2026-06-18"}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := writer.Write(PipelineStatus{
+		Period:      PeriodMorning,
+		Outcome:     string(OutcomeFailedInputInvalid),
+		StartedAt:   started,
+		CompletedAt: &completed,
+		TargetDate:  "2026-06-18",
+		Diagnostic:  "invalid JSON at file.jsonl:1",
+		V3:          &V3Observation{Input: "unavailable", Transfer: V3TransferObservation{State: TransferNotAttempted}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Notifications) != 1 || result.Notifications[0].Notification.Reason != NotificationReasonInputInvalid {
+		t.Fatalf("notifications = %#v, want input-invalid reason", result.Notifications)
+	}
+	document, err := ReadPipelineStatusDocument(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Periods[PeriodMorning].LastNotificationAttempt == nil || document.Periods[PeriodMorning].LastNotificationAttempt.Reason != NotificationReasonInputInvalid {
+		t.Fatalf("last notification = %#v", document.Periods[PeriodMorning].LastNotificationAttempt)
+	}
+}
+
 func TestParseDocumentRejectsNewerDefinitionsAndMalformedHealth(t *testing.T) {
 	newer := map[string]any{"schemaVersion": 1, "definitionsVersion": 4, "definitionsLabel": "future", "periods": map[string]any{}}
 	data, _ := json.Marshal(newer)

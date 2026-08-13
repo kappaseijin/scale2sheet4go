@@ -17,7 +17,7 @@ type PipelineResult struct {
 }
 
 type Notifier interface {
-	Notify(period PipelinePeriod, fromState, toState string) error
+	Notify(period PipelinePeriod, fromState, toState, reason string) error
 }
 
 type RunOptions struct {
@@ -91,7 +91,7 @@ func Run(ctx context.Context, options RunOptions) (PipelineResult, error) {
 				if delivery.Notification.Trigger == "notification-state-loss" {
 					fromState = "unobserved"
 				}
-				if err := options.Notifier.Notify(delivery.Period, fromState, delivery.Notification.ToState); err != nil {
+				if err := options.Notifier.Notify(delivery.Period, fromState, delivery.Notification.ToState, delivery.Notification.Reason); err != nil {
 					return err
 				}
 			}

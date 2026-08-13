@@ -196,7 +196,10 @@ type NotificationAttempt struct {
 	Trigger   string `json:"trigger"`
 	FromState string `json:"fromState,omitempty"`
 	ToState   string `json:"toState"`
+	Reason    string `json:"reason,omitempty"`
 }
+
+const NotificationReasonInputInvalid = "input-invalid"
 
 type NotificationDiagnostic struct {
 	Code              string `json:"code"`
@@ -440,6 +443,7 @@ func RecordTerminal(document PipelineStatusDocument, status PipelineStatus, runI
 		notification.AttemptID = runID
 		notification.ClaimedAt = updatedAt
 		notification.Result = "claimed"
+		notification.Reason = notificationReason(outcome)
 		attempt = notification
 	}
 	if isFailure(outcome) {
@@ -579,9 +583,16 @@ func parsePeriodState(data []byte, observedAt string) (PeriodStatus, *Notificati
 	if health.State != "alert" {
 		return period, nil, nil
 	}
-	notification := NotificationAttempt{Trigger: "notification-state-loss", ToState: "alert", AttemptID: "notification-state-loss:" + period.LastTerminal.RunID, ClaimedAt: observedAt, Result: "claimed"}
+	notification := NotificationAttempt{Trigger: "notification-state-loss", ToState: "alert", Reason: notificationReason(period.LastTerminal.Outcome), AttemptID: "notification-state-loss:" + period.LastTerminal.RunID, ClaimedAt: observedAt, Result: "claimed"}
 	period.LastNotificationAttempt = &notification
 	return period, &notification, nil
+}
+
+func notificationReason(outcome PersistedPipelineOutcome) string {
+	if outcome == OutcomeFailedInputInvalid {
+		return NotificationReasonInputInvalid
+	}
+	return ""
 }
 
 func isTerminalObservation(observation *TerminalObservation) bool {

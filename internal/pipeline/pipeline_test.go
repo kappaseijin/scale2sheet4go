@@ -17,6 +17,35 @@ func (s *statusWriterSpy) Write(status PipelineStatus) (PipelineStatusWriteResul
 	return PipelineStatusWriteResult{}, nil
 }
 
+type notificationSpy struct {
+	reasons []string
+}
+
+func (s *notificationSpy) Notify(_ PipelinePeriod, _, _, reason string) error {
+	s.reasons = append(s.reasons, reason)
+	return nil
+}
+
+type notificationStatusWriterSpy struct {
+	statuses []PipelineStatus
+}
+
+func (s *notificationStatusWriterSpy) Write(status PipelineStatus) (PipelineStatusWriteResult, error) {
+	s.statuses = append(s.statuses, status)
+	if status.CompletedAt == nil {
+		return PipelineStatusWriteResult{}, nil
+	}
+	return PipelineStatusWriteResult{Notifications: []NotificationDelivery{{
+		Period: PeriodMorning,
+		Notification: NotificationAttempt{
+			Trigger:   "state-transition",
+			FromState: "normal",
+			ToState:   "alert",
+			Reason:    NotificationReasonInputInvalid,
+		},
+	}}}, nil
+}
+
 func TestRunCompletesNoDataWithoutTransfer(t *testing.T) {
 	writer := &statusWriterSpy{}
 	transferCalled := false
@@ -67,5 +96,27 @@ func TestRunTransfersWeightAndRejectsUnconfirmedWrite(t *testing.T) {
 	}
 	if writer.statuses[len(writer.statuses)-1].V3 == nil || writer.statuses[len(writer.statuses)-1].V3.Transfer.State != "unknown" {
 		t.Fatalf("terminal status = %#v", writer.statuses[len(writer.statuses)-1])
+	}
+}
+
+func TestRunPassesInputInvalidNotificationReason(t *testing.T) {
+	writer := &notificationStatusWriterSpy{}
+	notifier := &notificationSpy{}
+	result, err := Run(context.Background(), RunOptions{
+		Period:        domain.PeriodMorning,
+		ReferenceTime: time.Date(2026, 6, 18, 7, 0, 0, 0, time.FixedZone("JST", 9*60*60)),
+		TimeZone:      time.FixedZone("JST", 9*60*60),
+		TargetDate:    "2026-06-18",
+		ReadInput: func() (StableInputSnapshot, error) {
+			return StableInputSnapshot{}, &InputSnapshotError{Outcome: "input-invalid-or-partial", Diagnostic: "invalid JSON"}
+		},
+		StatusWriter: writer,
+		Notifier:     notifier,
+	})
+	if err != nil || result.ExitCode != 1 || result.Outcome != "failed:input-invalid-or-partial" {
+		t.Fatalf("result, err = %#v, %v", result, err)
+	}
+	if len(notifier.reasons) != 1 || notifier.reasons[0] != NotificationReasonInputInvalid {
+		t.Fatalf("notification reasons = %#v", notifier.reasons)
 	}
 }
