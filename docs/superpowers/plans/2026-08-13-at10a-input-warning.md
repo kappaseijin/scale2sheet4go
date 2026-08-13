@@ -89,8 +89,8 @@ issue: 31
 ### Task 7: Issue #31のPRを作成する
 
 - [x] `git diff --check`、`python3 scripts/check-doc-refs.py`、`node scripts/verify-readme-config-keys.mjs` を実行する。
-- [ ] `git show --check --oneline HEAD` でcommitを検証する。
-- [ ] Issue #31をcloseするPRを `kappaseijin4codex` で作成する。
+- [x] `git show --check --oneline HEAD` でcommitを検証する。
+- [x] Issue #31をcloseするPRを `kappaseijin4codex` で作成する（[#33](https://github.com/kappaseijin/scale2sheet4go/pull/33)）。
 
 ## 検証結果
 
