@@ -28,7 +28,7 @@ source/binary drift の stale/empty source 負の制御は意図した FAIL を�
 GitHub Actions workflow は `push`/`pull_request` の `main`、`macos-14`、`actions/checkout@v6`、`actions/setup-go@v7`、`go-version-file: go.mod`、`contents: read` を設定した。
 ローカルと CI は同じ checker を実行し、Staticcheck、race detector、coverage は採用しない。
 初回の `setup-go@v5` は CI 自体は PASS したが Node.js 20 deprecated の annotation を出したため、公式の [setup-go README](https://github.com/actions/setup-go) と [releases](https://github.com/actions/setup-go/releases) を再確認し、Node.js 24 対応の `setup-go@v7` へ更新した。
-更新前 PR #9 の [Go quality gates](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31672153786/job/94358875187) は `macos-14` 上で 48 秒、PASS した。更新後の run は同じ PR の最新 head で再確認する。
+更新前 PR #9 の [Go quality gates](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31672153786/job/94358875187) は `macos-14` 上で 48 秒、PASS した。更新後の [run](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31672404702/job/94359619056) は `setup-go@v7`、`go1.22.12 darwin/arm64`、shared quality gates PASS、約61秒で完了し、Node.js deprecated annotation は出なかった。
 
 ---
 
