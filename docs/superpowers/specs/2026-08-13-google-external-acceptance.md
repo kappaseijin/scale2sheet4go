@@ -9,7 +9,8 @@ tags:
   - external
   - scale2sheet
 timestamp: "2026-08-13T16:46:49+09:00"
-status: proposed
+updated: "2026-08-13T22:17:38+09:00"
+status: implemented
 issue: 18
 ---
 
@@ -95,3 +96,9 @@ runner が自動判定できるのはコマンド境界とローカル状態だ�
 - [Sheets: spreadsheets.values.batchUpdate](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/batchUpdate)
 - [Google OAuth 2.0 for installed apps](https://developers.google.com/identity/protocols/oauth2/native-app)
 - [Google service account best practices](https://docs.cloud.google.com/iam/docs/best-practices-service-accounts)
+
+## 実装結果
+
+`scripts/run-google-external-acceptance.sh` と `scripts/test-google-external-acceptance.sh` により、専用 HOME・credential・Spreadsheet・入力の境界検査、child 起動前の fail-closed、秘密値非露出、各ケースの実行入口を実装した。runner の契約テストは PASS している。
+
+専用 Google 検証環境は本プロジェクト側で作成せず、現環境にも opt-in、専用 Spreadsheet、外部受入用 credential、専用入力は設定されていない。したがって、実 Google Sheets／Google Fit／実時刻 callback の AT-01〜AT-06 は `BLOCKED_EXTERNAL` を維持する。fake／blackhole の PASS を実外部成功へ昇格させない。
