@@ -433,3 +433,25 @@ universal artifact の `file` は `Mach-O universal binary with 2 architectures`
 ### GitHub Actions 最終確認（2026-08-13T15:36:41+09:00）
 
 [PR #11 の Go quality gates job](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31674363873/job/94365585524) は `macos-14`、Go `1.22.12 darwin/arm64` で PASS した。shared quality gates（gofmt、mod verify、test、vet、build、toolchain contract）に加え、universal artifact step が `Mach-O universal binary with 2 architectures` と `x86_64 arm64` を出力した。
+
+## Issue #10 macOS 公開配布契約検証（2026-08-13T16:01:02+09:00）
+
+Issue #10 の normal acceptance は、Developer ID Application identity、notarytool credentials、Apple Developer Program への接続が必要である。この環境には Apple Development identity しかなく、GitHub repository secret も未設定であるため、Apple notary service への正常系 submit/staple/Gatekeeper acceptance は未実施とした。Apple Development/ad hoc で代用せず、Issue #10 は open のままとする。
+
+### 実行結果
+
+| 検証 | 結果 |
+| --- | --- |
+| `bash -n scripts/build-macos-distribution.sh scripts/run-macos-distribution-contract-acceptance.sh` | **PASS** |
+| `shellcheck scripts/build-macos-distribution.sh scripts/run-macos-distribution-contract-acceptance.sh` | **PASS** |
+| `ruby` による `.github/workflows/macos-release.yml` YAML 構文検査 | **PASS** |
+| `bash scripts/run-macos-distribution-contract-acceptance.sh` | **PASS**（dry-run、missing credentials、Apple Development identity 拒否、missing API key、部分 DMG 出力なし） |
+| `bash scripts/check-go-quality-gates.sh` | **PASS** |
+| `bash scripts/run-macos-release-acceptance.sh` | **PASS** |
+| `bash scripts/run-installer-acceptance.sh` | **PASS** |
+| `python3 scripts/check-doc-refs.py` | **PASS** |
+| `python3 scripts/check-ac-ledger.py` | **PASS** |
+| `node scripts/verify-readme-config-keys.mjs` | **PASS** |
+| `git diff --check` | **PASS** |
+
+契約 acceptance は Apple へ接続せず、通常経路が credentials 不在時に build/output mutation 前に fail-closed すること、Apple Development identity を拒否すること、missing API key で DMG を残さないことを負の制御で確認した。

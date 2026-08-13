@@ -935,3 +935,13 @@ Issue #4 の実装で `package.json` と `package-lock.json` を削除し、`scr
 Go unit、vet、build、Go toolchain contract、全 binary acceptance、README 設定キー、文書参照、AC 台帳は PASS。contract gate に一時 README へ `npm test` を挿入する負の制御と、missing binary に対する direct Go build guidance の負の制御も意図どおり non-zero になった。
 
 旧 TypeScript の `src/`、`test/`、`tsconfig.json`、`vitest.config.ts` は Issue #2 で定めた比較履歴の境界を維持して残した。Go toolchain の version policy/CI は Issue #5、macOS build/install/launchd は Issue #6 へ分離した。
+
+## 2026-08-13T16:01:02+09:00 Issue #10 Developer ID署名・notarytool公証の実装
+
+Issue #10 の目的をプロジェクト全体で妥当化した。Issue #6 で確定した unsigned universal Go binary を公開配布可能な macOS artifact へ進めるには、署名、Hardened Runtime、公証、staple、Gatekeeper 検査、CI secret 境界を同じ外側容器に固定する必要がある。既存の CLI install/LaunchAgent を変更する課題ではないため、Issue #6 と分離した一つの目的として扱う。
+
+Apple の公式資料を調査し、現行製品が `.app` bundle ではなく単体 CLI であること、staple 対応の直接配布容器が必要なことから UDZO DMG を採用した。署名順序は universal binary → Developer ID Application + timestamp + Hardened Runtime → DMG 作成 → DMG 署名 → `xcrun notarytool submit --wait` / `log` → `xcrun stapler staple` / `validate` → `hdiutil verify` / `spctl` / mounted binary verification とした。Apple の `codesign --deep`、`sudo`、`altool` は採用していない。
+
+実装は `scripts/build-macos-distribution.sh`、秘密情報なしの `scripts/run-macos-distribution-contract-acceptance.sh`、手動/tag 専用 `.github/workflows/macos-release.yml` に分割した。PR quality workflow は secrets を読まず、公開配布 workflow は `macos-release` environment の一時 keychain と App Store Connect API key を使用し、終了時に keychain・p12・`.p8` を削除する。README には local/CI 設定、DMG からの install、失敗境界を自己完結で記載した。
+
+現環境の `security find-identity -v -p codesigning` は Apple Development identity 1 件のみで、Developer ID Application identity は無い。GitHub repository secret も未設定である。したがって Apple notary service への正常系 submit/staple/Gatekeeper acceptance は未実施であり、credentials 投入後にのみ実施する。credentials 不在時に Apple Development/ad hoc で成功扱いにする代替は採用しない。

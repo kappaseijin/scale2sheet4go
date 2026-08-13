@@ -36,3 +36,6 @@ jobs:
 
       - name: Verify universal macOS release artifact
         run: bash scripts/build-macos-release.sh dist/scale2sheet-universal
+
+      - name: Verify public distribution contract without secrets
+        run: bash scripts/run-macos-distribution-contract-acceptance.sh

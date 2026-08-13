@@ -22,7 +22,87 @@ bash scripts/build-macos-release.sh
 ./dist/scale2sheet --version
 ```
 
-このスクリプトは `GOOS=darwin`、`GOARCH=arm64` / `amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を明示して build し、`lipo` で Apple Silicon と Intel の universal Mach-O（`arm64` + `x86_64`）を `dist/scale2sheet` に作成します。出力はこの pilot のローカル実行用で、Developer ID 署名・Hardened Runtime・notarization は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) の別課題です。製品運用では `go run` や `go build` の既定 host target を使わず、このスクリプトで作成したバイナリを使用します。製品の build・test・実行に Node/npm/Bun は必要ありません。
+このスクリプトは `GOOS=darwin`、`GOARCH=arm64` / `amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を明示して build し、`lipo` で Apple Silicon と Intel の universal Mach-O（`arm64` + `x86_64`）を `dist/scale2sheet` に作成します。これはローカル検証用の unsigned artifact です。公開配布には、次節の Developer ID 署名・Hardened Runtime・notarytool 公証済み DMG を使用します。製品運用では `go run` や `go build` の既定 host target を使わず、このスクリプトで作成したバイナリを使用します。製品の build・test・実行に Node/npm/Bun は必要ありません。
+
+## 公開配布用 macOS artifact
+
+公開配布では、Apple Developer Program の `Developer ID Application` 証明書で universal binary を署名し、Hardened Runtime を有効にした DMG を作成してから Apple の notary service へ公証を依頼します。公証済み DMG には ticket を staple し、`stapler`、`hdiutil`、`spctl`、`codesign` で検査します。Apple Development、ad hoc、未署名の artifact は公開配布物に使用しません。
+
+必要なものは macOS、Xcode Command Line Tools、Go 1.22 以上、Developer ID Application identity、そして次のいずれかの notarytool 認証です。
+
+- 推奨: App Store Connect API key（`.p8`、Key ID、Issuer ID）
+- ローカル代替: `xcrun notarytool store-credentials` で保存した Keychain profile
+
+証明書が利用可能であることは、次で確認できます。出力に `Developer ID Application:` が含まれる必要があります。
+
+```sh
+security find-identity -v -p codesigning
+```
+
+### ローカルでの公証
+
+Keychain profile を作成する場合は、Apple の app-specific password を対話入力して次を実行します。パスワードや秘密鍵の内容をファイルやリポジトリへ書き込みません。
+
+```sh
+xcrun notarytool store-credentials scale2sheet-notary \
+  --apple-id '<Apple ID>' \
+  --team-id '<Team ID>'
+```
+
+保存した profile を使って DMG を作成します。`MACOS_NOTARY_KEYCHAIN_PATH` は profile を保存した Keychain の実パスです。
+
+```sh
+export MACOS_SIGNING_IDENTITY='Developer ID Application: <Common Name> (<Team ID>)'
+export MACOS_NOTARY_KEYCHAIN_PROFILE='scale2sheet-notary'
+export MACOS_NOTARY_KEYCHAIN_PATH="$HOME/Library/Keychains/login.keychain-db"
+bash scripts/build-macos-distribution.sh dist/scale2sheet-macos.dmg
+```
+
+App Store Connect API key を使う場合は、`.p8` の実パスを指定します。
+
+```sh
+export MACOS_SIGNING_IDENTITY='Developer ID Application: <Common Name> (<Team ID>)'
+export MACOS_NOTARY_KEY_PATH='/secure/path/AuthKey_<Key ID>.p8'
+export MACOS_NOTARY_KEY_ID='<Key ID>'
+export MACOS_NOTARY_ISSUER_ID='<Issuer ID>'
+bash scripts/build-macos-distribution.sh dist/scale2sheet-macos.dmg
+```
+
+`MACOS_SIGNING_IDENTIFIER`（既定 `jp.seijin.kappa.scale2sheet.cli`）と `MACOS_DMG_VOLUME_NAME`（既定 `scale2sheet`）は必要な場合だけ変更します。API key 方式では3つの `MACOS_NOTARY_KEY_*` 値をすべて指定し、Keychain 方式では profile と path を両方指定します。どちらも不完全な場合、スクリプトは build や出力作成より前に失敗します。
+
+成功すると `dist/scale2sheet-macos.dmg` と `dist/scale2sheet-macos.dmg.notary.json` が作成されます。DMG を開き、同梱 binary を既定の install 先へコピーしてから通常の設定・install 手順を続けます。
+
+```sh
+mount_point="$(mktemp -d)"
+hdiutil attach dist/scale2sheet-macos.dmg -nobrowse -readonly -mountpoint "$mount_point"
+mkdir -p "$HOME/.local/bin"
+ditto "$mount_point/scale2sheet" "$HOME/.local/bin/scale2sheet"
+hdiutil detach "$mount_point"
+rmdir "$mount_point"
+"$HOME/.local/bin/scale2sheet" --version
+```
+
+### GitHub Actions の公開配布
+
+リポジトリの `macos-release` environment に次の secrets を登録します。secret の値は README、Issue、ログ、リポジトリへ記録しません。
+
+| Secret | 内容 |
+| --- | --- |
+| `MACOS_DEVELOPER_ID_CERTIFICATE_BASE64` | Developer ID Application identity を含む p12 の base64 |
+| `MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD` | p12 の import password |
+| `MACOS_KEYCHAIN_PASSWORD` | CI 一時 keychain の password |
+| `MACOS_SIGNING_IDENTITY` | `Developer ID Application: ...` の完全な identity 名 |
+| `MACOS_NOTARY_KEY_BASE64` | App Store Connect API key `.p8` の base64 |
+| `MACOS_NOTARY_KEY_ID` | API key ID |
+| `MACOS_NOTARY_ISSUER_ID` | API key issuer ID |
+
+`.github/workflows/macos-release.yml` は `workflow_dispatch` または `v*` tag でだけ実行され、PR の通常 CI では secrets を読みません。workflow は証明書を `$RUNNER_TEMP` の一時 keychain へ import し、`.p8` を一時ファイルへ復号します。終了時には keychain、p12、`.p8` を削除します。GitHub Actions の artifact として DMG と notary log JSON が保存されます。
+
+公開配布 workflow の正常系は、Developer ID identity、notarytool の `Accepted`、staple、Gatekeeper 検査の全てが揃った場合だけ成功します。identity または認証情報が無い場合は fail-closed し、Apple Development 署名や ad hoc 署名へフォールバックしません。秘密情報を利用しない構文・失敗系契約は次で確認できます。
+
+```sh
+bash scripts/run-macos-distribution-contract-acceptance.sh
+```
 
 ## 設定
 
@@ -226,12 +306,14 @@ bash scripts/run-installer-acceptance.sh
 bash scripts/run-runtime-safety-acceptance.sh
 bash scripts/run-binary-source-drift-acceptance.sh
 bash scripts/run-bun-binary-smoke.sh
+bash scripts/run-macos-distribution-contract-acceptance.sh
 ```
 
 最後の smoke スクリプト名は既存呼び出しとの互換性のため残っていますが、実際にビルド・実行するのは Go バイナリです。
 
 ## 既知の制約
 
+- 公開配布用の正常系は Apple Developer ID identity と notarytool credentials が必要です。credentials が無い環境では build-macos-distribution.sh は fail-closed し、署名なし・Apple Development・ad hoc へのフォールバックは行いません。
 - `pipeline` は現在 `scale-exporter` の安定 snapshot を対象にします。Apple Health と Google Fit は `run` と `serve` の source adapter として利用します。
 - launchd 登録と Darwin 固有の `O_EXLOCK` lease は macOS 専用です。
 - Google API の認証・読み書きはネットワークと外部サービスの状態に依存します。期限超過時は Sheets 側の反映結果を自動再試行せず、対象行を確認してください。
