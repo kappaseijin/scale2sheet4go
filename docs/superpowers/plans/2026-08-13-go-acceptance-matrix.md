@@ -8,7 +8,8 @@ tags:
   - acceptance
   - scale2sheet
 timestamp: "2026-08-13T16:19:48+09:00"
-status: active
+updated: "2026-08-13T16:35:33+09:00"
+status: completed
 issue: 13
 ---
 
@@ -61,11 +62,18 @@ issue: 13
 
 ## Task 5: PR と同期
 
-- [ ] 差分、issue scope、受入証跡を自己確認する。
-- [ ] Issue #13 の一つの PR を作成する。
-- [ ] reviewer の formal review と全 gate 成功を確認する。
-- [ ] PR を main へ merge し、main を origin と同期して作業ブランチを削除する。
-- [ ] Issue #13 を完了条件に従って close する。
+- [x] 差分、issue scope、受入証跡を自己確認する。
+- [x] Issue #13 の一つの PR（PR #15）を作成する。
+- [x] 対向 LLM を配置しないユーザー方針に従い、派生席の自己検証と GitHub Actions の全 gate 成功を確認する。
+- [x] PR #15 を main へ merge し、main を origin と同期して作業ブランチを削除する。
+- [x] Issue #13 を完了条件に従って close する。
+
+## 完了記録
+
+- PR: [#15](https://github.com/kappaseijin/scale2sheet4go/pull/15)
+- merge commit: `47fcd8b7adc419c3c9ab7e2518975e02851f4942`
+- main: `origin/main` と一致、作業 branch は削除済み
+- Issue #13: closed
 
 ## 完了時の残存ブロッカー
 
