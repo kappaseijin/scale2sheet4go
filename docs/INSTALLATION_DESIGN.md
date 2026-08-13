@@ -9,7 +9,7 @@ tags:
   - scale2sheet
 status: accepted
 timestamp: "2026-08-02T12:08:00+09:00"
-updated: "2026-08-13T14:00:00+09:00"
+updated: "2026-08-13T15:32:32+09:00"
 ---
 
 # scale2sheet インストール設計
@@ -27,10 +27,12 @@ updated: "2026-08-13T14:00:00+09:00"
 ```text
 scale2sheet install [--prefix <dir>] [--launchd] [--dry-run]
 scale2sheet uninstall [--prefix <dir>] [--dry-run]
-scale2sheet doctor
+scale2sheet doctor [--prefix <dir>]
 ```
 
 既定の prefix は `~/.local` で、バイナリは `<prefix>/bin/scale2sheet` です。`install` は settings が無ければ雛形を作成します。settings が既にある場合は、Sheets credentials を確認してから更新します。
+
+製品用 macOS artifact は `bash scripts/build-macos-release.sh` で作成します。`GOOS=darwin`、`GOARCH=arm64|amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を固定し、`lipo` 後に `file` と `lipo -info` で universal `arm64` + `x86_64` を検査します。Developer ID 署名、Hardened Runtime、notarytool 公証は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) の責任範囲であり、本設計の artifact は pilot 用 ad hoc/local artifact です。
 
 `install --launchd` は次を変更前に確認します。
 
@@ -56,7 +58,7 @@ scale2sheet doctor
 ~/Library/Logs/scale-pipeline/{morning,evening}{,.err}.log
 ```
 
-`--prefix` は binary の prefix だけを変更し、設定・状態・launchd・ログは home 配下の既定パスに残ります。危険な prefix（home、`/`、`/usr`、`/bin`、`/sbin`、`/etc`、`/System`、`/Library`）は拒否します。
+`--prefix` は binary の prefix だけを変更し、設定・状態・launchd・ログは home 配下の既定パスに残ります。`doctor --prefix <dir>` は同じ `Paths` を解決し、manifest の記録 prefix と binary path が要求値に一致することを検査します。危険な prefix（home、`/`、`/usr`、`/bin`、`/sbin`、`/etc`、`/System`、`/Library`）は拒否します。
 
 | 対象 | mode |
 | --- | --- |
@@ -76,6 +78,8 @@ scale2sheet doctor
 - stdout/stderr: `~/Library/Logs/scale-pipeline/`
 
 plist の XML 値は escape し、`launchctl bootout` → plist write → `launchctl bootstrap` の順で適用します。事前に `install --launchd --dry-run` で計画を表示できます。
+
+登録後の状態確認は read-only の `launchctl print gui/<uid>/<label>`、手動の一回実行は `launchctl kickstart -k gui/<uid>/<label>` を使います。`kickstart` は登録スケジュールを変更しません。plist の XML は `plutil -lint` で検査できます。
 
 ## manifest と更新
 
@@ -102,8 +106,9 @@ flowchart TD
 ## 検証
 
 ```sh
+bash scripts/run-macos-release-acceptance.sh
 bash scripts/run-installer-acceptance.sh
 bash scripts/run-runtime-safety-acceptance.sh
 ```
 
-両方とも一時 HOME、fake launchctl、network deny、複数 process lease 競合を使い、実ユーザー領域や実 Spreadsheet を変更しません。
+release acceptance と installer acceptance は一時 HOME、fake launchctl、network deny を使い、実ユーザー領域や実 Spreadsheet を変更しません。installer acceptance は複数 process の lease 競合も検査します。

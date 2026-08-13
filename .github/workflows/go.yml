@@ -33,3 +33,6 @@ jobs:
 
       - name: Run shared quality gates
         run: bash scripts/check-go-quality-gates.sh
+
+      - name: Verify universal macOS release artifact
+        run: bash scripts/build-macos-release.sh dist/scale2sheet-universal

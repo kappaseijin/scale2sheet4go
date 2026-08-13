@@ -14,13 +14,13 @@ timestamp: "2026-07-29T09:05:20+09:00"
 
 ## 実装状態
 
-製品の実装・配布物・既定の検証経路は Go です。`CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet` で単一バイナリを作成します。旧 TypeScript/Bun 経路は比較用の履歴であり、製品の利用手順ではありません。
+製品の実装・配布物・既定の検証経路は Go です。macOS の製品 artifact は `bash scripts/build-macos-release.sh` で `darwin/arm64` と `darwin/amd64` を build し、`lipo` で universal 単一バイナリを作成します。旧 TypeScript/Bun 経路は比較用の履歴であり、製品の利用手順ではありません。
 
 ## CLI
 
 ```text
 scale2sheet auth
-scale2sheet doctor
+scale2sheet doctor [--prefix <dir>]
 scale2sheet install [--prefix <dir>] [--launchd] [--dry-run]
 scale2sheet pipeline --period <morning|evening> [--date <YYYY-MM-DD>]
 scale2sheet run --period <morning|evening> [--source <source>] [--date <YYYY-MM-DD>]
@@ -35,7 +35,7 @@ scale2sheet uninstall [--prefix <dir>] [--dry-run]
 | `--period <morning\|evening>` | `run`, `pipeline` | 対象期間。必須 |
 | `--source <scale-exporter\|google-fit\|apple-health>` | `run`, `serve` | 入力ソース。省略時は設定値 |
 | `--date <YYYY-MM-DD>` | `run`, `pipeline` | 対象日。省略時は設定 timezone の当日 |
-| `--prefix <dir>` | `install`, `uninstall` | バイナリ配置ルート。既定 `~/.local` |
+| `--prefix <dir>` | `install`, `uninstall`, `doctor` | バイナリ配置ルート。既定 `~/.local`。doctor は manifest の prefix/binary path 整合性も検査 |
 | `--launchd` | `install` | launchd plist を生成・登録 |
 | `--dry-run` | `install`, `uninstall` | 変更せず操作計画を表示 |
 
@@ -107,6 +107,18 @@ Spreadsheet は1行目の `月日` 列から対象日の既存行を探し、朝
 | `~/Library/Logs/scale-pipeline/` | launchd 標準出力・エラー |
 
 status と認証情報は atomic 更新・owner-only permissions を使用します。Google Sheets の操作全体には 30 秒の期限があります。期限超過時は `failed:transfer` として記録し、自動再試行は行いません。
+
+## macOS 本番運用
+
+製品 build は次の契約に固定します。
+
+```sh
+bash scripts/build-macos-release.sh
+```
+
+このスクリプトは `GOOS=darwin`、`GOARCH=arm64|amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を明示し、`file` と `lipo -info` で `arm64` + `x86_64` を検証します。実行体は per-user `~/Library/LaunchAgents` と `launchctl gui/<uid>` で管理します。状態確認は `launchctl print`、一回の手動再実行は `launchctl kickstart -k`、plist XML 検査は `plutil -lint` を使います。
+
+この pilot の artifact は ad hoc/local 用です。Developer ID、Hardened Runtime、notarytool、stapler、公開配布用 Gatekeeper 検証は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) で別目的として扱います。
 
 ## 関連設計
 

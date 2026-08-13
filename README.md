@@ -15,14 +15,14 @@ timestamp: "2026-07-02"
 
 ## インストール
 
-Go 1.22 以上を用意し、リポジトリのルートで単一バイナリを作成します。
+Go 1.22 以上と macOS の Xcode Command Line Tools（`lipo`、`file`、`plutil`）を用意し、リポジトリのルートで製品バイナリを作成します。
 
 ```sh
-CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet
+bash scripts/build-macos-release.sh
 ./dist/scale2sheet --version
 ```
 
-`CGO_ENABLED=0` は、配布バイナリを外部の C ランタイムに依存させないための指定です。製品の build・test・実行に Node/npm/Bun は必要ありません。
+このスクリプトは `GOOS=darwin`、`GOARCH=arm64` / `amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を明示して build し、`lipo` で Apple Silicon と Intel の universal Mach-O（`arm64` + `x86_64`）を `dist/scale2sheet` に作成します。出力はこの pilot のローカル実行用で、Developer ID 署名・Hardened Runtime・notarization は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) の別課題です。製品運用では `go run` や `go build` の既定 host target を使わず、このスクリプトで作成したバイナリを使用します。製品の build・test・実行に Node/npm/Bun は必要ありません。
 
 ## 設定
 
@@ -146,19 +146,37 @@ CLI が認可 URL を表示し、macOS ではブラウザを開きます。認�
 - launchd plist: `~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist`、`...evening.plist`
 - ログ: `~/Library/Logs/scale-pipeline/`
 
-設定と認証ファイルを確認してから launchd へ登録します。
+設定と認証ファイルを確認してから launchd へ登録します。登録前は必ず dry-run を実行できます。
 
 ```sh
-~/.local/bin/scale2sheet install --launchd
-~/.local/bin/scale2sheet doctor
+./dist/scale2sheet install --prefix ~/.local
+./dist/scale2sheet install --prefix ~/.local --launchd --dry-run
+~/.local/bin/scale2sheet install --prefix ~/.local --launchd
+~/.local/bin/scale2sheet doctor --prefix ~/.local
 ```
 
-登録前の計画だけを確認するには `install --launchd --dry-run` を使います。`--prefix <path>` でバイナリ配置先を変更できます。設定不足、認証ファイル不足、または実行中の lease がある場合は、plist・バイナリ・設定を変更せず失敗します。
+`--prefix <path>` でバイナリ配置先を変更できます。custom prefix を使った場合は、実際に配置されたバイナリにも同じ prefix を渡して診断します。設定不足、認証ファイル不足、または実行中の lease がある場合は、plist・バイナリ・設定を変更せず失敗します。
+
+登録状態は read-only の `launchctl print` で確認し、必要なときだけ `kickstart -k` で対象 period を直ちに一度実行できます。`kickstart` はスケジュールを変更しません。
+
+```sh
+launchctl print "gui/$(id -u)/jp.seijin.kappa.scale-pipeline.morning"
+launchctl print "gui/$(id -u)/jp.seijin.kappa.scale-pipeline.evening"
+launchctl kickstart -k "gui/$(id -u)/jp.seijin.kappa.scale-pipeline.morning"
+```
+
+生成された plist の XML を手動確認する場合は、次を実行します。
+
+```sh
+plutil -lint ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist
+plutil -lint ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
+```
 
 ## アンインストール
 
 ```sh
-~/.local/bin/scale2sheet uninstall
+~/.local/bin/scale2sheet uninstall --prefix ~/.local --dry-run
+~/.local/bin/scale2sheet uninstall --prefix ~/.local
 ```
 
 アンインストールは launchd 登録、plist、配置したバイナリ、インストール manifest を削除します。設定、認証ファイル、状態ファイル、ログは残ります。`uninstall --dry-run` で削除計画を確認できます。

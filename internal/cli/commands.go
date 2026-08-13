@@ -394,9 +394,13 @@ func runUninstallCommand(_ context.Context, invocation Invocation, output Output
 	return 0
 }
 
-func runDoctorCommand(_ Invocation, output Output) int {
+func runDoctorCommand(invocation Invocation, output Output) int {
 	home := homeDirectory()
-	paths, err := installation.ResolvePaths(home, "~/.local")
+	prefix := invocation.Prefix
+	if prefix == "" {
+		prefix = "~/.local"
+	}
+	paths, err := installation.ResolvePaths(home, prefix)
 	if err != nil {
 		return printRuntimeError(output, err)
 	}
@@ -417,7 +421,16 @@ func runDoctorCommand(_ Invocation, output Output) int {
 		check("manifest", "WARN", "not installed: no install manifest found")
 	default:
 		check("manifest", "PASS", fmt.Sprintf("state=%s version=%s", manifest.State, manifest.Version))
-		if executable, executableErr := os.Executable(); executableErr == nil && filepath.Clean(executable) != filepath.Clean(manifest.BinaryPath) {
+		if strings.TrimSpace(manifest.Prefix) == "" {
+			check("prefix", "FAIL", "install manifest has no prefix")
+		} else if installation.NormalizePath(manifest.Prefix, home) != paths.Prefix {
+			check("prefix", "FAIL", fmt.Sprintf("manifest prefix %s does not match requested prefix %s", manifest.Prefix, paths.Prefix))
+		} else {
+			check("prefix", "PASS", paths.Prefix)
+		}
+		if filepath.Clean(manifest.BinaryPath) != filepath.Clean(paths.BinaryPath) {
+			check("binary-placement", "FAIL", fmt.Sprintf("manifest binary path %s does not match requested prefix path %s", manifest.BinaryPath, paths.BinaryPath))
+		} else if executable, executableErr := os.Executable(); executableErr == nil && filepath.Clean(executable) != filepath.Clean(manifest.BinaryPath) {
 			check("binary-placement", "FAIL", fmt.Sprintf("running binary %s does not match manifest path %s", executable, manifest.BinaryPath))
 		} else if executableErr != nil {
 			check("binary-placement", "WARN", "cannot resolve running binary: "+executableErr.Error())

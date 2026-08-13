@@ -14,6 +14,27 @@ timestamp: "2026-08-03T10:30:00+09:00"
 
 ---
 
+## 2026-08-13T15:30:00+09:00 Issue #6 macOS 本番運用の調査・実装開始
+
+Issue #6 の目的を、Go 移植後の pilot artifact を Apple Silicon と Intel の両方で同じ手順から作成し、現在の per-user LaunchAgent installer と同じ prefix 契約で診断・撤去できるようにする課題として妥当化した。公開配布の署名・公証まで含めると目的が二つになるため、Developer ID、Hardened Runtime、notarytool、stapler、Gatekeeper 検証は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) へ分割した。
+
+コードグラフで `runInstallCommand`、`runUninstallCommand`、`runDoctorCommand`、`ResolvePaths`、`PlanInstall`、`PlanUninstall`、`BuildPipelinePlist`、`LaunchdReady` の呼出しと実装を確認した。既存実装は per-user `~/Library/LaunchAgents` と `launchctl gui/<uid>`、atomic binary replacement、manifest 管理を持っていた。`doctor` は `Invocation.Prefix` を無視して `~/.local` を固定していたため、custom prefix を manifest の prefix / binary path と照合する回帰テストを先に追加した。設定・manifest は home 配下で prefix 共通となるため、単に installed state を確認するだけでは回帰を検出できず、`[PASS] prefix` を assertion に含めた。
+
+外部資料は Go の [compile/install 手順](https://go.dev/doc/tutorial/compile-install)、[source build の GOOS/GOARCH と CGO_ENABLED](https://go.dev/doc/install/source)、Apple の [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice)、[Service Management overview](https://developer.apple.com/documentation/servicemanagement?language=swift) を調査した。現行は GUI app bundle ではないため `SMAppService` へ移行せず、LaunchAgent を維持する判断とした。release script は `GOOS=darwin`、`GOARCH=arm64|amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath`、`lipo`、`file`、`lipo -info` を固定する。
+
+ローカル実測では `uname -m=arm64`、Go `go1.22.0 darwin/arm64`、arm64/amd64 の両 cross-build と universal `lipo` 結合が成功した。universal artifact は ad hoc signature で `spctl --assess` が拒否したため、pilot の local artifact と公開配布 artifact を混同しない境界を README と Issue #10 に記録する。
+
+実装済みの初期検証は次のとおりである。
+
+- `TestDoctorUsesCustomPrefix` は実装前に RED、prefix 整合性実装後に GREEN
+- `scripts/build-macos-release.sh` は Mach-O universal `arm64` + `x86_64` を生成
+- `scripts/run-macos-release-acceptance.sh` は version、install --launchd、plist lint、doctor --prefix、uninstall、設定・認証残置を PASS
+- `scripts/run-installer-acceptance.sh` は universal builder 経路へ切替後も PASS
+
+追加の最終ローカル検証では、Go が PATH に無い負の制御が exit 2・部分出力無しで終了し、runtime safety、pipeline shadow、Google Sheets deadline、source/binary drift、Go binary smoke、全 Go 品質ゲート、README/文書/AC 検査が PASS した。deadline の実測は `30.14240087500366` 秒、lease 再取得は `10.092639499998768` 秒だった。universal artifact の `lipo -archs` は `x86_64 arm64` だった。
+
+---
+
 ## 2026-08-13 Issue #5 実装・ローカル検証
 
 `scripts/check-go-quality-gates.sh` と `.github/workflows/go.yml` を追加し、README、`docs/PLAN.md`、本資料を更新した。

@@ -398,3 +398,34 @@ Issue #4 の package metadata 削除、現行 Node fallback 除去、README/計�
 | `python3 scripts/check-ac-ledger.py` | **PASS** |
 
 `package.json` と `package-lock.json` は削除し、旧 `src/`、`test/`、`tsconfig.json`、`vitest.config.ts` は削除していない。Go toolchain version policy/CI は Issue #5、macOS 本番環境は Issue #6 の対象として残す。
+
+## Issue #6 macOS 本番 artifact・LaunchAgent 初期検証（2026-08-13T15:30:00+09:00）
+
+Issue #6 の pilot 境界は、署名済み公開配布ではなく、macOS 上で再現可能な universal Go artifact と per-user LaunchAgent の install/doctor/uninstall 契約である。公開配布の Developer ID、Hardened Runtime、notarytool、stapler は Issue #10 に分離した。
+
+| 検証 | 結果 |
+| --- | --- |
+| `GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/cli -run TestDoctorUsesCustomPrefix -count=1`（修正前） | **RED**（prefix assertion が失敗） |
+| `GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/cli -run TestDoctorUsesCustomPrefix -count=1`（修正後） | **PASS** |
+| `GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/cli -count=1` | **PASS** |
+| `bash scripts/build-macos-release.sh /tmp/scale2sheet-issue6-universal` | **PASS**（Mach-O universal、`x86_64` + `arm64`、mode `0755`） |
+| `bash scripts/run-macos-release-acceptance.sh` | **PASS**（version、universal install、fake launchctl、plist lint、doctor `--prefix`、uninstall、settings/auth 残置） |
+| `bash scripts/run-installer-acceptance.sh` | **PASS**（既存 installer acceptance も universal builder 経路で継続） |
+
+release acceptance は一時 HOME、fake `launchctl`、unroutable proxy を使い、実ユーザーの launchd、認証情報、ネットワークへ接続しない。`plutil -lint` は生成された morning/evening plist の双方で PASS した。
+
+### Issue #6 最終ローカルゲート（2026-08-13T15:33:53+09:00）
+
+| 検証 | 結果 |
+| --- | --- |
+| `PATH=/usr/bin:/bin /bin/bash scripts/build-macos-release.sh <tmp>/output`（Go 無しの負の制御） | **PASS**（exit 2、部分 output 無し） |
+| `scripts/run-runtime-safety-acceptance.sh` | **PASS**（compiled Go の 2 process lease conflict / SIGKILL release） |
+| `bash scripts/run-pipeline-shadow-acceptance.sh` | **PASS** |
+| `bash scripts/run-google-sheets-deadline-acceptance.sh` | **PASS**（deadline `30.14240087500366` 秒、lease 再取得 `10.092639499998768` 秒） |
+| `scripts/run-binary-source-drift-acceptance.sh` | **PASS**（stale/empty source の負の制御を含む） |
+| `scripts/run-bun-binary-smoke.sh` | **PASS**（実体は Go binary） |
+| `bash scripts/check-go-quality-gates.sh` | **PASS**（gofmt、mod verify、test、vet、build、toolchain contract） |
+| `python3 scripts/check-doc-refs.py` / `python3 scripts/check-ac-ledger.py` | **PASS** |
+| `node scripts/verify-readme-config-keys.mjs` / `git diff --check` | **PASS** |
+
+universal artifact の `file` は `Mach-O universal binary with 2 architectures`、`lipo -archs` は `x86_64 arm64` を返した。CI でも `macos-14` 上の品質ゲート後に `bash scripts/build-macos-release.sh dist/scale2sheet-universal` を実行する。
