@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compiled-Bun acceptance for the pipeline shadow path.  It uses only an
+# Compiled-Go acceptance for the pipeline shadow path.  It uses only an
 # isolated HOME, published fixture JSONL, a poison producer, and denied proxies.
 # The exercised paths do not transfer, so this harness does not prove network denial.
 
@@ -49,21 +49,11 @@ dump_diagnostic_file() {
   fi
 }
 
-# #168: fail loudly with install guidance rather than skipping if bun is
-# missing -- a skip would mean "no binary was checked," not "the binary
-# matched the source" (Issue #126). Matches #128's guard.
-if ! command -v bun >/dev/null 2>&1; then
-  echo 'bun is required to run acceptance:pipeline-shadow (part of `npm test`).' >&2
-  echo 'Install it with: curl -fsSL https://bun.sh/install | bash' >&2
-  echo 'Then restart your shell so `bun` is on PATH, and re-run `npm test`.' >&2
-  exit 1
-fi
-
 # Build the binary this acceptance exercises into its own temporary tree.
-# Never overwrite the checkout's dist/scale2sheet: npm test runs acceptance
+# Never overwrite the checkout's dist/scale2sheet: acceptance runs may run
 # files concurrently, and that binary may be a production artifact elsewhere.
 binary="$root/scale2sheet"
-bun build ./src/index.ts --compile --outfile "$binary" >/dev/null
+CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$binary" ./cmd/scale2sheet
 home="$root/home"
 output_dir="$root/published"
 poison_bin="$root/bin"

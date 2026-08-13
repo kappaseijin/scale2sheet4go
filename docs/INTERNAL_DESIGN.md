@@ -1,133 +1,93 @@
 ---
 type: Design
 title: scale2sheet — 内部設計
-description: scale2sheet のモジュール、型、関数のAPI定義をまとめる。
+description: scale2sheet Go 実装のパッケージ、型、主要関数の境界を定義する。
 tags:
   - design
   - internal
   - api
-  - scale2sheet
+  - go
 timestamp: "2026-07-04T18:00:00+09:00"
 ---
 
 # scale2sheet — 内部設計
 
-## domain（`src/domain/`）
+## domain
 
-### `MeasurementKind`
+`internal/domain/measurement.go` は外部 API に依存しない正規化モデルを持ちます。
 
-`"weight" | "body_temperature" | "blood_pressure_systolic" | "blood_pressure_diastolic" | "pulse"`
+- `MeasurementKind`: `weight`、`body_temperature`、`blood_pressure_systolic`、`blood_pressure_diastolic`、`pulse`
+- `MeasurementUnit`: `kg`、`celsius`、`mmHg`、`bpm`
+- `MeasurementReading`: kind、value、unit、ISO timestamp、source、source record ID
+- `LatestMeasurementSet`: 期間、capture 時刻、source、各採用値、件数
+- `SpreadsheetRow`: Spreadsheet 更新用の1行
+- `TransferOutcome`: `written`、`not-written`、`unknown` と更新セル数
 
-### `MeasurementUnit`
+選択ロジックは `LatestByKind`、`SelectWeightByPeriod`、`SelectReadingsByWeightAnchor` が担当します。体重を必須アンカーとし、朝は時間帯内で最も早い体重、夜は最も遅い体重を選びます。
 
-`"kg" | "celsius" | "mmHg" | "bpm"`
+## config / auth
 
-### `MeasurementSource`
+`internal/config` は `SettingsFile` を JSON から読み、環境変数を上書きし、`AppConfig` を作ります。`RequireGoogleSheetsConfig`、`RequireGoogleFitConfig`、`RequireAppleHealthConfig`、`RequireScaleExporterConfig` が source ごとの不足を明示します。先頭 `~` は home へ展開します。
 
-`"google_fit" | "apple_health_export" | "mixed"`
+`internal/auth` は Sheets の credentials descriptor と Google Fit OAuth を担当します。`RunGoogleFitAuth` は localhost callback の path/state/code を検証し、PKCE verifier で token exchange を行い、`SaveGoogleFitToken` で mode `0600` の JSON を保存します。
 
-### `MeasurementPeriod`
+## sources
 
-`"morning" | "evening"`。表示ラベルは `measurementPeriodLabels`（`morning: "朝"`, `evening: "夜"`）。
+| パッケージ | 主要 API | 契約 |
+| --- | --- | --- |
+| `sources/scaleexporter` | `ReadMeasurements`、`ReadStableInput` に渡す snapshot | 対象日 JSONL、ファイル分類、行番号つきエラー、source record ID |
+| `sources/applehealth` | `ReadMeasurements` | `export.xml` を streaming 解析し対象 Record を正規化 |
+| `sources/googlefit` | `ReadMeasurements`、`ReadMeasurementsWithHTTPClient` | OAuth token、data source/dataset pagination、optional temperature |
 
-### `MeasurementReading`
+Google Fit の data type は `com.google.weight`、`com.google.body.temperature`、`com.google.blood_pressure`、`com.google.heart_rate.bpm` です。data point は end timestamp（無ければ start timestamp）で正規化します。
 
-単一測定値。`kind`, `value`, `unit`, `measuredAt`（ISO8601）, `source`（`mixed`を除く）, 任意の`sourceRecordId`。
+## service / sheets
 
-### `LatestMeasurementSet`
+`internal/service` は period window (`05:00–12:00` / `20:00–23:30`)、完全一致 dedup、cross-source dedup、weight anchor、`TransferLatestMeasurementSet` を提供します。
 
-1回の同期処理で採用された正規化済み最新値セット。`period`, `capturedAt`, `source`, 各項目（optional number）, `sourcesByKind`（kindごとの採用source）。
+`internal/sheets/adapter.go` は header mapping、日付行探索、A1 column mapping、値の batch update を担当します。`internal/sheets/google_client.go` は公式 Sheets client の `Values.Get` と `Values.BatchUpdate` を `sheets.Client` へ適合させ、`USER_ENTERED` と `TotalUpdatedCells` を使います。読み取りから書き込み完了確認までの deadline は 30 秒です。
 
-### `SpreadsheetRow`
+## pipeline
 
-書き込み直前の表示用モデル。`date`, `time`, `periodLabel`, 各測定値（`number | ""`）, `source`。
+`internal/pipeline` の主要型は次の通りです。
 
-### 主要関数
+- `StableInputSnapshot`: 対象日の読み込み結果、matched file/read line counts、anomaly candidates
+- `PipelineStatusDocument`: schema/definitions、period 別 active run・terminal・health
+- `AtomicPipelineStatusWriter`: 一時ファイル + rename、mode `0600`
+- `RunOptions` / `Run`: running status → stable input → window/dedup → transfer → terminal status
+- `MacOSNotifier`: health transition のみ `osascript` へ通知し、通知失敗で transfer 結果を覆さない
 
-- `latestByKind(readings)` — kindごとに`measuredAt`が最も新しいreadingを選ぶ`Map`を返す。
-- `selectWeightByPeriod(readings, period)` — 朝は最も早い、夜は最も遅い体重readingを選ぶ。
-- `selectReadingsByWeightAnchor(readings, period)` — 体重を選んだ上で、他kindは体重の`measuredAt`に最も近いものを選ぶ`Map`を返す。体重が選べない場合は空`Map`。
+体重が無いときは transfer callback を呼ばず `completed:no-data` を記録します。入力欠落・不正・不安定は原因別 `failed:*` outcome と件数を記録します。
 
-## config（`src/config/`）
+## scheduler
 
-### `settings.ts`
+`internal/scheduler.AcquireRunLease` は macOS の physical config path から `/tmp/scale2sheet-<uid>-<hash>` を決め、`active-run.lock` を `O_CREAT|O_RDWR|O_EXLOCK|O_NONBLOCK|O_NOFOLLOW` で開きます。所有 receipt、Unix socket、cooperative stop request を mode `0600` で管理し、SIGKILL 後は次の process が stale receipt を回収します。
 
-- `expandHomePath(value)` — 先頭`~`をホームディレクトリへ展開。
-- `defaultSettingsPath` = `~/.config/scale2sheet/settings.json`。
-- `SettingsFile`（zodスキーマ、kebab-caseキー、`.passthrough()`で未知キー許容）。
-- `loadOrCreateSettings(settingsPath?)` — ファイル不存在なら`defaultSettingsContent`で自動生成して返す。存在すればパースし、不正なら`ConfigError`。
-- `loadGoogleFitCredentials(configDir)` — `google-fit-credentials.json`（snake_caseキー）を読み、`{clientId, clientSecret, redirectUri?}`へ変換。ファイル不存在時は`undefined`。
+`RunServe` は5フィールド cron を毎分評価し、morning/evening の runner を呼びます。SIGTERM/SIGINT は context cancellation へ変換します。
 
-### `env.ts`
+## installation
 
-- `envSchema`（zod） — 環境変数を検証・既定値補完。空文字は未設定扱い。
-- `settingsAsEnvOverlay(settings)` — `settings.json`の値を環境変数名にマッピングした overlay object を作る（環境変数のほうが優先されるよう、環境変数を後からmergeする）。
-- `AppConfig` — `timeZone`, `defaultSource`, `googleFit?`, `googleSheets?`, `appleHealth?`, `scaleExporter`, `scheduler`。
-- `loadConfig(env?, options?)` — settings.json読込 → overlay構築 → 環境変数で上書き → zod parse → 各種`*Config`をoptionalに組み立てる。`options.settingsPath: null`でsettings層を無効化（テスト用）。
-- `requireGoogleFitConfig` / `requireGoogleSheetsConfig` / `requireAppleHealthConfig` — 該当設定が無ければ`ConfigError`をthrow。
+`internal/installation` は `ResolvePaths`、`PlanInstall`、`PlanUninstall`、`ApplyOperations`、`LaunchdReady`、manifest read/write、plist rendering を提供します。
 
-## sources（`src/sources/`）
+- prefix は home、`/`、`/usr`、`/bin`、`/sbin`、`/etc`、`/System`、`/Library` を拒否
+- binary は temporary file へ copy して rename
+- install --launchd は settings/source/auth と run lease を事前確認
+- uninstall は settings、auth、logs を残し、manifest が管理する binary/plist を削除
+- manifest は installing → installed → uninstalling の legal transition を検証
 
-### `types.ts`
+## CLI 配線
 
-- `MeasurementSourceOption` = `"scale-exporter" | "google-fit" | "apple-health"`。
-- `MeasurementSourceReader` インターフェース — `source`, `readLatestMeasurements(referenceTime)`。
-- `sourceOptionToMeasurementSource(source)` — `google-fit`/`apple-health`をdomainの`MeasurementSource`へ変換。
+`cmd/scale2sheet/main.go` は `cli.Parse` と `cli.Run` だけを行います。`internal/cli` が config、source、service、sheets、pipeline、scheduler、installation を組み立てます。`ArgumentError` は exit `2`、その他の error は exit `1`、help/version と正常 no-data は exit `0` です。
 
-### `scale-exporter/reader.ts`
-
-- `exporterKindToDomainKind` / `exporterSourceToDomainSource` — exporter側の命名からdomainへの変換テーブル。
-- `readingLineSchema`（zod） — JSONL 1行の検証スキーマ。
-- `fileNamePattern` — `scale_exporter_{date}_{apple-health|google-fit}_{seq}.jsonl`。
-- `readScaleExporterMeasurements(config, referenceTime, timeZone)` — 対象日のファイル一覧を取得し、行ごとにparse、`(measuredAt,kind,value,source)`で重複除去して返す。ディレクトリ不存在（`ENOENT`）は空配列。
-- `ScaleExporterFileError` — 不正JSON・スキーマ違反時、ファイル名と行番号を含めてthrowする。
-
-### `google-fit/`, `apple-health/`
-
-Google Fit REST client（`client.ts`）とApple Health XML parser（`parser.ts`）。非推奨経路のため詳細割愛（既存実装のまま）。
-
-## service（`src/service/measurements.ts`）
-
-- `collectLatestMeasurementSet(options)` — sourceから読込 → 期間ウィンドウでフィルタ → `buildLatestMeasurementSet`で体重アンカー選択・集約。
-- `syncMeasurements(options)` — `collectLatestMeasurementSet`実行 → 体重値が無ければ何もせず`undefined`を返す → `SpreadsheetRow`へ変換 → `updateSpreadsheetMeasurements`呼び出し。
-- `filterReadingsByPeriodWindow` / `isReadingInPeriodWindow` — `measurementPeriodWindowMinutes`（朝 05:00-12:00＝300-720分、夜 20:00-23:30＝1200-1410分）でフィルタ。
-- `buildLatestMeasurementSet` — `selectReadingsByWeightAnchor`の結果からsource集合を作り、単一sourceなら採用、複数なら`mixed`。
-- `determineMeasurementPeriod(referenceTime, timeZone)` — `--period`未指定時、12時を境に朝/夜を自動判定（`serve`では両cronで明示指定するため主にテスト・フォールバック用）。
-- `toSpreadsheetRow` — `capturedAt`をtimeZoneへ変換し、`date`/`time`/`periodLabel`等を組み立てる。
-- `readLatestMeasurementsForSource` — sourceに応じて`readScaleExporterMeasurements` / `readGoogleFitMeasurements` / `readAppleHealthMeasurements`を呼び分ける。
-
-## sheets（`src/sheets/adapter.ts`）
-
-- `buildSheetColumnMapping(headerRow)` — ヘッダ行から`月日`列インデックスと朝/夜×5項目の列インデックスを構築。`月日`列が無ければthrow。
-- `detectMeasurementField(header)` — ヘッダ文字列から`weight`/`temperature`/`systolicBP`/`diastolicBP`/`heartRate`を判定（`血圧上`/`血圧(上)`等の表記ゆれに対応）。
-- `findTodayRowNumber(dateColumnValues, targetDate)` / `doesSheetDateMatch` / `parseSheetDate` — `月日`列の値（`YYYY-MM-DD`, `YYYY/MM/DD`, `M/D`, `M月D日`）から当日行を特定。
-- `buildMeasurementUpdateData` — `LatestMeasurementSet`とマッピングから`batchUpdate`用の`{range, values}[]`を構築。値未定義または対応列なしはskip。
-- `columnIndexToA1(index)` — 0始まり列indexをA1記法の列名へ変換。
-- `updateSpreadsheetMeasurements(options)` — ヘッダ取得→マッピング構築→`月日`列取得→当日行特定→更新データ構築→`batchUpdate`実行。当日行が無い、または対応する値が1つも無ければ書き込まず`false`を返す。
-
-## scheduler（`src/scheduler/scheduler.ts`）
-
-- `startScheduler({config, source, logger?})` — `node-cron`で`morning-cron`/`evening-cron`を登録し、各発火時に`syncMeasurements`を呼ぶ。エラーは`logger.error`でcatchし、プロセスを落とさない。
-
-## cli（`src/cli/index.ts`）
-
-- `runCli(argv?)` — commanderで`auth` / `run --period --source --date` / `serve --source`を定義。
-- `parsePeriod` / `parseSource` / `parseDateOption` — 引数バリデーション（不正値は`InvalidArgumentError`）。
-- `referenceTimeForDate(value, timeZone)` — `--date`指定時、その日の`endOf("day")`を`referenceTime`として使う（当日フィルタが日中どの時刻でも同じ日を拾えるようにするため）。
-- `ConfigError`はcatchしてメッセージのみ出力・exit code 1、それ以外は再throw。
-
-## エラー型
-
-| 型 | 発生箇所 |
-| --- | --- |
-| `ConfigError`（`config/settings.ts`） | 設定・認証情報の不備 |
-| `ScaleExporterFileError`（`sources/scale-exporter/reader.ts`） | scale_exporter出力行の不正 |
-| （sheets側は`Error`をそのままthrow） | `月日`列欠如、列index範囲外 |
-
-## 並行性
-
-CLIの`run`は単発実行、`serve`は`node-cron`によるシングルプロセス内スケジューリングのみ。並行実行の排他制御は現状不要（1日2回、cron発火のたびに逐次awaitする設計）。
-
-## テスト容易性
-
-`test/`配下は`src/`の各モジュールに1:1対応（`domain`, `config`, `service`, `sheets`, `scale-exporter`, `apple-health`, `cli`）。`loadConfig`は`options.settingsPath: null`でsettings.json層を無効化でき、環境変数のみでのテストが可能。
+```mermaid
+flowchart TD
+  M["cmd/scale2sheet/main.go"] --> P["cli.Parse"]
+  P --> R["cli.Run"]
+  R --> CFG["config.Load"]
+  R --> SRC["source reader"]
+  SRC --> SVC["service"]
+  SVC --> SH["sheets.Client"]
+  R --> PIPE["pipeline.Run"]
+  R --> INST["installation"]
+  R --> AUTH["auth.RunGoogleFitAuth"]
+```

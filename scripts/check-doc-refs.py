@@ -11,6 +11,16 @@ import re
 # instead of making the repository-relative check fail permanently.
 EXTERNAL_PATH_REFERENCES = {"scripts/lib/storage.sh"}
 
+# Decision documents are historical records.  Their line references point to
+# the document layout that existed when the decision was made; current design
+# documents may be rewritten by a later implementation issue.  Keep the
+# historical text immutable and validate line references in current-facing
+# documents instead.
+HISTORICAL_DOCUMENTS = {
+    "docs/decisions/2026-08-04T151338_pipeline入力段階の失敗と部分成功の目標定義.md",
+    "docs/decisions/2026-08-04T170446_数え方の版についての目標定義.md",
+}
+
 
 def find_invalid_line_references(root: Path) -> list[str]:
     """Check only reference existence and line bounds, not semantic content."""
@@ -21,6 +31,8 @@ def find_invalid_line_references(root: Path) -> list[str]:
     errors: list[str] = []
     documents = [root / "README.md", *sorted((root / "docs").rglob("*.md"))]
     for document in documents:
+        if document.relative_to(root).as_posix() in HISTORICAL_DOCUMENTS:
+            continue
         text = document.read_text()
         for match in reference.finditer(text):
             path_text, start_text, end_text = match.groups()

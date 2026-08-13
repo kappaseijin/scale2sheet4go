@@ -1,7 +1,7 @@
 ---
 type: Design
 title: scale2sheet — 外部設計
-description: scale2sheet の CLI、設定ファイル、入出力、エラー仕様を定義する。
+description: scale2sheet Go CLI のコマンド、設定、入出力、エラー仕様を定義する。
 tags:
   - design
   - external
@@ -12,159 +12,105 @@ timestamp: "2026-07-29T09:05:20+09:00"
 
 # scale2sheet — 外部設計
 
-正式な配布・運用形態は `bun build --compile` で生成する単体バイナリ `scale2sheet`。開発・型検査・ユニットテストは Node.js ツールチェインを維持する。
+## 実装状態
+
+製品の実装・配布物・既定の検証経路は Go です。`CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet` で単一バイナリを作成します。旧 TypeScript/Bun 経路は比較用の履歴であり、製品の利用手順ではありません。
 
 ## CLI
 
 ```text
+scale2sheet auth
+scale2sheet doctor
+scale2sheet install [--prefix <dir>] [--launchd] [--dry-run]
+scale2sheet pipeline --period <morning|evening> [--date <YYYY-MM-DD>]
 scale2sheet run --period <morning|evening> [--source <source>] [--date <YYYY-MM-DD>]
 scale2sheet serve [--source <source>]
-scale2sheet auth
+scale2sheet uninstall [--prefix <dir>] [--dry-run]
 ```
 
-## オプション
+共通の `--help` / `--version` も利用できます。
 
-| オプション | サブコマンド | 必須 | 説明 |
-| --- | --- | --- | --- |
-| `--period <morning\|evening>` | `run` | 必須 | 対象期間 |
-| `--source <scale-exporter\|google-fit\|apple-health>` | `run`, `serve` | 任意 | 省略時は `settings.json` の `source`（既定 `scale-exporter`） |
-| `--date <YYYY-MM-DD>` | `run` | 任意 | 過去日転記用。省略時は当日（`TIME_ZONE`基準） |
+| オプション | コマンド | 説明 |
+| --- | --- | --- |
+| `--period <morning\|evening>` | `run`, `pipeline` | 対象期間。必須 |
+| `--source <scale-exporter\|google-fit\|apple-health>` | `run`, `serve` | 入力ソース。省略時は設定値 |
+| `--date <YYYY-MM-DD>` | `run`, `pipeline` | 対象日。省略時は設定 timezone の当日 |
+| `--prefix <dir>` | `install`, `uninstall` | バイナリ配置ルート。既定 `~/.local` |
+| `--launchd` | `install` | launchd plist を生成・登録 |
+| `--dry-run` | `install`, `uninstall` | 変更せず操作計画を表示 |
 
-`auth` は Google Fit の installed app OAuth フロー（PKCE S256 + state 検証、localhost リダイレクト）を実行し、トークンをパーミッション `600` で保存する。
+構文・値のエラーは終了コード `2`、設定・入力・認証・外部 API・転記・lease の実行時エラーは `1`、正常終了は `0` です。`pipeline` の no-data は `0` です。
 
-## 実行環境
-
-- 配布・運用の第一選択は Bun コンパイル済みバイナリ `./dist/scale2sheet`
-- 開発・デバッグ時は `npm run build:node && node dist/index.js` も利用可
-- CLI 名は `scale2sheet`。npm パッケージ名は `cale2sheet`
+`auth` は Google Fit の installed-app OAuth（state と PKCE S256 を使用する localhost callback）を実行し、token を mode `0600` で保存します。
 
 ## 設定ファイル
 
-### パス
-
-`~/.config/scale2sheet/settings.json`（非シークレット・初回実行時に自動生成）
-
-### 自動生成内容
+設定ファイルは `~/.config/scale2sheet/settings.json` です。存在しない場合は初回読込時に作成されます。解決順序は環境変数 > `settings.json` > 組み込み既定値です。
 
 ```json
 {
   "time-zone": "Asia/Tokyo",
   "source": "scale-exporter",
+  "sheet-id": "<Spreadsheet ID>",
   "sheet-name": "体温・血圧",
   "sheets-credentials": "~/.config/scale2sheet/google-sheets-service-account.json",
   "scale-exporter-output-dir": "/path/to/scale-exporter-output",
-  "google-fit-token-path": "~/.config/scale2sheet/google-fit-token.json",
   "morning-cron": "0 7 * * *",
   "evening-cron": "0 21 * * *"
 }
 ```
 
-### スキーマ（キーは scale_exporter と同じ kebab-case）
-
-| キー | 型 | 説明 |
+| キー | 型 | 内容 |
 | --- | --- | --- |
-| `time-zone` | string | IANA timezone |
-| `source` | `scale-exporter` \| `google-fit` \| `apple-health` | `--source` 省略時の既定値 |
-| `sheet-id` | string | Spreadsheet ID |
-| `sheet-name` | string | シート名 |
-| `sheets-credentials` | string(path) | Google Sheetsサービスアカウント鍵のパス |
-| `scale-exporter-output-dir` | string(path) | scale_exporter出力ディレクトリ |
-| `apple-health-export-xml` | string(path) | Apple Health `export.xml` のパス |
-| `google-fit-token-path` | string(path) | Google Fitトークン保存先 |
-| `google-fit-lookback-days` | number | Google Fit直接取得時の遡及日数 |
-| `morning-cron` / `evening-cron` | string(cron式) | `serve`時の実行時刻 |
+| `time-zone` | string | IANA timezone。既定 `Asia/Tokyo` |
+| `source` | enum | `scale-exporter` / `google-fit` / `apple-health`。既定 `scale-exporter` |
+| `sheet-id` | string | 転記先 Spreadsheet ID。必須 |
+| `sheet-name` | string | 対象シート名。既定 `体温・血圧` |
+| `sheets-credentials` | path | Sheets service-account JSON。必須 |
+| `scale-exporter-output-dir` | path | 分割 JSONL の入力フォルダ。scale-exporter 時に必須 |
+| `apple-health-export-xml` | path | Apple Health `export.xml`。apple-health 時に必須 |
+| `google-fit-client-id` / `google-fit-client-secret` | string | Google Fit OAuth client。google-fit 時に必須 |
+| `google-fit-redirect-uri` | URI | OAuth callback。既定 `http://localhost:3000/oauth2callback` |
+| `google-fit-token-path` | path | OAuth token。既定 `~/.config/scale2sheet/google-fit-token.json` |
+| `google-fit-lookback-days` | positive integer | Google Fit の検索期間。既定 `14` |
+| `morning-cron` / `evening-cron` | cron | `serve` の実行時刻。既定 `0 7 * * *` / `0 21 * * *` |
 
-パス値の先頭`~`は展開する。
+対応する環境変数は `TIME_ZONE`、`SCALE_EXPORTER_OUTPUT_DIR`、`APPLE_HEALTH_EXPORT_XML`、`GOOGLE_SHEET_ID`、`GOOGLE_SHEET_NAME`、`GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_FIT_CLIENT_ID`、`GOOGLE_FIT_CLIENT_SECRET`、`GOOGLE_FIT_REDIRECT_URI`、`GOOGLE_FIT_TOKEN_PATH`、`GOOGLE_FIT_LOOKBACK_DAYS`、`MORNING_CRON`、`EVENING_CRON` です。
 
-### 環境変数による上書き（`.env`含む）
+## 認証ファイル
 
-優先順位: 環境変数 > `settings.json` > 組み込み既定値。変数名は `.env.example` を参照（`TIME_ZONE`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_NAME`, `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_FIT_CLIENT_ID`, `GOOGLE_FIT_CLIENT_SECRET`, `GOOGLE_FIT_REDIRECT_URI`, `GOOGLE_FIT_TOKEN_PATH`, `GOOGLE_FIT_LOOKBACK_DAYS`, `APPLE_HEALTH_EXPORT_XML`, `SCALE_EXPORTER_OUTPUT_DIR`, `MORNING_CRON`, `EVENING_CRON`)。
-
-## 認証・クレデンシャルファイル
-
-| ファイル | 内容 | 生成方法 |
-| --- | --- | --- |
-| `~/.config/scale2sheet/google-sheets-service-account.json` | Google Sheets用サービスアカウント鍵 | 手動配置（`sheets-credentials`で場所変更可） |
-| `~/.config/scale2sheet/google-fit-credentials.json` | `{"client_id","client_secret","redirect_uri"?}`（scale_exporterと同形式） | 手動配置 |
-| `~/.config/scale2sheet/google-fit-token.json` | Google Fit OAuthトークン | `scale2sheet auth`で自動生成 |
-
-## scale_exporter 入力仕様
-
-### 読み込み先
-
-`SCALE_EXPORTER_OUTPUT_DIR` または `settings.json` の `scale-exporter-output-dir` で指定する入力フォルダ。実効値は、環境変数 > `settings.json` > 組み込み既定値の順で解決する。
-
-### 対象ファイル
-
-`scale_exporter_{YYYY-MM-DD}_{apple-health|google-fit}_{seq}.jsonl`。対象日は `--date`（または当日）を`TIME_ZONE`で解釈した日付。両ソース・全連番（`_001`以降すべて）を読む。
-
-### 行形式
-
-```json
-{"measuredAt": "ISO8601", "kind": "weight|bodyTemperature|bloodPressureSystolic|bloodPressureDiastolic|heartRate", "value": number, "unit": "kg|celsius|mmHg|bpm", "source": "apple_health|google_fit"}
-```
-
-### 変換規則
-
-| exporter kind | domain kind |
+| ファイル | 内容 |
 | --- | --- |
-| `weight` | `weight` |
-| `bodyTemperature` | `body_temperature` |
-| `bloodPressureSystolic` | `blood_pressure_systolic` |
-| `bloodPressureDiastolic` | `blood_pressure_diastolic` |
-| `heartRate` | `pulse` |
+| `google-sheets-service-account.json` | Google Sheets API の service-account key |
+| `google-fit-credentials.json` | `client_id`、`client_secret`、任意の `redirect_uri` |
+| `google-fit-token.json` | `scale2sheet auth` が保存する OAuth token |
 
-`apple_health` → `apple_health_export`、`google_fit` → `google_fit`（domain source）。
+秘密情報は設定ファイルやリポジトリへ埋め込まず、ファイル権限を owner-only にしてください。Sheets のサービスアカウントを対象 Spreadsheet へ共有する必要があります。
 
-## 日付・時間帯仕様
+## 入力と転記
 
-朝は `05:00`–`12:00`、夜は `20:00`–`23:30`（`TIME_ZONE`基準）。対象時間帯に測定値がない場合、Spreadsheetは更新せず正常終了する。
+scale-exporter の対象ファイル名は `scale_exporter_{YYYY-MM-DD}_{apple-health|google-fit}_{seq}.jsonl` です。対象日を timezone で選び、安定性を確認してから読み込みます。朝の対象時間帯は `05:00–12:00`、夜は `20:00–23:30` です。体重を必須アンカーとし、体重が無い期間は Spreadsheet を更新しません。
 
-## Spreadsheet 書き込み仕様
+Apple Health は `export.xml` から対象 Record を読み込みます。Google Fit は公式 Go client の Fitness API で data source と dataset を読み込みます。体温 data type が未提供のときは optional 欠測として継続します。
 
-- `月日`列で当日行を検索し、`朝*`または`夜*`列へ書き込む。行の自動作成はしない。
-- 列: `月日 | 朝体重 | 朝体温 | 朝血圧上 | 朝血圧下 | 朝脈拍 | 夜体重 | 夜体温 | 夜血圧上 | 夜血圧下 | 夜脈拍`
-- 血圧の列名は `血圧上`/`血圧下` と `血圧(上)`/`血圧(下)` の両表記を認識する。
-- `月日`列の値は `YYYY-MM-DD` / `YYYY/MM/DD` / `M/D` / `M月D日` を認識する。
+Spreadsheet は1行目の `月日` 列から対象日の既存行を探し、朝/夜の体重、体温、血圧上/下、脈拍の対応セルだけを batch update します。当日行は自動作成しません。
 
-## 終了コード
+## 実行状態と配置
 
-| コード | 意味 |
+| パス | 用途 |
 | --- | --- |
-| 0 | 正常終了（転記あり・なし双方を含む） |
-| 非0 | 引数エラー、設定ファイル不正、認証情報不足、scale_exporter出力の不正行 |
+| `~/.config/scale2sheet/pipeline-status.json` | 期間別の running/terminal outcome、件数、health |
+| `~/.config/scale2sheet/active-run.json` | 実行中 lease の診断情報 |
+| `/tmp/scale2sheet-<uid>-<namespace>/active-run.lock` | Darwin `O_EXLOCK` 排他 lock |
+| `~/.local/bin/scale2sheet` | 既定の install 先 |
+| `~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.*.plist` | launchd 登録 |
+| `~/Library/Logs/scale-pipeline/` | launchd 標準出力・エラー |
 
-## エラー出力
+status と認証情報は atomic 更新・owner-only permissions を使用します。Google Sheets の操作全体には 30 秒の期限があります。期限超過時は `failed:transfer` として記録し、自動再試行は行いません。
 
-`ConfigError`（設定・認証不足）は `console.error` にメッセージのみ出力し、exit code 1 で終了する。それ以外の例外は再throwする。
+## 関連設計
 
-## エラー一覧
-
-| エラー | 発生条件 |
-| --- | --- |
-| `invalid settings file` | `settings.json` のJSON構文エラーまたはスキーマ違反 |
-| `invalid credentials file` | クレデンシャルJSONの構文エラーまたはスキーマ違反 |
-| `Google Fit requires client credentials` | Google Fitソース使用時にclient_id/secret未設定 |
-| `Google Sheets requires credentials` | Sheets書き込み時に認証情報未設定 |
-| `Apple Health requires apple-health-export-xml` | Apple Healthソース使用時にexport.xml未設定 |
-| `Sheet header must contain a "月日" column` | シートヘッダに`月日`列がない |
-| `invalid JSON in <file>:<line>` / `invalid reading in <file>:<line>` | scale_exporter出力行の不正 |
-
-## 利用例
-
-```sh
-# scale_exporter出力から朝の値を転記
-./dist/scale2sheet run --period morning
-
-# 過去日を指定して手動転記
-./dist/scale2sheet run --period evening --date 2026-06-27
-
-# Google Fitから直接取得（非推奨）
-./dist/scale2sheet run --period morning --source google-fit
-
-# 常駐実行
-./dist/scale2sheet serve
-
-# Google Fit初回認証
-./dist/scale2sheet auth
-```
+- [README.md](../README.md): 利用者向けの自己完結した手順
+- [ARCHITECTURE_DESIGN.md](./ARCHITECTURE_DESIGN.md): Go パッケージ構成
+- [INTERNAL_DESIGN.md](./INTERNAL_DESIGN.md): 内部型と主要関数
+- [INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md): install/uninstall/launchd

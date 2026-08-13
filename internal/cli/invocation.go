@@ -37,8 +37,14 @@ type Invocation struct {
 	Period  Period
 	Source  Source
 	Date    string
+	Prefix  string
 	DryRun  bool
 	Launchd bool
+	Force   bool
+	Purge   bool
+	Wipe    bool
+	Archive string
+	Yes     bool
 	Help    bool
 	Version bool
 }
@@ -122,6 +128,28 @@ func Parse(args []string) (Invocation, error) {
 			invocation.DryRun = true
 		case "--launchd":
 			invocation.Launchd = true
+		case "--force":
+			invocation.Force = true
+		case "--purge":
+			invocation.Purge = true
+		case "--wipe":
+			invocation.Wipe = true
+		case "--yes":
+			invocation.Yes = true
+		case "--prefix":
+			value, next, err := optionValue(args, i, "prefix")
+			if err != nil {
+				return Invocation{}, err
+			}
+			i = next
+			invocation.Prefix = value
+		case "--archive":
+			value, next, err := optionValue(args, i, "archive")
+			if err != nil {
+				return Invocation{}, err
+			}
+			i = next
+			invocation.Archive = value
 		default:
 			if len(arg) > 0 && arg[0] == '-' {
 				return Invocation{}, argumentError("unknown option")

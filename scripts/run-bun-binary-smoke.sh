@@ -10,21 +10,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# #168: fail loudly with install guidance rather than skipping if bun is
-# missing -- a skip would mean "the binary was not smoke-tested," not "the
-# binary behaved correctly" (Issue #126). Matches #128's guard.
-if ! command -v bun >/dev/null 2>&1; then
-  echo 'bun is required to run acceptance:bun-binary-smoke (part of `npm test`).' >&2
-  echo 'Install it with: curl -fsSL https://bun.sh/install | bash' >&2
-  echo 'Then restart your shell so `bun` is on PATH, and re-run `npm test`.' >&2
-  exit 1
-fi
-
-echo "Building Bun single-file executable..."
-(cd "$repo_root" && bun build ./src/index.ts --compile --outfile "$binary")
+echo "Building Go single-file executable..."
+(cd "$repo_root" && CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$binary" ./cmd/scale2sheet)
 
 if [ ! -x "$binary" ]; then
-  echo "Bun binary was not created or is not executable: $binary" >&2
+  echo "Go binary was not created or is not executable: $binary" >&2
   exit 1
 fi
 
@@ -158,4 +148,4 @@ run_case "valid-weight-missing-sheets-credentials" 1 "Google Sheets requires bot
   isolated_env "$valid_weight_home" "$valid_weight_output" \
   "$binary" run --period morning --source scale-exporter --date 2026-06-18
 
-echo "All Bun binary smoke cases passed."
+echo "All Go binary smoke cases passed."

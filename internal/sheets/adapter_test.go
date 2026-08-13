@@ -89,6 +89,19 @@ func TestBuildSheetColumnMappingRequiresDateHeader(t *testing.T) {
 	}
 }
 
+func TestBuildSheetColumnMappingTrimsPeriodPrefixByRune(t *testing.T) {
+	mapping, err := BuildSheetColumnMapping([]any{"月日", "朝 体重", "夜 体温"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mapping.Periods[domain.PeriodMorning][SheetFieldWeight]; got != 1 {
+		t.Fatalf("morning weight column = %d, want 1", got)
+	}
+	if got := mapping.Periods[domain.PeriodEvening][SheetFieldTemperature]; got != 2 {
+		t.Fatalf("evening temperature column = %d, want 2", got)
+	}
+}
+
 func TestFindTodayRowNumberSupportsDateFormats(t *testing.T) {
 	location := time.FixedZone("JST", 9*60*60)
 	target := time.Date(2026, 6, 18, 7, 0, 0, 0, location)

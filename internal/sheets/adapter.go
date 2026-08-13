@@ -108,6 +108,9 @@ func UpdateSpreadsheetMeasurements(ctx context.Context, client Client, input Upd
 	if client == nil {
 		return domain.TransferOutcome{}, errors.New("Google Sheets client is required")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	deadline := input.Deadline
 	if deadline <= 0 {
 		deadline = GoogleSheetsOperationDeadline
@@ -180,7 +183,7 @@ func UpdateSpreadsheetMeasurements(ctx context.Context, client Client, input Upd
 }
 
 func operationError(ctx context.Context, stage OperationStage, deadline time.Duration, err error) error {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
 		confirmation := WriteNotAttempted
 		if stage == StageBatchUpdate {
 			confirmation = WriteUnconfirmed
@@ -214,12 +217,12 @@ func BuildSheetColumnMapping(headerRow []any) (SheetColumnMapping, error) {
 	}
 	for index, header := range normalizedHeaders {
 		if strings.HasPrefix(header, "朝") {
-			if field, ok := detectMeasurementField(header[3:]); ok {
+			if field, ok := detectMeasurementField(strings.TrimPrefix(header, "朝")); ok {
 				mapping.Periods[domain.PeriodMorning][field] = index
 			}
 		}
 		if strings.HasPrefix(header, "夜") {
-			if field, ok := detectMeasurementField(header[3:]); ok {
+			if field, ok := detectMeasurementField(strings.TrimPrefix(header, "夜")); ok {
 				mapping.Periods[domain.PeriodEvening][field] = index
 			}
 		}

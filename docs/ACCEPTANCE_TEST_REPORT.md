@@ -292,3 +292,51 @@ rg -o --no-filename '^- \*\*AC-[0-9]+([^[:alnum:]]|$)' docs/decisions --glob '*.
 | AC-47 | Slice 2 | 自動 | `npx vitest run test/pipeline/status.test.ts` | 310b5bd | 2026-08-10T21:07:06+09:00 | status fields | PASS | v1 documentのperiod、terminal、counts/counters、health、atomic writeを構造でassert |
 | AC-48 | Slice 4 / 6 | 自動 | `npx vitest run test/installation/doctor.test.ts` | 310b5bd, 200c8e8 | 2026-08-10T08:04:29+09:00 | doctor build identifier / done・実転記・異常の経過日数 | PENDING | build/execution factsとdone/transfer/経過日数はfixtureで検査するが、実転記と異常継続日数は未検査（Issue #192） |
 | AC-49 | Slice 2 | 自動 | — | — | — | threshold notification distinction | PENDING | Slice 2 で判定 |
+
+## Issue #2 Go ポート現行検証（2026-08-13T14:11:24+09:00）
+
+この節は、Issue #2 の現行製品経路を Go バイナリで検証した結果である。旧 TypeScript/Bun の結果表は履歴として保持し、現行判定には使用しない。
+
+| 検証 | 実行 | 結果 |
+| --- | --- | --- |
+| Go unit/integration | `GOTOOLCHAIN=local CGO_ENABLED=0 go test ./...` | **PASS**（全 Go パッケージ） |
+| 静的検査 | `GOTOOLCHAIN=local go vet ./...` | **PASS** |
+| Pipeline shadow | `bash scripts/run-pipeline-shadow-acceptance.sh` | **PASS**（入力異常、terminal、SIGKILL lease 回収） |
+| Binary smoke | `bash scripts/run-bun-binary-smoke.sh` | **PASS**（実行体は Go。ファイル名は互換維持） |
+| Installer | `bash scripts/run-installer-acceptance.sh` | **PASS**（isolated HOME、dry-run、lease 中の無変更） |
+| Runtime safety | `bash scripts/run-runtime-safety-acceptance.sh` | **PASS**（2 プロセス競合、異常終了後再取得） |
+| Sheets deadline | `bash scripts/run-google-sheets-deadline-acceptance.sh` | **PASS**（blackhole 接続後 30.147826041997178 秒で `failed:transfer`、lease 再取得） |
+| Source/binary drift | `bash scripts/run-binary-source-drift-acceptance.sh` | **PASS**（fresh build、command-set、stale/empty source の負の制御） |
+| README 設定契約 | `node scripts/verify-readme-config-keys.mjs` | **PASS**（settings 14、環境変数 13） |
+| 文書参照 | `python3 scripts/check-doc-refs.py` | **PASS** |
+| AC 台帳 | `python3 scripts/check-ac-ledger.py` | **PASS** |
+
+Sheets deadline の実測は build `0.7622259159979876` 秒、startup `5.497204665996833` 秒、blackhole 接続後 deadline `30.147826041997178` 秒、terminal 後 lease 再取得 `10.101283208001405` 秒だった。
+
+### 未実施の手動試験
+
+実 Google Sheets への書き込みと実 Google Fit OAuth は、検証用 project、Spreadsheet、認証情報をこの作業環境へ用意していないため未実施である。偽のサービスアカウントと blackhole による自動試験で、認証欠落・期限・失敗 terminal の契約を検証した。secret / token / Spreadsheet ID は本レポートへ記録しない。
+
+### macOS toolchain の注意
+
+`CGO_ENABLED=1` の既定 `go test` は、現環境の Xcode 26.6 linker が test binary に `LC_UUID` を付けないため `dyld: missing LC_UUID load command` で起動できない。`CGO_ENABLED=0` では同じ Go テストが通過する。製品コードの cgo 依存ではないため、Issue #2 の再現可能な検証コマンドは cgo 無効に固定した。
+
+## Issue #2 Go 最終検証（2026-08-13T14:28:06+09:00）
+
+前節の検証後に追加した doctor、launchd readiness、nil context、lease owner token、Go acceptance script の変更を含め、Issue #2 の PR 作成直前に再実行した。
+
+| 検証 | 結果 |
+| --- | --- |
+| `gofmt` / `git diff --check` | **PASS** |
+| `GOTOOLCHAIN=local CGO_ENABLED=0 go test -count=1 ./...` | **PASS** |
+| `GOTOOLCHAIN=local go vet ./...` | **PASS** |
+| `npm test`（Go test wrapper） | **PASS** |
+| `npm run preflight:ac-ledger` | **PASS** |
+| `run-pipeline-shadow-acceptance.sh` | **PASS** |
+| `run-bun-binary-smoke.sh`（Go binary compatibility filename） | **PASS** |
+| `run-installer-acceptance.sh` | **PASS** |
+| `run-runtime-safety-acceptance.sh` | **PASS** |
+| `run-google-sheets-deadline-acceptance.sh` | **PASS**（deadline `30.130087708996143` 秒、terminal 後 lease 再取得 `10.10429254200426` 秒） |
+| `run-binary-source-drift-acceptance.sh` | **PASS**（fresh build と stale/empty source の負の制御） |
+
+実 Google API と OAuth を使う手動試験は、前節と同じく認証情報未提供のため未実施である。
