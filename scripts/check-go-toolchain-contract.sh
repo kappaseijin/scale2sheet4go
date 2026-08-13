@@ -30,11 +30,16 @@ done
 readme="$repo_root/README.md"
 for required in \
   'CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet' \
-  'go test ./...' \
-  'go vet ./...' \
   'gofmt -w'; do
   if ! grep -Fq "$required" "$readme"; then
     echo "FAIL: README does not document the direct Go command: $required" >&2
+    failed=1
+  fi
+done
+
+for command in test vet; do
+  if ! grep -Eq "go[[:space:]]+$command([[:space:]]+[^[:space:]]+)*[[:space:]]+\./\.\.\." "$readme"; then
+    echo "FAIL: README does not document a direct Go $command command over ./..." >&2
     failed=1
   fi
 done

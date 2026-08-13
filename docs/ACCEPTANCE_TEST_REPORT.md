@@ -3,7 +3,7 @@ type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）と AC 番号予約台帳
 timestamp: "2026-07-05T00:00:00+09:00"
-updated: "2026-08-11T21:40:13+09:00"
+updated: "2026-08-13T14:55:27+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
@@ -82,6 +82,38 @@ tags: [acceptance-test, scale2sheet]
 - AT-12（`--period`不正値のCLIレベル検証）はユニットテストの追加候補（`test/cli/index.test.ts`にcommanderのバリデーションを直接テストするケースを足す）。
 - AT-13（Spreadsheetに当日行がない場合に`undefined`を返すこと）もユニットテストの追加候補（`test/sheets/adapter.test.ts`の`findTodayRowNumber`に該当なしケースを足す）。
 - secret / token の実値はレポートに含めない。
+
+## Issue #5 Go 品質ゲートと CI 準備検証（2026-08-13）
+
+実行環境は `go version go1.22.0 darwin/arm64`、`GOTOOLCHAIN=local`、`GOOS=darwin`、`GOARCH=arm64` である。
+ローカルと CI の共通入口 `bash scripts/check-go-quality-gates.sh` は、次の全段階で PASS した。
+
+| 段階 | コマンド・結果 |
+| --- | --- |
+| 整形 | `gofmt -l cmd internal` が空。PASS |
+| 依存 checksum | `GOTOOLCHAIN=local go mod verify` → `all modules verified` |
+| テスト | `GOTOOLCHAIN=local CGO_ENABLED=0 go test -count=1 ./...` → 全パッケージ PASS |
+| 標準静的検査 | `GOTOOLCHAIN=local CGO_ENABLED=0 go vet ./...` → PASS |
+| 配布 build | `GOTOOLCHAIN=local CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet` → PASS |
+| 正本契約 | `bash scripts/check-go-toolchain-contract.sh` → PASS |
+
+一時コピーへ Go ファイルの末尾空白を追加した負の制御では、同じ checker が `gofmt` 段階で exit 1 となった。
+Staticcheck は `2023.1.7 (v0.4.7)` で exit 1、18 指摘を再現したため、今回の CI 必須ゲートには含めていない。
+
+既存の Go バイナリ acceptance と資料検査も実行した。
+
+| 検査 | 判定 |
+| --- | --- |
+| `bash scripts/run-bun-binary-smoke.sh` | PASS |
+| `bash scripts/run-pipeline-shadow-acceptance.sh` | PASS |
+| `bash scripts/run-installer-acceptance.sh` | PASS |
+| `bash scripts/run-runtime-safety-acceptance.sh` | PASS |
+| `bash scripts/run-google-sheets-deadline-acceptance.sh` | PASS（deadline `30.15612133400282` 秒、post lease 再取得 `10.092095957996207` 秒） |
+| `bash scripts/run-binary-source-drift-acceptance.sh` | PASS（stale/empty source の負の制御を含む） |
+| `node scripts/verify-readme-config-keys.mjs` | PASS（settings=14, env=13） |
+| `python3 scripts/check-doc-refs.py` | PASS |
+| `python3 scripts/check-ac-ledger.py` | PASS |
+| `git diff --check` | PASS |
 
 ## #280 Google Sheets 操作期限の回帰検証（2026-08-11）
 
