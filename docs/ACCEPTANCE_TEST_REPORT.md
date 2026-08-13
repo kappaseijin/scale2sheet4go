@@ -3,11 +3,15 @@ type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）と AC 番号予約台帳
 timestamp: "2026-07-05T00:00:00+09:00"
-updated: "2026-08-13T15:04:04+09:00"
+updated: "2026-08-13T16:32:13+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
 # scale2sheet — Acceptance Test Report
+
+> 2026-07-05 の TypeScript/Bun 実装時の記録は履歴である。現行 Go の判定は [Issue #13 現行 Go 受入マトリクス](#issue-13-現行-go-受入マトリクス2026-08-13) と対応する設計書を正本とする。旧記録の `PASS` / `COVERED_BY_AUTOMATED_TEST` は Go 版の合格根拠に再利用しない。
+
+## 旧 TypeScript/Bun 実装時の履歴（2026-07-05）
 
 - 実施日: 2026-07-05
 - 対象実装コミット: `6367113`（`feature/bun-priority-rename`）
@@ -82,6 +86,46 @@ tags: [acceptance-test, scale2sheet]
 - AT-12（`--period`不正値のCLIレベル検証）はユニットテストの追加候補（`test/cli/index.test.ts`にcommanderのバリデーションを直接テストするケースを足す）。
 - AT-13（Spreadsheetに当日行がない場合に`undefined`を返すこと）もユニットテストの追加候補（`test/sheets/adapter.test.ts`の`findTodayRowNumber`に該当なしケースを足す）。
 - secret / token の実値はレポートに含めない。
+
+## Issue #13 現行 Go 受入マトリクス（2026-08-13）
+
+対応表の正本は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md) である。AT-10a は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) の契約判断待ちであり、実 Google API の成功を隔離 fake で代替していない。
+
+| 分類 | AT | 件数 | 現行の意味 |
+| --- | --- | ---: | --- |
+| `AUTO_PASS` | AT-07〜AT-18（AT-10a を除く） | 12 | Go unit test または隔離 Go binary acceptance で再実行可能 |
+| `BLOCKED_EXTERNAL` | AT-01〜AT-06 | 6 | 専用 Google 検証環境、OAuth、実時刻観測が必要 |
+| `BLOCKED_DECISION` | AT-10a | 1 | A-0/A-1 の入力契約が未確定 |
+| 合計 | AT-01〜AT-18 + AT-10a | 19 | AT-10a は補助 ID のため 19 行 |
+
+### 現行 Go acceptance の実測
+
+実測終了: `2026-08-13T16:32:13+09:00`。実行コマンドは `bash scripts/run-go-acceptance-matrix.sh`。macOS 上で 8 本すべてが PASS した。
+
+| Script | 判定 | 主な検証 |
+| --- | --- | --- |
+| `run-pipeline-shadow-acceptance.sh` | PASS | compiled pipeline、入力欠落、SIGKILL 後の lease/status |
+| `run-google-sheets-deadline-acceptance.sh` | PASS | blackhole 接続、deadline 30.157 秒、`failed:transfer`、lease 再取得 |
+| `run-installer-acceptance.sh` | PASS | universal binary、隔離 HOME の install/uninstall、dry-run、lease 競合 |
+| `run-runtime-safety-acceptance.sh` | PASS | 2 プロセス lease 競合、異常終了後の再取得 |
+| `run-binary-source-drift-acceptance.sh` | PASS | fresh binary と Go source の command-set 一致、stale/empty negative control |
+| `run-bun-binary-smoke.sh` | PASS | 互換名 smoke。実体は Go binary の help/version/config/input 異常系 |
+| `run-macos-release-acceptance.sh` | PASS | universal release binary、plist、doctor、install/uninstall |
+| `run-macos-distribution-contract-acceptance.sh` | PASS | 署名・公証入力の dry-run、資格情報欠落、identity 不正、部分出力防止 |
+
+binary/source drift の出力にある `FAIL` は stale/empty fixture が期待どおり拒否された negative control であり、runner 全体は PASS である。実 Google Sheets の書き込み結果、Google Fit OAuth の完了、実時刻 `serve` trigger、AT-10a の契約はこの実測に含まれない。
+
+### 同一差分の quality/document gate
+
+実測終了: `2026-08-13T16:28:40+09:00`。
+
+| 検査 | 判定 |
+| --- | --- |
+| `bash scripts/check-go-quality-gates.sh` | PASS（gofmt、go mod verify、全 Go test、go vet、build、toolchain contract） |
+| `node scripts/verify-readme-config-keys.mjs` | PASS（settings=14、env=13） |
+| `python3 scripts/check-doc-refs.py` | PASS |
+| `python3 scripts/check-ac-ledger.py` | PASS（11 reservation rows、10 confirmed definitions） |
+| `git diff --check` | PASS |
 
 ## Issue #5 Go 品質ゲートと CI 準備検証（2026-08-13）
 

@@ -116,6 +116,12 @@ Issue #10 は Issue #6 の unsigned universal Go binary を、Developer ID Appli
 
 現環境には Developer ID Application identity と GitHub secrets が無いため、Apple notary service の正常系 submit/staple/Gatekeeper 実機検査は未実施である。credentials が投入されるまで Issue #10 は open のままとし、Apple Development/ad hoc での代用成功は認めない。
 
+### 現行 Go 受入マトリクス（Issue #13）
+
+Issue #13 では、旧 AT-01〜AT-18 の記録を現行 Go の証跡へ対応付け、`scripts/run-go-acceptance-matrix.sh` を自動試験の正本入口として追加する。現行の分類は `AUTO_PASS`、実 Google Sheets / Google Fit / 実時刻観測が必要な `BLOCKED_EXTERNAL`、契約未決定の `BLOCKED_DECISION` に分ける。隔離 fake、blackhole、偽 credential は実サービス成功の証拠にしない。
+
+対応表と設計判断は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md)、実測結果は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) を参照する。AT-10a の A-0/A-1 は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) で別途確定する。
+
 ---
 
 ## Git 管理ルール
@@ -175,7 +181,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.13 | Bunを優先実行環境にする・バイナリ名変更 | バイナリ名を`scale2sheet-bun`→`scale2sheet`へ変更、README/設計書をBun優先の書き方へ更新 | **計画中**（検討書: [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md)） |
 | Ph.14 | エージェント体制の派生命名への移行 | 7役割（pm/innovator/architect/programmer/reviewer×2/worker）を `<プロジェクト名>_<役割>_<ベンダー>` で登録、専用クローンと人格差分 AGENT.md を整備、兼任・プロジェクト跨ぎを解消。reviewer をベンダー別2名に分割しレビュー経路を閉じた（reviewer は 2026-08-03 の決定により 1 席へ統合） | **完了**（2026-07-28） |
 | Ph.15 | インストーラ／アンインストーラの整備 | インストール後の実行体をソースチェックアウトから独立させる（Ph.12 の未完了分の回収）。導入・撤収・診断の手段を提供し、launchd plist と run-pipeline.sh の絶対パス依存を解消する。あわせて `build` → `build:node` へ改名 | **Slice 1 完了（2026-08-02）・Slice 2 着地（PR #73）・Slice 3 着地（PR #139）・Slice 4 着地（PR #193 / #200 / #202、2026-08-10）**。Slice 1 実装根拠: src/version.ts、src/scheduler/run-lease.ts、src/installation/settings-read.ts、test/scheduler/run-lease.test.ts、test/cli/serve-lease.test.ts、scripts/run-runtime-safety-acceptance.sh。Slice 2 根拠: PR #73（input snapshot / pipeline CLI）。Slice 3 根拠: PR #139（install / 既定 uninstall / Task 1-8 実装、AC 骨格）。[目標定義](./decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md)、[INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md)、[実装分割](./decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md) |
-| Ph.16 | Go ポート（Issue #2） | 既存の scale2sheet 契約を `cmd/scale2sheet` と `internal/` へ移植し、Go 単一バイナリ・unit test・vet・acceptance harness・README を正式経路にする | **完了（2026-08-13、PR #7）**。`CGO_ENABLED=0 go test ./...`、`go vet ./...`、6 本の Go binary acceptance、README/文書/AC 台帳検査が PASS。旧 TypeScript 資産は比較履歴として保持し、既定経路からは参照しない |
+| Ph.16 | Go ポート（Issue #2） | 既存の scale2sheet 契約を `cmd/scale2sheet` と `internal/` へ移植し、Go 単一バイナリ・unit test・vet・acceptance harness・README を正式経路にする | **完了（2026-08-13、PR #7）**。`CGO_ENABLED=0 go test ./...`、`go vet ./...`、初期 6 本の Go binary acceptance、README/文書/AC 台帳検査が PASS。現行 8 本の一括証跡は Issue #13 で固定し、旧 TypeScript 資産は比較履歴として保持する |
 | Ph.17 | Go 正本ツールチェーン整理（Issue #4） | `go.mod` / `go.sum` と Go CLI を唯一の build/test/依存管理経路にし、package.json/package-lock と現行 Node fallback を除去する | **完了（2026-08-13、PR #8）**。旧 TypeScript 資産の削除、Go toolchain version policy、CI、本番 macOS 配布は別 Issue |
 | Ph.18 | Go 開発品質ゲートと CI（Issue #5） | ローカルと macOS GitHub Actions が同じ標準 Go 品質ゲートを実行する | **完了（2026-08-13、PR #9）**。Staticcheck、race、coverage の必須化は別 Issue |
 | Ph.19 | macOS 本番 artifact と LaunchAgent 運用（Issue #6） | universal Go binary、custom prefix doctor、per-user LaunchAgent、plist lint、状態確認、uninstall、README runbook | **完了（PR #11、2026-08-13）**。macOS CI の Go quality gates と universal artifact 検査が PASS。公開配布の署名・公証は Issue #10 |

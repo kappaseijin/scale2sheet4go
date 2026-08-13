@@ -300,16 +300,12 @@ Staticcheck は任意の追加検査であり、現時点の CI 合否には含�
 品質ゲート後に製品受け入れ検査を実行します。
 
 ```sh
-bash scripts/run-pipeline-shadow-acceptance.sh
-bash scripts/run-google-sheets-deadline-acceptance.sh
-bash scripts/run-installer-acceptance.sh
-bash scripts/run-runtime-safety-acceptance.sh
-bash scripts/run-binary-source-drift-acceptance.sh
-bash scripts/run-bun-binary-smoke.sh
-bash scripts/run-macos-distribution-contract-acceptance.sh
+bash scripts/run-go-acceptance-matrix.sh
 ```
 
-最後の smoke スクリプト名は既存呼び出しとの互換性のため残っていますが、実際にビルド・実行するのは Go バイナリです。
+この runner は macOS の隔離 fixture を使い、pipeline shadow、Sheets deadline、installer、runtime safety、binary/source drift、Go binary smoke、macOS release、macOS distribution contract の 8 本を順に実行します。各 child script は自分で Go バイナリを build し、実ユーザーの HOME、credential、Spreadsheet は使いません。個別 script は失敗箇所を調査するときに直接実行できます。
+
+`run-bun-binary-smoke.sh` という名前は既存呼び出しとの互換性のため残っていますが、実際に build・実行するのは Go バイナリです。
 
 ## 既知の制約
 

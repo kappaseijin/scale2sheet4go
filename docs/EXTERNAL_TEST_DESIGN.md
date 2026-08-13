@@ -14,6 +14,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 Issue #2 の対象は Go 実装とし、受け入れ試験は TypeScript のソース経路へフォールバックせず、`dist/scale2sheet` の単一バイナリを実行する。
 旧 AT-01〜AT-18 の番号は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) に履歴として残す。
+現行 Go と旧 AT の対応分類は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md) を参照する。
 
 ## 共通前提
 
@@ -36,6 +37,14 @@ flowchart LR
 
 ## 自動受け入れ試験
 
+全自動試験の正本入口は次である。
+
+```sh
+bash scripts/run-go-acceptance-matrix.sh
+```
+
+macOS の隔離 fixture を使い、各 child script が個別に Go binary を build する。実行には実 credential や実 Spreadsheet を渡さない。
+
 | 試験 | 実行コマンド | 主な契約 |
 | --- | --- | --- |
 | Pipeline shadow | `bash scripts/run-pipeline-shadow-acceptance.sh` | 安定 snapshot、入力欠落、失敗 terminal、SIGKILL 後の lease 回収 |
@@ -44,6 +53,8 @@ flowchart LR
 | Runtime safety | `bash scripts/run-runtime-safety-acceptance.sh` | 2 プロセス競合、EAGAIN/EWOULDBLOCK、異常終了後の再取得 |
 | Binary/source drift | `bash scripts/run-binary-source-drift-acceptance.sh` | バイナリのコマンド集合と Go source の集合一致、古い経路の負の制御 |
 | Binary smoke | `bash scripts/run-bun-binary-smoke.sh` | 互換名の smoke。実体は Go バイナリの help/version/config 異常系 |
+| macOS release | `bash scripts/run-macos-release-acceptance.sh` | universal binary、plist、doctor、install/uninstall |
+| macOS distribution contract | `bash scripts/run-macos-distribution-contract-acceptance.sh` | 署名・公証の資格情報境界と部分出力防止 |
 
 すべての acceptance script は、ビルドに失敗した場合や期待された負の制御が成立しない場合に non-zero で終了する。
 `run-bun-binary-smoke.sh` というファイル名は既存呼び出しとの互換性のために残しているだけで、Bun は実行しない。
