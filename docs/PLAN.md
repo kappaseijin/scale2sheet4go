@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-13T17:14:23+09:00（Issue #20 の GitHub 操作アカウント方針を反映）
+最終更新: 2026-08-13T17:28:29+09:00（Issue #14 の Go 入力異常ポリシー決定準備を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -134,7 +134,7 @@ Issue #10 は Issue #6 の unsigned universal Go binary を、Developer ID Appli
 
 Issue #13 では、旧 AT-01〜AT-18 の記録を現行 Go の証跡へ対応付け、`scripts/run-go-acceptance-matrix.sh` を自動試験の正本入口として追加する。現行の分類は `AUTO_PASS`、実 Google Sheets / Google Fit / 実時刻観測が必要な `BLOCKED_EXTERNAL`、契約未決定の `BLOCKED_DECISION` に分ける。隔離 fake、blackhole、偽 credential は実サービス成功の証拠にしない。
 
-対応表と設計判断は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md)、実測結果は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) を参照する。AT-10a の A-0/A-1 は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) で別途確定する。
+対応表と設計判断は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md)、実測結果は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) を参照する。AT-10a の A-0/A-1 は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) と [Go版入力異常ポリシー決定準備書](./superpowers/specs/2026-08-13-go-input-policy-decision-brief.md) で別途確定する。
 
 ### 現行 Go 外部受入境界（Issue #18）
 
