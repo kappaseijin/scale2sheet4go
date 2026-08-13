@@ -3,7 +3,7 @@ type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）と AC 番号予約台帳
 timestamp: "2026-07-05T00:00:00+09:00"
-updated: "2026-08-13T16:32:13+09:00"
+updated: "2026-08-13T16:59:15+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
@@ -97,6 +97,22 @@ tags: [acceptance-test, scale2sheet]
 | `BLOCKED_EXTERNAL` | AT-01〜AT-06 | 6 | 専用 Google 検証環境、OAuth、実時刻観測が必要 |
 | `BLOCKED_DECISION` | AT-10a | 1 | A-0/A-1 の入力契約が未確定 |
 | 合計 | AT-01〜AT-18 + AT-10a | 19 | AT-10a は補助 ID のため 19 行 |
+
+### Issue #18 実 Google 外部受入 runner の実測
+
+Issue #18 で `scripts/run-google-external-acceptance.sh` と、その隔離境界の契約テスト `scripts/test-google-external-acceptance.sh` を追加した。契約テストは 2026-08-13 に macOS 上で PASS した。
+
+実測終了: `2026-08-13T16:59:15+09:00`。
+
+| 検査 | 判定 | 内容 |
+| --- | --- | --- |
+| `bash scripts/test-google-external-acceptance.sh` | PASS | opt-in 不足、current HOME、fixture Spreadsheet ID、credential mode、child 引数、raw child secret 非露出を検証 |
+| `bash scripts/check-go-quality-gates.sh` | PASS | gofmt、go mod verify、Go test、go vet、build、toolchain contract |
+| `bash scripts/run-go-acceptance-matrix.sh` | PASS | 現行 Go acceptance 8 scripts |
+| README／docs／AC 検査 | PASS | `verify-readme-config-keys.mjs`、`check-doc-refs.py`、`check-ac-ledger.py`、`git diff --check` |
+| 実 Google AT-01〜AT-06 | **BLOCKED_EXTERNAL** | 専用 Google project／Spreadsheet／OAuth credentials と手動観測が未提供 |
+
+runner の `PASS` は command boundary、token mode、serve lease 回収などのローカル判定だけを示す。Spreadsheet の対象セル、Google Fit の実データ、`serve` の cron callback を確認するまで、AT-01〜AT-06 の最終判定は `BLOCKED_EXTERNAL` または `OBSERVATION_REQUIRED` とする。secret、token、実 Spreadsheet ID、実測値はこの報告へ記録しない。
 
 ### 現行 Go acceptance の実測
 

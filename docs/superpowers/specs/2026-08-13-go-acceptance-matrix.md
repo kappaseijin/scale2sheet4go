@@ -99,6 +99,10 @@ Google 公式 API は Sheets の `spreadsheets.values` で値の読み書きを�
 
 実サービス試験は専用 Google Cloud project、専用 Spreadsheet、テスト用 HOME、必要な OAuth consent/client を分けて用意し、認証値を資料へ出力しない。
 
+Issue [#18](https://github.com/kappaseijin/scale2sheet4go/issues/18) では、この外部依存を安全に再実行する `scripts/run-google-external-acceptance.sh` を追加した。runner は明示的 opt-in、marker 付き専用 HOME、fixture ではない Spreadsheet ID、current HOME 外の owner-only service-account JSON、専用入力、実行可能な Go binary を検査する。不足時は child binary を起動せず fail-closed する。
+
+runner の契約テストは実 Google API を呼ばずに境界、case 引数、token mode、serve lease 回収、秘密値非露出を検証する。契約テストの PASS は実 Google Sheets／Google Fit／cron callback の成功を意味しない。実セル、実データ、実時刻 callback の観測が完了するまで AT-01〜AT-06 は `BLOCKED_EXTERNAL` または `OBSERVATION_REQUIRED` とする。
+
 ## 非目標
 
 - 実 Google API の credentials を作成・取得すること。
