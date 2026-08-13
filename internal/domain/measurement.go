@@ -83,6 +83,19 @@ type SpreadsheetRow struct {
 	Source                     string
 }
 
+type TransferOutcomeState string
+
+const (
+	TransferWritten    TransferOutcomeState = "written"
+	TransferNotWritten TransferOutcomeState = "not-written"
+	TransferUnknown    TransferOutcomeState = "unknown"
+)
+
+type TransferOutcome struct {
+	State                TransferOutcomeState
+	TransferredCellCount *int
+}
+
 func RoundToMeasurementResolution(value float64, kind MeasurementKind) float64 {
 	digits := 0.0
 	if kind == KindWeight || kind == KindBodyTemperature {
