@@ -89,14 +89,16 @@ tags: [acceptance-test, scale2sheet]
 
 ## Issue #13 現行 Go 受入マトリクス（2026-08-13）
 
-対応表の正本は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md) である。AT-10a は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) の契約判断待ちであり、実 Google API の成功を隔離 fake で代替していない。
+対応表の正本は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md) である。AT-10a は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) でA-0契約を確定済みであり、実 Google API の成功を隔離 fake で代替していない。
 
 | 分類 | AT | 件数 | 現行の意味 |
 | --- | --- | ---: | --- |
-| `AUTO_PASS` | AT-07〜AT-18（AT-10a を除く） | 12 | Go unit test または隔離 Go binary acceptance で再実行可能 |
+| `AUTO_PASS` | AT-07〜AT-18、AT-10a | 13 | Go unit test または隔離 Go binary acceptance で再実行可能 |
 | `BLOCKED_EXTERNAL` | AT-01〜AT-06 | 6 | 専用 Google 検証環境、OAuth、実時刻観測が必要 |
-| `BLOCKED_DECISION` | AT-10a | 1 | A-0/A-1 の入力契約が未確定 |
+| `BLOCKED_DECISION` | なし | 0 | ユーザー決定待ちの現行Go ATはない |
 | 合計 | AT-01〜AT-18 + AT-10a | 19 | AT-10a は補助 ID のため 19 行 |
+
+AT-10aの現行Go契約はA-0である。対象日の入力に1ファイルの1行でも不正があれば、`failed:input-invalid-or-partial`、exit `1`、transfer未実行とする。入力全体を信用せず転記しない旨の通知文は [Issue #31](https://github.com/kappaseijin/scale2sheet4go/issues/31) で別途実装・検証する。
 
 ### Issue #18 実 Google 外部受入 runner の実測
 
