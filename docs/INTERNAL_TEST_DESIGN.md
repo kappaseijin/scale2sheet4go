@@ -36,6 +36,7 @@ timestamp: "2026-07-29T09:05:20+09:00"
 - filesystem、HOME、lease、launchd は一時ディレクトリまたは fake を使い、実ユーザー領域を変更しない。
 - 正常系だけでなく、fixture を壊す負の制御が意図した診断で失敗することを確認する。
 - acceptance は focused package test の代用にせず、コンパイル済み Go バイナリを起動する。
+- 旧 AT-01〜18 の現行分類と外部依存は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md) に従う。
 
 ## 主要ケース
 
@@ -50,6 +51,8 @@ timestamp: "2026-07-29T09:05:20+09:00"
 | install rejection | 設定・認証・lease の検査失敗時にバイナリ/plistを変更しない |
 | status schema | 壊れた JSON や counter を fail closed とし、atomic rename を使う |
 | OAuth callback | state、code、error、PKCE を検証し、token を mode `0600` で保存 |
+| 不正 period | `internal/cli` の parse error と exit code `2` を検証 |
+| Sheets 対象行なし | `internal/sheets` が batch update を呼ばず `not-written` を返す |
 
 ## 実行コマンド
 
@@ -58,6 +61,7 @@ GOTOOLCHAIN=local CGO_ENABLED=0 go test ./...
 GOTOOLCHAIN=local go vet ./...
 node scripts/verify-readme-config-keys.mjs
 python3 scripts/check-doc-refs.py
+scripts/run-go-acceptance-matrix.sh
 ```
 
 受け入れ試験の一括実行は [EXTERNAL_TEST_DESIGN.md](./EXTERNAL_TEST_DESIGN.md) と [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) を参照する。
