@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-13（Issue #18 の実 Google 外部受入 runner 設計・契約テストを反映）
+最終更新: 2026-08-13T17:14:23+09:00（Issue #20 の GitHub 操作アカウント方針を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -34,6 +34,20 @@ Go 製品移植は [Issue #2](https://github.com/kappaseijin/scale2sheet4go/issu
 | 派生席 | `scale2sheet_owner_codex`（Issue 選択・資料・実装・計測・テスト・Go ポート） |
 | 対向 LLM | 配置しない。派生席がテスト・静的検査・目的確認を実施する |
 | 連絡 | agmsg。チーム外連絡が必要な場合は manager 同士のみ |
+
+### GitHub 操作アカウント（Issue #20）
+
+このパイロットで主人格または派生席が行う GitHub 操作は、ユーザー指定の
+`kappaseijin4codex` アカウントへ統一する。
+
+| 対象 | GitHub アカウント | 実行条件 |
+| --- | --- | --- |
+| 主人格 `codex_product_owner` | `kappaseijin4codex` | `GH_CONFIG_DIR="$HOME/.config/gh-4codex"` を付けて `gh` を実行する |
+| 派生席 `scale2sheet_owner_codex` | `kappaseijin4codex` | 同上。Issue、PR、push、merge をこの経路で行う |
+
+- `gh auth status` は `GH_CONFIG_DIR="$HOME/.config/gh-4codex"` で確認し、既定の `kappaseijin` 設定へフォールバックしない。
+- Git の `origin` は `git@github.com-kappaseijin4codex:kappaseijin/scale2sheet4go.git` を使用する。
+- 対向 LLM エージェントは配置しないため、レビュー席の追加や別アカウントへの経路変更はこの方針の対象外であり、必要になった場合は別 Issue とする。
 
 詳細な定義と実施証跡は [Issue #1 計画](./superpowers/plans/2026-08-13-pilot-operation-policy.md) と `docs/NOTES.md` を参照する。
 
