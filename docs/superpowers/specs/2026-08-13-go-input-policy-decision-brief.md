@@ -1,7 +1,7 @@
 ---
 type: Spec
-title: Go版AT-10a入力異常ポリシー決定準備書
-description: Issue #14 のA-0/A-1と導入時期を、現行Go実装・受入証跡・scale_exporter外部契約に基づいて比較する。
+title: Go版AT-10a入力異常ポリシー決定資料
+description: Issue #14 で確定したA-0入力異常契約を、現行Go実装・受入証跡・scale_exporter外部契約へ対応付ける。
 tags:
   - spec
   - go
@@ -9,18 +9,26 @@ tags:
   - input-policy
   - issue-14
 timestamp: "2026-08-13T17:26:47+09:00"
-status: proposed
+status: accepted
 issue: 14
 ---
 
-# Issue #14 Go版AT-10a入力異常ポリシー決定準備書
+# Issue #14 Go版AT-10a入力異常ポリシー決定資料
 
 ## 目的の妥当性
 
 AT-10a は、scale_exporter の対象日入力に一部異常がある場合の転記可否を決める受入契約である。
 この契約は入力読込、pipeline の終了 outcome、status の診断、受入マトリクスにまたがるため、Go ポートの受入テスト全件成功を判定する前に確定する必要がある。
 
-Issue #14 ではユーザーの採否を代行せず、現行挙動と選択による変更範囲だけを確定する。
+Issue #14 ではユーザー決定を受領し、現行Goの採用契約と、採用しないA-1の変更範囲を確定する。
+
+## 決定概要
+
+ユーザーは **AT-10a=3=A-0** を選択した。
+
+対象日の入力に1ファイルでも1行でも不正がある場合、その日の値全体を疑わしいものとして扱い、transferしない。通知では入力全体を信用できないため転記しない旨を警告する。
+
+決定の正本は [Go版AT-10a入力異常ポリシーをA-0へ確定](../../decisions/2026-08-13T190240_Go版AT-10a入力異常ポリシーをA-0へ確定.md) である。通知文のruntime変更は [Issue #31](https://github.com/kappaseijin/scale2sheet4go/issues/31) の別PRで扱う。
 
 ## 外部調査
 
@@ -51,13 +59,15 @@ producer側の契約は前提として利用し、consumerの入力異常ポリ�
 
 | 選択肢 | 入力契約 | 必要な変更 | 受入判定 |
 | --- | --- | --- | --- |
-| **A-0** | 対象fileの一つでもparse不能なら、その安定snapshot全体を失敗にする | 現行runtimeを維持し、設計書・AT-10a・Goテストの契約をA-0へ整合させる | `failed:input-invalid-or-partial`、exit `1`、transferなしをPASSにする |
-| **A-1** | parse不能fileをfile単位で除外し、included fileだけで処理する。全file除外時は失敗する | file-local result、除外理由・file名・最初の失敗行・除外行数、partial status/log/doctor、テスト、definition version、導入計画が必要 | 一部includedならpartialとして処理し、全file除外だけ失敗することを検証する |
+| **A-0（採用）** | 対象fileの一つでもparse不能なら、その安定snapshot全体を失敗にする | 現行runtimeを採用契約として固定し、設計書・AT-10a・GoテストをA-0へ整合させる | `failed:input-invalid-or-partial`、exit `1`、transferなしをPASSにする |
+| **A-1（不採用）** | parse不能fileをfile単位で除外し、included fileだけで処理する。全file除外時は失敗する | file-local result、除外理由・file名・最初の失敗行・除外行数、partial status/log/doctor、テスト、definition version、導入計画が必要 | 現行GoのAT-10a契約には含めない |
 
 A-1は行単位の黙ったスキップではない。
 不正fileの既読行をincluded結果へ混ぜず、除外事実を構造化して記録する必要がある。
 
-## A-1を選ぶ場合の導入時期
+## 参考: A-1を選ぶ場合の導入時期
+
+以下は比較検討の履歴であり、現行Goの契約ではない。A-1を採用しないため、I-before / I-afterの導入時期は発生しない。
 
 | 選択肢 | 有効化境界 | 帰結 |
 | --- | --- | --- |
@@ -66,20 +76,22 @@ A-1は行単位の黙ったスキップではない。
 
 ここでいうbefore/afterはmerge日ではなく、A-1を対象経路の実行体で有効化する時点である。
 
-## ユーザー決定が必要な項目
+## 決定済み項目
 
-次の二点は、実装者だけでは決定できない。
+ユーザー決定は次のとおりである。
 
-1. **入力異常ポリシー**: A-0またはA-1
-2. **A-1を選ぶ場合の導入時期**: I-beforeまたはI-after
+1. **入力異常ポリシー**: A-0
+2. **通知**: 入力全体を信用できず転記しない旨を警告する
+3. **A-1の導入時期**: A-1不採用のため該当なし
 
-A-0を選ぶ場合、Issue #14で現行Go実装を採用契約として設計書・受入表へ反映する。
-A-1を選ぶ場合、Issue #14では契約と実装分割を確定し、runtime変更は別Issue・別PRへ分ける。
+Issue #14では現行Go実装を採用契約として設計書・受入表へ反映する。
+通知文の実装はIssue #31・別PRへ分ける。
 
 ## 非目標
 
-- この資料ではA-0/A-1を決定しない。
+- A-1の比較表は採用しなかった案の検討記録として残す。
 - このIssueではruntime code、status schema、doctor、実行体のcutoverを変更しない。
+- このIssueでは通知文のruntime実装を変更しない。
 - AT-01〜AT-06の実Google受入判定を変更しない。
 - fake、blackhole、scale_exporterのproducer出力契約を実Google成功の根拠にしない。
 

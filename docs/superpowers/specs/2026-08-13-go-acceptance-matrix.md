@@ -49,7 +49,7 @@ Issue #2 の Go 移植は、Go の quality gate と acceptance script 一式を�
 | AT-08 | `AUTO_PASS` | Go service/domain test の体重アンカー無し | 体重無しで転記対象を作らない |
 | AT-09 | `AUTO_PASS` | `run-bun-binary-smoke.sh` の空 input fixture、pipeline shadow | ファイル無しを no-data または pipeline input-missing として検証 |
 | AT-10 | `AUTO_PASS` | `run-bun-binary-smoke.sh` の不正 JSON/schema fixture | Go reader の file/line diagnostic を検証 |
-| AT-10a | `BLOCKED_DECISION` | Issue [#14](https://github.com/kappaseijin/scale2sheet4go/issues/14) | A-0 fail-closed と A-1 file-level skip の採否が未確定 |
+| AT-10a | `AUTO_PASS` | `go test ./...`、`internal/pipeline/input_snapshot_test.go` | A-0。対象日の1 file／1行でも不正なら `failed:input-invalid-or-partial`、exit `1`、transferなし |
 | AT-11 | `AUTO_PASS` | Go scale-exporter reader test の file-boundary dedup | exact duplicate を一件へ縮約 |
 | AT-12 | `AUTO_PASS` | Go CLI invocation test、binary source drift の command parser | 不正 period は exit `2` |
 | AT-13 | `AUTO_PASS` | Go Sheets adapter test の no-row case | batch update 無し、not-written を検証 |
@@ -59,7 +59,7 @@ Issue #2 の Go 移植は、Go の quality gate と acceptance script 一式を�
 | AT-17 | `AUTO_PASS` | Go domain/service test | source が複数の場合 `mixed` |
 | AT-18 | `AUTO_PASS` | Go Sheets adapter test | 半角・全角括弧の血圧列を認識 |
 
-AT-10a は、Issue #14 の決定と実装が完了するまで `AUTO_PASS` へ昇格させない。AT-01〜AT-06 も、隔離 fake の成功を理由に `AUTO_PASS` へ変更しない。
+AT-10a は、Issue #14でA-0契約を確定したため、現行Goのfail-closed挙動を検証する `AUTO_PASS` とする。通知文の明示内容はIssue #31で別途検証する。AT-01〜AT-06は、隔離fakeの成功を理由に `AUTO_PASS` へ変更しない。
 
 ## 正本の自動 runner
 
@@ -107,5 +107,5 @@ runner の契約テストは実 Google API を呼ばずに境界、case 引数�
 
 - 実 Google API の credentials を作成・取得すること。
 - 本番 Spreadsheet を変更すること。
-- AT-10a の契約を独断で A-0 または A-1 に変更すること。
+- AT-10a の契約をIssue #14の決定と異なるA-0またはA-1へ変更すること。
 - Apple Developer ID 署名・公証（Issue #10）。

@@ -134,7 +134,7 @@ Issue #10 は Issue #6 の unsigned universal Go binary を、Developer ID Appli
 
 Issue #13 では、旧 AT-01〜AT-18 の記録を現行 Go の証跡へ対応付け、`scripts/run-go-acceptance-matrix.sh` を自動試験の正本入口として追加する。現行の分類は `AUTO_PASS`、実 Google Sheets / Google Fit / 実時刻観測が必要な `BLOCKED_EXTERNAL`、契約未決定の `BLOCKED_DECISION` に分ける。隔離 fake、blackhole、偽 credential は実サービス成功の証拠にしない。
 
-対応表と設計判断は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md)、実測結果は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) を参照する。AT-10a の A-0/A-1 は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) と [Go版入力異常ポリシー決定準備書](./superpowers/specs/2026-08-13-go-input-policy-decision-brief.md) で別途確定する。
+対応表と設計判断は [Go版受入マトリクス現行化設計](./superpowers/specs/2026-08-13-go-acceptance-matrix.md)、実測結果は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) を参照する。AT-10a は [Issue #14](https://github.com/kappaseijin/scale2sheet4go/issues/14) でA-0へ確定し、[Go版入力異常ポリシー決定資料](./superpowers/specs/2026-08-13-go-input-policy-decision-brief.md)へ反映する。
 
 ### 現行 Go 外部受入境界（Issue #18）
 
@@ -461,7 +461,7 @@ CLI（`scale2sheet run --period <morning\|evening> [--source <source>] [--date <
 | AT-08 | `scale2sheet run --period evening` | 対象時間帯に体重以外（体温等）はあるが体重なし | 転記しない（体重必須アンカーのため） |
 | AT-09 | `scale2sheet run --period morning` | 入力フォルダにディレクトリ・当日ファイルなし | 空配列扱い、正常終了（**`run` の挙動。`pipeline` は #49 の決定により `failed:input-missing` / 終了コード 1 で扱う。Slice 2 で実装**） |
 | AT-10 | scale_exporter出力に不正JSON行・スキーマ違反あり | 該当ファイル読込 | ファイル名・行番号つきエラーで失敗（黙って捨てない） |
-| AT-10a | scale_exporter出力に不正JSON行・スキーマ違反あり | 一部ファイル読込 | 不正ファイルを単位として除外し、正常ファイルを処理する。除外ファイル名・最初の失敗行番号・除外行数を log と status に記録し、全ファイル不正時は転記しない（AC-39〜42）。三つの件数の重複単位は Issue #63 の決定後に確定する |
+| AT-10a | scale_exporter出力に不正JSON行・スキーマ違反あり | 対象日のfile群を読込 | 1ファイルの1行でも不正なら対象日全体を疑わしいものとして `failed:input-invalid-or-partial`、exit 1、転記なし。通知でその旨を警告する |
 | AT-11 | 連番ファイル境界で同一測定値が重複 | `_001.jsonl` / `_002.jsonl` にまたがる重複あり | `(measuredAt, kind, value, source)` 完全一致で重複除去される |
 | AT-12 | `scale2sheet run --period invalid` | - | 引数エラー、exit code 非ゼロ |
 | AT-13 | Sheets の対象日行が見つからない | `月日` 列に当日行なし | エラーログ出力、書き込みなし、`false` を返す |
