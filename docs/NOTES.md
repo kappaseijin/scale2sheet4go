@@ -25,9 +25,10 @@ deadline は 30.15612133400282 秒、terminal 後の lease 再取得は 10.09209
 `verify-readme-config-keys.mjs`、`check-doc-refs.py`、`check-ac-ledger.py`、`git diff --check` も PASS した。
 source/binary drift の stale/empty source 負の制御は意図した FAIL を検出した上で acceptance 全体が PASS した。
 
-GitHub Actions workflow は `push`/`pull_request` の `main`、`macos-14`、`actions/checkout@v6`、`actions/setup-go@v5`、`go-version-file: go.mod`、`contents: read` を設定した。
+GitHub Actions workflow は `push`/`pull_request` の `main`、`macos-14`、`actions/checkout@v6`、`actions/setup-go@v7`、`go-version-file: go.mod`、`contents: read` を設定した。
 ローカルと CI は同じ checker を実行し、Staticcheck、race detector、coverage は採用しない。
-PR #9 の [Go quality gates](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31672153786/job/94358875187) は `macos-14` 上で 48 秒、PASS した。
+初回の `setup-go@v5` は CI 自体は PASS したが Node.js 20 deprecated の annotation を出したため、公式の [setup-go README](https://github.com/actions/setup-go) と [releases](https://github.com/actions/setup-go/releases) を再確認し、Node.js 24 対応の `setup-go@v7` へ更新した。
+更新前 PR #9 の [Go quality gates](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31672153786/job/94358875187) は `macos-14` 上で 48 秒、PASS した。更新後の run は同じ PR の最新 head で再確認する。
 
 ---
 

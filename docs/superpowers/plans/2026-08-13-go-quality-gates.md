@@ -19,7 +19,7 @@ status: completed
 
 **Architecture:** `scripts/check-go-quality-gates.sh` をローカルと CI の唯一のゲート入口にし、整形・依存 checksum・全テスト・標準静的検査・配布 build・Go toolchain 契約を順番に確認する。GitHub Actions は Darwin 固有 lease を実行できる `macos-14` runner 上で、このスクリプトを呼ぶ。
 
-**Tech Stack:** Go 1.22 module、Go 標準 CLI、GitHub Actions、`actions/checkout@v6`、`actions/setup-go@v5`。Staticcheck、race detector、coverage は今回の必須経路へ追加しない。
+**Tech Stack:** Go 1.22 module、Go 標準 CLI、GitHub Actions、`actions/checkout@v6`、`actions/setup-go@v7`。Staticcheck、race detector、coverage は今回の必須経路へ追加しない。
 
 **Spec:** `docs/decisions/2026-08-13T144832_Go開発品質ゲートとCIの採否についての検討書.md`
 
@@ -84,7 +84,7 @@ status: completed
 
 - [x] **Step 2: Pin the setup inputs**
 
-  Use `actions/checkout@v6` and `actions/setup-go@v5` with `go-version-file: go.mod` and `cache: true`. Add a `go version` diagnostic step followed by `bash scripts/check-go-quality-gates.sh`.
+  Use `actions/checkout@v6` and `actions/setup-go@v7` with `go-version-file: go.mod` and `cache: true`. Add a `go version` diagnostic step followed by `bash scripts/check-go-quality-gates.sh`.
 
 - [x] **Step 3: Validate the workflow text**
 
