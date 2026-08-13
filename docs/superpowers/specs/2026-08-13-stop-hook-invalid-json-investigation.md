@@ -9,7 +9,7 @@ tags:
   - diagnosis
   - issue-28
 timestamp: "2026-08-13T17:51:17+09:00"
-status: proposed
+status: implemented
 issue: 28
 ---
 
@@ -94,7 +94,7 @@ Codex の公式 source でも Stop parser は専用 wire schema を使い、未�
 
 | 案 | 内容 | 影響 |
 | --- | --- | --- |
-| **非互換Stopを無効化** | `cc-status` の Stop 登録を削除し、security-guidance の Stop hook を無効化する。他イベントは維持する | エラーを止める最小の運用変更。Stop 時の状態表示とsecurity-guidanceの最終レビューは失われる |
+| **非互換Stopを無効化** | `cc-status` の Stop hook を state で無効化し、security-guidance の Stop hook も無効化する。他イベントは維持する | エラーを止める最小の運用変更。Stop 時の状態表示とsecurity-guidanceの最終レビューは失われる |
 | **Codex用wrapperへ変換** | 両hookをwrapper経由で実行し、許可された `continue` / `decision` / `reason` / `systemMessage` だけをstdoutへ出す | 既存機能を残せるが、global wrapperの設計・JSON変換・回帰確認が必要 |
 | **Codex hooks を停止** | グローバル hook 機能または全登録を停止する | エラーは止まるが、状態表示・計画保存・自動許可・コード探索 gateも失われる |
 
@@ -102,14 +102,26 @@ Codex の公式 source でも Stop parser は専用 wire schema を使い、未�
 
 ユーザーは **Stop=1「非互換Stopを無効化」** を選択した。
 
-- `cc-status` の Stop 登録を削除する。
+- `cc-status` の Stop hook を、宣言を保持したまま Codex の state で無効化する。
 - `security-guidance@claude-plugins-official` の Stop hook を、Codexが提供する個別hook無効化手段で無効化する。
 - Stop以外のhookイベントは維持する。
 - wrapper変換や全hook停止へは変更しない。
 
 実装と実行経路の再現確認は [Issue #29](https://github.com/kappaseijin/scale2sheet4go/issues/29) で行う。
 
+## Issue #29 実施結果
+
+Codex 0.147.0 の app-server `config/batchWrite` を使い、次の2つの `hooks.state` だけを `enabled: false` として upsertした。
+
+- `/Users/kappa/.codex/hooks.json:stop:0:0`
+- `security-guidance@claude-plugins-official:hooks/hooks.json:stop:0:0`
+
+`hooks/list` の再取得で対象2件が disabled、Stop以外のイベントが enabled のままであることを確認した。
+対象 hook 定義の `currentHash` は変更前後で同一であり、`hooks.json` とプラグインキャッシュは直接編集していない。
+新しい `codex exec --ephemeral --json` プロセスは exit `0` で完了し、`invalid stop hook JSON output` の再発は観測されなかった。
+
+設定変更の詳細とロールバックは [Issue #29 計画](../plans/2026-08-13-stop-hook-disable.md) と [個別無効化手段の検討書](../../decisions/2026-08-13T193310_Stop_hook個別無効化手段の検討書.md) に記録した。
+
 ## 未決事項
 
-- Issue #14: Go 版 AT-10a の A-0/A-1 と、A-1 を選ぶ場合の I-before/I-after
 - Issue #10: Developer ID / notary credentials を投入して Apple 正常系受入を実施するか、保留または対象外にするか
