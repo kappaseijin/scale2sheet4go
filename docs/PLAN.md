@@ -91,6 +91,10 @@ flowchart LR
 
 現時点の既定検証は `CGO_ENABLED=0 go test ./...`、`go vet ./...`、`scripts/run-*-acceptance.sh` である。対向 LLM reviewer は配置せず、`scale2sheet_owner_codex` が目的妥当性、差分、テスト、静的検査、負のコントロールを自己確認する。macOS の cgo linker による `dyld: missing LC_UUID` が確認されたため、Go 検証は cgo 無効で再現可能にする。
 
+### 現行 Go 正本ツールチェーン（Issue #4）
+
+Issue #4 で `go.mod` / `go.sum` と Go CLI（`gofmt`、`go build`、`go test`、`go vet`）を正本にする。README と現行 acceptance は npm、Bun、Node の実行を要求しない。旧 TypeScript 資産に関する過去の記述は履歴として保持し、現行の利用者経路とは区別する。
+
 ---
 
 ## Git 管理ルール
@@ -150,7 +154,8 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.13 | Bunを優先実行環境にする・バイナリ名変更 | バイナリ名を`scale2sheet-bun`→`scale2sheet`へ変更、README/設計書をBun優先の書き方へ更新 | **計画中**（検討書: [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md)） |
 | Ph.14 | エージェント体制の派生命名への移行 | 7役割（pm/innovator/architect/programmer/reviewer×2/worker）を `<プロジェクト名>_<役割>_<ベンダー>` で登録、専用クローンと人格差分 AGENT.md を整備、兼任・プロジェクト跨ぎを解消。reviewer をベンダー別2名に分割しレビュー経路を閉じた（reviewer は 2026-08-03 の決定により 1 席へ統合） | **完了**（2026-07-28） |
 | Ph.15 | インストーラ／アンインストーラの整備 | インストール後の実行体をソースチェックアウトから独立させる（Ph.12 の未完了分の回収）。導入・撤収・診断の手段を提供し、launchd plist と run-pipeline.sh の絶対パス依存を解消する。あわせて `build` → `build:node` へ改名 | **Slice 1 完了（2026-08-02）・Slice 2 着地（PR #73）・Slice 3 着地（PR #139）・Slice 4 着地（PR #193 / #200 / #202、2026-08-10）**。Slice 1 実装根拠: src/version.ts、src/scheduler/run-lease.ts、src/installation/settings-read.ts、test/scheduler/run-lease.test.ts、test/cli/serve-lease.test.ts、scripts/run-runtime-safety-acceptance.sh。Slice 2 根拠: PR #73（input snapshot / pipeline CLI）。Slice 3 根拠: PR #139（install / 既定 uninstall / Task 1-8 実装、AC 骨格）。[目標定義](./decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md)、[INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md)、[実装分割](./decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md) |
-| Ph.16 | Go ポート（Issue #2） | 既存の scale2sheet 契約を `cmd/scale2sheet` と `internal/` へ移植し、Go 単一バイナリ・unit test・vet・acceptance harness・README を正式経路にする | **実装・最終検証完了（2026-08-13、PR 作成前）**。`CGO_ENABLED=0 go test ./...`、`go vet ./...`、6 本の Go binary acceptance、README/文書/AC 台帳検査が PASS。旧 TypeScript 資産は比較履歴として保持し、既定経路からは参照しない |
+| Ph.16 | Go ポート（Issue #2） | 既存の scale2sheet 契約を `cmd/scale2sheet` と `internal/` へ移植し、Go 単一バイナリ・unit test・vet・acceptance harness・README を正式経路にする | **完了（2026-08-13、PR #7）**。`CGO_ENABLED=0 go test ./...`、`go vet ./...`、6 本の Go binary acceptance、README/文書/AC 台帳検査が PASS。旧 TypeScript 資産は比較履歴として保持し、既定経路からは参照しない |
+| Ph.17 | Go 正本ツールチェーン整理（Issue #4） | `go.mod` / `go.sum` と Go CLI を唯一の build/test/依存管理経路にし、package.json/package-lock と現行 Node fallback を除去する | **実装中（2026-08-13）**。旧 TypeScript 資産の削除、Go toolchain version policy、CI、本番 macOS 配布は別 Issue |
 
 ---
 

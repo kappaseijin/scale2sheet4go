@@ -859,3 +859,19 @@ Issue #2 の実装差分を `scale2sheet_owner_codex` として再読し、Go �
 `run-binary-source-drift-acceptance.sh` は fresh build と stale/empty source の負の制御を意図どおり判定し、実行時点では未コミット差分を含む `source_head=...-dirty` を記録した。PR 作成前に commit 後の clean head と PR head を別途確認する。
 
 今回のユーザー追加要求は Issue #4（Go Modules/package.json）、Issue #5（開発品質ゲート/CI）、Issue #6（macOS 本番環境）へ目的分離して起票した。Issue #2 の PR にこれらの変更を混ぜない。
+
+## 2026-08-13T14:37:05+09:00 Issue #4 Go 正本ツールチェーン調査
+
+Issue #2 の merge 後に、Issue #4 の目的をプロジェクト全体で妥当化した。Go 単一バイナリへ製品経路を移した状態で package.json を残すと、Node/npm の依存管理と Go Modules が併存し、利用者が npm を必須と誤認する。`go.mod` と `go.sum`、Go CLI へ一本化することが Go プラットフォームの標準に合う。
+
+公式資料として [Go Modules Reference](https://go.dev/ref/mod)、[go.mod file reference](https://go.dev/doc/modules/gomod-ref)、[Go の依存管理](https://go.dev/doc/modules/managing-dependencies)、[Go Toolchains](https://go.dev/doc/toolchain)、[GitHub の Go build/test 手順](https://docs.github.com/en/actions/tutorials/build-and-test-code/go) を確認した。Go の `go` / `toolchain` の version policy と CI は Issue #5、macOS の build/install/launchd は Issue #6 に分離する。
+
+実装前の現状ゲートは、package.json/package-lock の存在、README の `npm run build:go`・`npm test`、`scripts/run-pipeline.sh` の npm 案内により意図どおり FAIL した。先に `scripts/check-binary-source-drift.py` の `npx tsx` fallback と pipeline の npm 案内を除去し、binary/source drift の fresh/stale/empty 負の制御と、missing binary の直接 Go build 案内を PASS させた。旧 TypeScript 資産は比較履歴として残す。
+
+## 2026-08-13T14:41:01+09:00 Issue #4 最終検証
+
+Issue #4 の実装で `package.json` と `package-lock.json` を削除し、`scripts/check-binary-source-drift.py` から `npx tsx` fallback を除去した。README と `scripts/run-pipeline.sh` は直接 Go コマンドを案内する。現行の `scripts/run-*.sh` に Node/npm/Bun/tsx/Vitest の command が戻った場合に fail する `scripts/check-go-toolchain-contract.sh` を追加した。
+
+Go unit、vet、build、Go toolchain contract、全 binary acceptance、README 設定キー、文書参照、AC 台帳は PASS。contract gate に一時 README へ `npm test` を挿入する負の制御と、missing binary に対する direct Go build guidance の負の制御も意図どおり non-zero になった。
+
+旧 TypeScript の `src/`、`test/`、`tsconfig.json`、`vitest.config.ts` は Issue #2 で定めた比較履歴の境界を維持して残した。Go toolchain の version policy/CI は Issue #5、macOS build/install/launchd は Issue #6 へ分離した。
