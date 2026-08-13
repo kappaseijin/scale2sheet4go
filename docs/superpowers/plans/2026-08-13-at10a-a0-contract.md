@@ -72,8 +72,8 @@ issue: 14
 ### Task 5: Issue #14のPRを作成する
 
 - [x] 差分がIssue #14のA-0契約資料だけであることを確認する。
-- [ ] `git show --check --oneline HEAD` でcommitを検証する。
-- [ ] Issue #14をcloseするPRを `kappaseijin4codex` で作成する。
+- [x] `git show --check --oneline HEAD` でcommitを検証する。
+- [x] Issue #14をcloseするPRを `kappaseijin4codex` で作成する（[#32](https://github.com/kappaseijin/scale2sheet4go/pull/32)）。
 
 ## 検証結果
 
