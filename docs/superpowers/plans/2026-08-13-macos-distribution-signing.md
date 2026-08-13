@@ -20,7 +20,7 @@ status: active
 
 ## Constraints
 
-- 1 Issue = 1 課題 = 1 PR。PR 本文は `Closes #10` とする。
+- 1 Issue = 1 課題 = 1 PR。PR は Issue #10 に紐づける。正常系の Apple acceptance が未実施の間は、PR merge で Issue #10 を自動 close しない。
 - 署名順序は universal binary → binary codesign → DMG 作成 → DMG codesign → notarytool submit/wait/log → stapler staple/validate → hdiutil/spctl/codesign verification。
 - Developer ID identity 以外の identity、`codesign --deep`、`sudo`、リポジトリへの secret 保存は禁止する。
 - PR CI では notarization を実行しない。手動または `v*` tag の `macos-release` environment workflow だけが secret を読む。
@@ -90,4 +90,4 @@ status: active
 
 - [ ] **Step 3: Commit, PR, CI, review, merge, main sync**
 
-  Issue #10 の単一 PR とし、全実行可能なチェックが PASS してからマージする。live credentials が未提供なら PR は fail-closed の実装までに留め、Issue #10 は open のままにする。
+  Issue #10 の単一 PR とし、全実行可能なチェックが PASS してからマージする。live credentials が未提供なら PR は fail-closed の実装までに留め、Issue #10 は open のままにするため、PR 本文には close キーワードを使用しない。
