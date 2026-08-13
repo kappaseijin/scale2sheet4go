@@ -275,6 +275,12 @@ plutil -lint ~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist
 | `1` | 設定、入力、認証、Google API、転記、lease の実行時エラー |
 | `2` | 未知のコマンド・オプション、必須引数不足、不正な period/source/date |
 
+### 入力異常時の扱い（AT-10a）
+
+`pipeline` が対象日のscale_exporter入力を読むとき、1ファイルの1行でもJSONまたはスキーマが不正なら、その日の入力全体を信用できないものとして扱います。正常なファイルが他にあってもGoogleスプレッドシートへ転記せず、`failed:input-invalid-or-partial`、終了コード `1`、ファイル名・行番号付きのdiagnosticを保存します。
+
+常駐実行でmacOS通知が有効な場合は、「入力全体を信用できないため、転記していません」と警告します。通知が表示されない場合も、正本は `pipeline-status.json` と終了コードです。
+
 ## 開発・検証
 
 Go 1.22 以上と Bash を用意します。標準の品質ゲートはローカルと GitHub Actions で同じスクリプトを実行します。CI は `macos-14` runner と `actions/setup-go@v7` で `go.mod` の Go バージョンを使い、`GOTOOLCHAIN=local` と `CGO_ENABLED=0` を指定します。
