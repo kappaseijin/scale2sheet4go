@@ -3,7 +3,7 @@ type: TestReport
 title: scale2sheet — Acceptance Test Report
 description: 受け入れテスト実施結果（AT-01〜AT-18）と AC 番号予約台帳
 timestamp: "2026-07-05T00:00:00+09:00"
-updated: "2026-08-13T16:59:15+09:00"
+updated: "2026-08-13T17:22:53+09:00"
 tags: [acceptance-test, scale2sheet]
 ---
 
@@ -114,17 +114,17 @@ Issue #18 で `scripts/run-google-external-acceptance.sh` と、その隔離境�
 
 runner の `PASS` は command boundary、token mode、serve lease 回収などのローカル判定だけを示す。Spreadsheet の対象セル、Google Fit の実データ、`serve` の cron callback を確認するまで、AT-01〜AT-06 の最終判定は `BLOCKED_EXTERNAL` または `OBSERVATION_REQUIRED` とする。secret、token、実 Spreadsheet ID、実測値はこの報告へ記録しない。
 
-### 現行 Go acceptance の実測
+### 現行 Go acceptance の実測（再実行）
 
-実測終了: `2026-08-13T16:32:13+09:00`。実行コマンドは `bash scripts/run-go-acceptance-matrix.sh`。macOS 上で 8 本すべてが PASS した。
+実測終了: `2026-08-13T17:22:53+09:00`。main `9eb0040` 上で、実行コマンドは `bash scripts/check-go-quality-gates.sh` と `bash scripts/run-go-acceptance-matrix.sh`。macOS 上で品質ゲートと受入マトリクス 8 本すべてが PASS した。
 
 | Script | 判定 | 主な検証 |
 | --- | --- | --- |
 | `run-pipeline-shadow-acceptance.sh` | PASS | compiled pipeline、入力欠落、SIGKILL 後の lease/status |
-| `run-google-sheets-deadline-acceptance.sh` | PASS | blackhole 接続、deadline 30.157 秒、`failed:transfer`、lease 再取得 |
+| `run-google-sheets-deadline-acceptance.sh` | PASS | blackhole 接続、deadline 30.182082958999672 秒、`failed:transfer`、lease 再取得（post 10.111792709009023 秒） |
 | `run-installer-acceptance.sh` | PASS | universal binary、隔離 HOME の install/uninstall、dry-run、lease 競合 |
 | `run-runtime-safety-acceptance.sh` | PASS | 2 プロセス lease 競合、異常終了後の再取得 |
-| `run-binary-source-drift-acceptance.sh` | PASS | fresh binary と Go source の command-set 一致、stale/empty negative control |
+| `run-binary-source-drift-acceptance.sh` | PASS | fresh binary（source head `9eb0040`）と Go source の command-set 一致、stale/empty negative control |
 | `run-bun-binary-smoke.sh` | PASS | 互換名 smoke。実体は Go binary の help/version/config/input 異常系 |
 | `run-macos-release-acceptance.sh` | PASS | universal release binary、plist、doctor、install/uninstall |
 | `run-macos-distribution-contract-acceptance.sh` | PASS | 署名・公証入力の dry-run、資格情報欠落、identity 不正、部分出力防止 |
