@@ -89,4 +89,4 @@ issue: 18
 
 - AT-01〜AT-06 の実 PASS は、専用 Google 検証環境と手動観測が揃うまで確定しない。
 - AT-10a は Issue #14 のユーザー決定待ちである。
-- 公開配布の正常系は Issue #10 の Apple credentials 待ちである。
+- 公開配布の署名・公証正常系は Apple=3 により対象外であり、Issue #10 の credentials 待ちではない。秘密情報なしの fail-closed 契約 acceptance は別途維持する。

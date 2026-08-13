@@ -118,11 +118,11 @@ bash scripts/build-macos-release.sh
 
 このスクリプトは `GOOS=darwin`、`GOARCH=arm64|amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を明示し、`file` と `lipo -info` で `arm64` + `x86_64` を検証します。実行体は per-user `~/Library/LaunchAgents` と `launchctl gui/<uid>` で管理します。状態確認は `launchctl print`、一回の手動再実行は `launchctl kickstart -k`、plist XML 検査は `plutil -lint` を使います。
 
-ローカル検証用の artifact は unsigned です。公開配布用 artifact は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) の `scripts/build-macos-distribution.sh` で Developer ID Application、Hardened Runtime、notarytool、stapler、公開配布用 Gatekeeper 検証を通します。
+ローカル利用・検証用の artifact は unsigned universal binary です。Apple=3 の判断により、Developer ID Application、Hardened Runtime、notarytool、stapler、公開配布用 Gatekeeper 正常系は対象外とします。`scripts/build-macos-distribution.sh` は、資格情報不足時に公開用 artifact を出力しない fail-closed 契約資産として保持します。
 
-### 公開配布 artifact
+### 公開配布 artifact（Apple=3 により対象外）
 
-現行製品は裸の Go CLI であり、既存の per-user install 契約を変更しないため、配布容器は UDZO DMG とする。DMG 内には universal `scale2sheet` binary と README を置く。Apple の直接配布手順に従い、binary を署名してから DMG を作成し、DMG も Developer ID Application で署名する。公証するのは最外側の DMG だけである。
+現行製品は裸の Go CLI であり、現行の利用経路は unsigned universal binary と既存の per-user install 契約です。UDZO DMG、Developer ID 署名、公証、staple、Gatekeeper 正常系は、将来再判断する場合の契約順序を記録するだけで、現在の公開配布物や受入条件ではありません。
 
 ```mermaid
 flowchart LR
@@ -134,9 +134,9 @@ flowchart LR
   F --> G["hdiutil verify + spctl + codesign"]
 ```
 
-API key 方式（`.p8`、Key ID、Issuer ID）を CI の標準とし、Keychain profile 方式もローカル用に受理する。証明書、秘密鍵、temporary keychain はリポジトリへ保存せず、GitHub Actions では `macos-release` environment の secrets を実行時だけ `$RUNNER_TEMP` へ復号し、終了時に削除する。通常の PR quality workflow は secrets を読み込まない。
+Apple=3 により、証明書、秘密鍵、temporary keychain、notary credentials は取得・投入・保存しません。`macos-release` workflow と API key / Keychain profile の分岐は、将来の再判断に備えた fail-closed 契約資産として保持し、通常の PR quality workflow は secrets を読み込みません。
 
-Developer ID identity または notary credentials が不足する場合は、build や artifact 出力を行わず fail-closed とする。Apple Development、ad hoc、`codesign --deep`、`sudo` へのフォールバックはしない。README に、local build、CI secret、DMG からの install、契約 acceptance を自己完結で記載する。
+契約 acceptance では Developer ID identity または notary credentials が不足する場合に build や artifact 出力を行わず fail-closed とします。Apple Development、ad hoc、`codesign --deep`、`sudo` へのフォールバックはしません。README には、現行の local build・install と秘密情報なしの契約 acceptance を自己完結で記載します。
 
 ## 関連設計
 

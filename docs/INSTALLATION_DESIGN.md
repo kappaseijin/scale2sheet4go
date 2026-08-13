@@ -32,13 +32,13 @@ scale2sheet doctor [--prefix <dir>]
 
 既定の prefix は `~/.local` で、バイナリは `<prefix>/bin/scale2sheet` です。`install` は settings が無ければ雛形を作成します。settings が既にある場合は、Sheets credentials を確認してから更新します。
 
-ローカル検証用の macOS artifact は `bash scripts/build-macos-release.sh` で作成します。`GOOS=darwin`、`GOARCH=arm64|amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を固定し、`lipo` 後に `file` と `lipo -info` で universal `arm64` + `x86_64` を検査します。これは unsigned artifact です。公開配布には、README の手順に従って `bash scripts/build-macos-distribution.sh dist/scale2sheet-macos.dmg` を使用します。
+ローカル利用・検証用の macOS artifact は `bash scripts/build-macos-release.sh` で作成します。`GOOS=darwin`、`GOARCH=arm64|amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を固定し、`lipo` 後に `file` と `lipo -info` で universal `arm64` + `x86_64` を検査します。これは現行の unsigned artifact です。Apple=3 により、`build-macos-distribution.sh` による公開配布正常系は対象外です。
 
-### 公開配布と install の責任境界
+### 公開配布と install の責任境界（公開配布正常系は対象外）
 
-`build-macos-distribution.sh` は既存の install/uninstall/LaunchAgent 実装を変更しません。universal binary を Developer ID Application + Hardened Runtime で署名し、README と共に UDZO DMG へ格納し、DMG を署名、公証、staple してから `spctl` と `codesign` で検査します。公開配布物から binary を `~/.local/bin/scale2sheet` へコピーした後は、通常の `install --launchd`、`doctor`、`uninstall` 契約を使用します。
+`build-macos-distribution.sh` は既存の install/uninstall/LaunchAgent 実装を変更せず、将来の再判断に備えた fail-closed 契約資産として保持します。Developer ID 署名、UDZO DMG、公証、staple、Gatekeeper 正常系は実施しません。現行利用では `build-macos-release.sh` の unsigned binary から通常の `install --launchd`、`doctor`、`uninstall` 契約を使用します。
 
-CI は `macos-release` environment の一時 keychain と App Store Connect API key を使用し、通常の quality workflow へ secret を渡しません。証明書または公証 credential が無い場合は fail-closed とし、ad hoc や Apple Development の代用はしません。
+CI は通常の quality workflow へ secret を渡しません。契約資産の検査では証明書または公証 credential が無い場合は fail-closed とし、ad hoc や Apple Development の代用はしません。Apple credentials の取得・投入は本プロジェクトの対象外です。
 
 `install --launchd` は次を変更前に確認します。
 

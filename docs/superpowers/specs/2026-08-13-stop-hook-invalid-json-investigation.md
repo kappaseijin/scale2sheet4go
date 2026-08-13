@@ -112,4 +112,4 @@ Codex の公式 source でも Stop parser は専用 wire schema を使い、未�
 ## 未決事項
 
 - Issue #14: Go 版 AT-10a の A-0/A-1 と、A-1 を選ぶ場合の I-before/I-after
-- Issue #10: Developer ID / notary credentials を投入して Apple 正常系受入を実施するか、保留または対象外にするか
+- Issue #10: Apple=3 により Developer ID / notarytool / Gatekeeper の正常系受入を対象外とする判断を反映済み。契約 acceptance は継続する
