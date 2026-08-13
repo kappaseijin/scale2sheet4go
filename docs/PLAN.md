@@ -170,7 +170,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.16 | Go ポート（Issue #2） | 既存の scale2sheet 契約を `cmd/scale2sheet` と `internal/` へ移植し、Go 単一バイナリ・unit test・vet・acceptance harness・README を正式経路にする | **完了（2026-08-13、PR #7）**。`CGO_ENABLED=0 go test ./...`、`go vet ./...`、6 本の Go binary acceptance、README/文書/AC 台帳検査が PASS。旧 TypeScript 資産は比較履歴として保持し、既定経路からは参照しない |
 | Ph.17 | Go 正本ツールチェーン整理（Issue #4） | `go.mod` / `go.sum` と Go CLI を唯一の build/test/依存管理経路にし、package.json/package-lock と現行 Node fallback を除去する | **完了（2026-08-13、PR #8）**。旧 TypeScript 資産の削除、Go toolchain version policy、CI、本番 macOS 配布は別 Issue |
 | Ph.18 | Go 開発品質ゲートと CI（Issue #5） | ローカルと macOS GitHub Actions が同じ標準 Go 品質ゲートを実行する | **完了（2026-08-13、PR #9）**。Staticcheck、race、coverage の必須化は別 Issue |
-| Ph.19 | macOS 本番 artifact と LaunchAgent 運用（Issue #6） | universal Go binary、custom prefix doctor、per-user LaunchAgent、plist lint、状態確認、uninstall、README runbook | **実装中（PR 作成前、2026-08-13）**。公開配布の署名・公証は Issue #10 |
+| Ph.19 | macOS 本番 artifact と LaunchAgent 運用（Issue #6） | universal Go binary、custom prefix doctor、per-user LaunchAgent、plist lint、状態確認、uninstall、README runbook | **完了（PR #11、2026-08-13）**。macOS CI の Go quality gates と universal artifact 検査が PASS。公開配布の署名・公証は Issue #10 |
 
 ---
 

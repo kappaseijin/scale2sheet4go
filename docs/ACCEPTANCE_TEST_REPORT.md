@@ -429,3 +429,7 @@ release acceptance は一時 HOME、fake `launchctl`、unroutable proxy を使�
 | `node scripts/verify-readme-config-keys.mjs` / `git diff --check` | **PASS** |
 
 universal artifact の `file` は `Mach-O universal binary with 2 architectures`、`lipo -archs` は `x86_64 arm64` を返した。CI でも `macos-14` 上の品質ゲート後に `bash scripts/build-macos-release.sh dist/scale2sheet-universal` を実行する。
+
+### GitHub Actions 最終確認（2026-08-13T15:36:41+09:00）
+
+[PR #11 の Go quality gates job](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31674363873/job/94365585524) は `macos-14`、Go `1.22.12 darwin/arm64` で PASS した。shared quality gates（gofmt、mod verify、test、vet、build、toolchain contract）に加え、universal artifact step が `Mach-O universal binary with 2 architectures` と `x86_64 arm64` を出力した。

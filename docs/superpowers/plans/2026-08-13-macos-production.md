@@ -8,7 +8,7 @@ tags:
   - release
   - launchd
 timestamp: "2026-08-13T15:13:18+09:00"
-status: active
+status: completed
 ---
 
 # macOS 本番ビルドと LaunchAgent 運用実装計画
@@ -158,6 +158,6 @@ status: active
 
   Add exact commands, `file`/`lipo` output, plist lint result, custom-prefix doctor result, acceptance results, timestamps, and the intentional negative-control failure to the acceptance report and notes.
 
-- [ ] **Step 3: Commit, PR, CI, merge, and synchronize**
+- [x] **Step 3: Commit, PR, CI, merge, and synchronize**
 
   Mark this plan completed, commit only Issue #6 files, push `issue-6-macos-production`, create one PR with `Closes #6`, wait for the macOS CI pass, merge autonomously, close/check Issue #6, synchronize main, delete the merged branch, and verify a clean tree.

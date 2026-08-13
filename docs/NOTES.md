@@ -33,6 +33,8 @@ Issue #6 の目的を、Go 移植後の pilot artifact を Apple Silicon と Int
 
 追加の最終ローカル検証では、Go が PATH に無い負の制御が exit 2・部分出力無しで終了し、runtime safety、pipeline shadow、Google Sheets deadline、source/binary drift、Go binary smoke、全 Go 品質ゲート、README/文書/AC 検査が PASS した。deadline の実測は `30.14240087500366` 秒、lease 再取得は `10.092639499998768` 秒だった。universal artifact の `lipo -archs` は `x86_64 arm64` だった。
 
+PR #11 の [GitHub Actions job](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31674363873/job/94365585524) は `macos-14` / Go `1.22.12 darwin/arm64` で PASS した。品質ゲート後の universal artifact 検査も `Mach-O universal binary`、`x86_64` + `arm64` を確認したため、Issue #6 のローカル・CI完了条件を満たした。
+
 ---
 
 ## 2026-08-13 Issue #5 実装・ローカル検証
