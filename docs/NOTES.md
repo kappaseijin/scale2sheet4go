@@ -14,6 +14,29 @@ timestamp: "2026-08-03T10:30:00+09:00"
 
 ---
 
+## 2026-08-13T22:34:58+09:00 本番環境の既存導入撤去と現行 main の再インストール
+
+ユーザー判断により本プロジェクトを本番環境で動作するものとして扱い、既存の scale2sheet 導入を撤去して現行 main の成果物を再インストールした。
+
+### 撤去
+
+- 対象 prefix は `/Users/kappa/.local`、既存 binary は version `0.1.0` の arm64 Mach-O だった。
+- `jp.seijin.kappa.scale-pipeline.morning` と `jp.seijin.kappa.scale-pipeline.evening` を `launchctl bootout` し、両方とも成功した。
+- `dist/scale2sheet uninstall --prefix /Users/kappa/.local` は binary と install manifest を削除した。
+- `settings.json`、認証ファイル、状態ファイル、ログは install 設計どおり保持した。
+- `jp.seijin.kappa.scale-exporter` とその plist は別製品の所有物のため変更していない。
+
+### 再インストール
+
+- `bash scripts/build-macos-release.sh` は version `0.1.0` の universal Mach-O（`arm64` + `x86_64`）を生成した。
+- `dist/scale2sheet install --prefix /Users/kappa/.local --launchd` は exit `0` で完了した。
+- 配置先は `/Users/kappa/.local/bin/scale2sheet`、manifest は `installed`、morning/evening の plist は `launchctl bootstrap` 済みである。
+- `doctor --prefix /Users/kappa/.local` は manifest、prefix、binary、settings、Sheets credential、入力ディレクトリ、plist、active-run、pipeline-status の全項目で PASS した。
+- 両 plist は `plutil -lint` に PASS し、launchd の program は配置済み binary を指している。
+- `run`、`pipeline`、`kickstart` は実データ転記を発生させるため実行していない。
+
+---
+
 ## 2026-08-13T21:19:19+09:00 Issue #37 Apple=3 判断の資料同期
 
 Issue #10 の後続コメントでユーザーが Apple=3 を選択し、Developer ID 署名、Hardened Runtime、公証、staple、Gatekeeper 正常系受入を本プロジェクトの対象外へ変更した。この判断を [Apple=3 の判断記録](./decisions/2026-08-13T211919_Apple3_macOS公開配布正常系を対象外とする判断.md) として正本化し、旧検討書は調査履歴として `superseded` にした。
