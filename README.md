@@ -22,7 +22,7 @@ CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet
 ./dist/scale2sheet --version
 ```
 
-`CGO_ENABLED=0` は、配布バイナリを外部の C ランタイムに依存させないための指定です。`npm run build:go` でも同じバイナリを作成できます。
+`CGO_ENABLED=0` は、配布バイナリを外部の C ランタイムに依存させないための指定です。製品の build・test・実行に Node/npm/Bun は必要ありません。
 
 ## 設定
 
@@ -181,8 +181,10 @@ CLI が認可 URL を表示し、macOS ではブラウザを開きます。認�
 
 ```sh
 gofmt -w cmd internal
+CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet
 CGO_ENABLED=0 go test ./...
 go vet ./...
+bash scripts/check-go-toolchain-contract.sh
 bash scripts/run-pipeline-shadow-acceptance.sh
 bash scripts/run-google-sheets-deadline-acceptance.sh
 bash scripts/run-installer-acceptance.sh
@@ -191,7 +193,7 @@ bash scripts/run-binary-source-drift-acceptance.sh
 bash scripts/run-bun-binary-smoke.sh
 ```
 
-最後の smoke スクリプト名は互換性のため残っていますが、実際にビルド・実行するのは Go バイナリです。`npm test` は Go の unit test を実行し、Node/TypeScript のテストは `npm run test:legacy-ts` で比較用に実行できます。
+最後の smoke スクリプト名は既存呼び出しとの互換性のため残っていますが、実際にビルド・実行するのは Go バイナリです。
 
 ## 既知の制約
 

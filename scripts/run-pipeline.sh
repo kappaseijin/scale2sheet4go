@@ -36,7 +36,7 @@ notify() {  # 失敗を macOS 通知（LLM やログ監視に頼らない OS 完
 
 if [ ! -x "$scale2sheet_bin" ]; then
   echo "scale2sheet Go binary not found or not executable: $scale2sheet_bin" >&2
-  notify "scale2sheet Go バイナリが見つからないか実行できません。npm run build:go を実行してください"
+  notify "scale2sheet Go バイナリが見つからないか実行できません。CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet を実行してください"
   exit 1
 fi
 

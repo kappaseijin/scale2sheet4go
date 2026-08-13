@@ -340,3 +340,28 @@ Sheets deadline の実測は build `0.7622259159979876` 秒、startup `5.4972046
 | `run-binary-source-drift-acceptance.sh` | **PASS**（fresh build と stale/empty source の負の制御） |
 
 実 Google API と OAuth を使う手動試験は、前節と同じく認証情報未提供のため未実施である。
+
+## Issue #4 Go 正本ツールチェーン最終検証（2026-08-13T14:41:01+09:00）
+
+Issue #4 の package metadata 削除、現行 Node fallback 除去、README/計画更新後に実行した。
+
+| 検証 | 結果 |
+| --- | --- |
+| `gofmt` / `git diff --check` | **PASS** |
+| `GOTOOLCHAIN=local CGO_ENABLED=0 go test -count=1 ./...` | **PASS** |
+| `GOTOOLCHAIN=local go vet ./...` | **PASS** |
+| `CGO_ENABLED=0 GOTOOLCHAIN=local go build -o dist/scale2sheet ./cmd/scale2sheet` | **PASS** |
+| `bash scripts/check-go-toolchain-contract.sh` | **PASS** |
+| contract gate README `npm test` 挿入の負の制御 | **PASS**（意図した non-zero） |
+| missing binary operator guidance の負の制御 | **PASS**（意図した non-zero、Go build 案内） |
+| `bash scripts/run-bun-binary-smoke.sh` | **PASS**（Go binary） |
+| `bash scripts/run-pipeline-shadow-acceptance.sh` | **PASS** |
+| `bash scripts/run-installer-acceptance.sh` | **PASS** |
+| `bash scripts/run-runtime-safety-acceptance.sh` | **PASS** |
+| `bash scripts/run-google-sheets-deadline-acceptance.sh` | **PASS**（deadline `30.13262379200023` 秒、terminal 後 lease 再取得 `10.075710167002399` 秒） |
+| `bash scripts/run-binary-source-drift-acceptance.sh` | **PASS**（fresh build、stale/empty 負の制御） |
+| `node scripts/verify-readme-config-keys.mjs` | **PASS**（settings 14、env 13） |
+| `python3 scripts/check-doc-refs.py` | **PASS** |
+| `python3 scripts/check-ac-ledger.py` | **PASS** |
+
+`package.json` と `package-lock.json` は削除し、旧 `src/`、`test/`、`tsconfig.json`、`vitest.config.ts` は削除していない。Go toolchain version policy/CI は Issue #5、macOS 本番環境は Issue #6 の対象として残す。
