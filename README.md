@@ -6,7 +6,7 @@ tags:
   - go
   - google-sheets
   - health
-timestamp: "2026-08-13T21:19:19+09:00"
+timestamp: "2026-08-13T21:31:05+09:00"
 ---
 
 # scale2sheet

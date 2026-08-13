@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-13T21:19:19+09:00（Issue #37 の Apple=3 対象範囲判断を反映）
+最終更新: 2026-08-13T21:31:05+09:00（Issue #37 の Apple=3 対象範囲判断と受入再検証を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
