@@ -60,7 +60,7 @@ issue: 29
 ### Task 5: 記録と PR
 
 - [x] 設定変更、検証、ロールバック方法を本計画へ記録する。
-- [ ] Issue #29 だけを close する PR を作成する。
+- [x] Issue #29 だけを close する PR を作成する（[#34](https://github.com/kappaseijin/scale2sheet4go/pull/34)）。
 
 ## ロールバック手順
 
