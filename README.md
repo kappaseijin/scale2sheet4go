@@ -179,12 +179,29 @@ CLI が認可 URL を表示し、macOS ではブラウザを開きます。認�
 
 ## 開発・検証
 
+Go 1.22 以上と Bash を用意します。標準の品質ゲートはローカルと GitHub Actions で同じスクリプトを実行します。CI は `macos-14` runner と `actions/setup-go@v7` で `go.mod` の Go バージョンを使い、`GOTOOLCHAIN=local` と `CGO_ENABLED=0` を指定します。
+
 ```sh
 gofmt -w cmd internal
-CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet
-CGO_ENABLED=0 go test ./...
-go vet ./...
+bash scripts/check-go-quality-gates.sh
+```
+
+品質ゲートは次の順に実行します。
+
+```sh
+gofmt -l cmd internal
+GOTOOLCHAIN=local go mod verify
+GOTOOLCHAIN=local CGO_ENABLED=0 go test -count=1 ./...
+GOTOOLCHAIN=local CGO_ENABLED=0 go vet ./...
+GOTOOLCHAIN=local CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet
 bash scripts/check-go-toolchain-contract.sh
+```
+
+Staticcheck は任意の追加検査であり、現時点の CI 合否には含めません。ローカルで導入済みなら `staticcheck ./...` で確認できます。
+
+品質ゲート後に製品受け入れ検査を実行します。
+
+```sh
 bash scripts/run-pipeline-shadow-acceptance.sh
 bash scripts/run-google-sheets-deadline-acceptance.sh
 bash scripts/run-installer-acceptance.sh

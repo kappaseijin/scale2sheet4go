@@ -14,6 +14,42 @@ timestamp: "2026-08-03T10:30:00+09:00"
 
 ---
 
+## 2026-08-13 Issue #5 実装・ローカル検証
+
+`scripts/check-go-quality-gates.sh` と `.github/workflows/go.yml` を追加し、README、`docs/PLAN.md`、本資料を更新した。
+共通 checker の正常系は `gofmt`、`go mod verify`、`go test -count=1 ./...`、`go vet ./...`、Go binary build、Issue #4 toolchain contract の全てで PASS した。
+一時コピーの Go ファイルへ末尾空白を加えた負の制御は、gofmt 段階で exit 1 となった。
+
+既存 acceptance は binary smoke、pipeline shadow、installer、runtime safety、Google Sheets deadline、source/binary drift の全てが PASS した。
+deadline は 30.15612133400282 秒、terminal 後の lease 再取得は 10.092095957996207 秒だった。
+`verify-readme-config-keys.mjs`、`check-doc-refs.py`、`check-ac-ledger.py`、`git diff --check` も PASS した。
+source/binary drift の stale/empty source 負の制御は意図した FAIL を検出した上で acceptance 全体が PASS した。
+
+GitHub Actions workflow は `push`/`pull_request` の `main`、`macos-14`、`actions/checkout@v6`、`actions/setup-go@v7`、`go-version-file: go.mod`、`contents: read` を設定した。
+ローカルと CI は同じ checker を実行し、Staticcheck、race detector、coverage は採用しない。
+初回の `setup-go@v5` は CI 自体は PASS したが Node.js 20 deprecated の annotation を出したため、公式の [setup-go README](https://github.com/actions/setup-go) と [releases](https://github.com/actions/setup-go/releases) を再確認し、Node.js 24 対応の `setup-go@v7` へ更新した。
+更新前 PR #9 の [Go quality gates](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31672153786/job/94358875187) は `macos-14` 上で 48 秒、PASS した。更新後の [run](https://github.com/kappaseijin/scale2sheet4go/actions/runs/31672404702/job/94359619056) は `setup-go@v7`、`go1.22.12 darwin/arm64`、shared quality gates PASS、約61秒で完了し、Node.js deprecated annotation は出なかった。
+
+---
+
+## 2026-08-13 Issue #5 の公式品質ゲート・CI 調査
+
+Issue #5 の目的を、Go 移植後の回帰を単一エージェント運用でも再現可能に検出するためのプロジェクト共通基盤として妥当化した。
+Go 公式の [command documentation](https://go.dev/doc/cmd)、[toolchain documentation](https://go.dev/doc/toolchain)、GitHub の [Go build/test 手順](https://docs.github.com/en/actions/tutorials/build-and-test-code/go) を確認し、`gofmt`、`go mod verify`、`go test`、`go vet`、`go build` を標準ゲートとして採用する。
+
+コードグラフで `internal.scheduler.AcquireRunLease` の呼出元と実装を確認したところ、Darwin 以外では lease を拒否するため、CI は Linux ではなく macOS runner が必要である。
+GitHub の [hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) に基づき `macos-14` を採用し、`actions/setup-go` の `go-version-file: go.mod` と `GOTOOLCHAIN=local` で Go 1.22 宣言と暗黙の toolchain 切替を制御する。
+
+[Staticcheck の導入手順](https://staticcheck.dev/docs/getting-started/) と [CI 手順](https://staticcheck.dev/docs/running-staticcheck/ci/) も調査した。
+導入済みの `staticcheck 2023.1.7 (v0.4.7)` で `GOTOOLCHAIN=local staticcheck ./...` を実行した結果は exit 1、18 指摘（ST1005、U1000、SA1019、SA4015）だった。
+既存コードのエラー文規約、未使用コード、非推奨 API、数値検査に関する指摘が残ったため、今回の必須ゲートへは追加しない。
+Staticcheck の既存指摘を直し、版・導入方法・警告の扱いを確定する作業は独立 Issue として後続判断できるようにする。
+
+採用した共通入口は `scripts/check-go-quality-gates.sh` とし、README と GitHub Actions が同じスクリプトを実行する。
+race detector と coverage も対象範囲・閾値・macOS runner コストを今回決めず、必須化しない。
+
+---
+
 ## 2026-08-13 ユーザー修正: 派生席名と対向 LLM 配置
 
 ユーザーの修正指示により、Issue #1 の同一目的（パイロット運用方針とエージェントメタデータ）を次のとおり確定した。
