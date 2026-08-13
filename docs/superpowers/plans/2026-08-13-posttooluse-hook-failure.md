@@ -8,7 +8,7 @@ tags:
   - hook
   - issue-35
 timestamp: "2026-08-13T19:50:57+09:00"
-status: completed
+status: in_progress
 issue: 35
 ---
 
@@ -63,8 +63,8 @@ issue: 35
 ### Task 5: PR と Issue を完了する
 
 - [x] 検証結果を本計画と Issue #35 へ記録する。
-- [ ] Issue #35 だけを close する PR を作成する。
-- [ ] 必要なチェックが通ったら PR #35 をマージする。
+- [x] Issue #35 だけを close する PR #36 を作成する。
+- [ ] 必要なチェックが通ったら PR #36 をマージする。
 
 ## 実行手順
 
