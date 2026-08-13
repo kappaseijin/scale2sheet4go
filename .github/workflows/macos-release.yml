@@ -1,0 +1,112 @@
+name: macOS distribution
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-distribution-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  distribute:
+    name: Sign, notarize, and verify DMG
+    runs-on: macos-14
+    environment: macos-release
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Import Developer ID certificate and notary key
+        env:
+          MACOS_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          MACOS_NOTARY_KEY_BASE64: ${{ secrets.MACOS_NOTARY_KEY_BASE64 }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variable_name in \
+            MACOS_DEVELOPER_ID_CERTIFICATE_BASE64 \
+            MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD \
+            MACOS_KEYCHAIN_PASSWORD \
+            MACOS_SIGNING_IDENTITY \
+            MACOS_NOTARY_KEY_BASE64 \
+            MACOS_NOTARY_KEY_ID \
+            MACOS_NOTARY_ISSUER_ID; do
+            if [[ -z "${!variable_name}" ]]; then
+              echo "FAIL: missing required macos-release secret: $variable_name" >&2
+              exit 2
+            fi
+          done
+          case "$MACOS_SIGNING_IDENTITY" in
+            "Developer ID Application:"*) ;;
+            *) echo "FAIL: MACOS_SIGNING_IDENTITY is not a Developer ID Application identity" >&2; exit 2 ;;
+          esac
+
+          keychain="$RUNNER_TEMP/scale2sheet-signing.keychain-db"
+          certificate="$RUNNER_TEMP/scale2sheet-developer-id.p12"
+          notary_key="$RUNNER_TEMP/scale2sheet-notary-api-key.p8"
+          printf '%s' "$MACOS_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode >"$certificate"
+          printf '%s' "$MACOS_NOTARY_KEY_BASE64" | base64 --decode >"$notary_key"
+          chmod 0600 "$certificate" "$notary_key"
+
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$MACOS_KEYCHAIN_PASSWORD" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -d user -s "$keychain"
+          identities="$(security find-identity -v -p codesigning "$keychain")"
+          case "$identities" in
+            *"$MACOS_SIGNING_IDENTITY"*) ;;
+            *) echo "FAIL: imported keychain does not contain MACOS_SIGNING_IDENTITY" >&2; exit 2 ;;
+          esac
+
+          {
+            printf 'MACOS_SIGNING_IDENTITY=%s\n' "$MACOS_SIGNING_IDENTITY"
+            printf 'MACOS_NOTARY_KEY_PATH=%s\n' "$notary_key"
+            printf 'MACOS_NOTARY_KEY_ID=%s\n' "$MACOS_NOTARY_KEY_ID"
+            printf 'MACOS_NOTARY_ISSUER_ID=%s\n' "$MACOS_NOTARY_ISSUER_ID"
+          } >>"$GITHUB_ENV"
+
+      - name: Build, notarize, staple, and Gatekeeper-check DMG
+        run: bash scripts/build-macos-distribution.sh dist/scale2sheet-macos.dmg
+
+      - name: Upload notarized distribution artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scale2sheet-macos-distribution
+          if-no-files-found: error
+          path: |
+            dist/scale2sheet-macos.dmg
+            dist/scale2sheet-macos.dmg.notary.json
+
+      - name: Remove signing material
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          keychain="$RUNNER_TEMP/scale2sheet-signing.keychain-db"
+          certificate="$RUNNER_TEMP/scale2sheet-developer-id.p12"
+          notary_key="$RUNNER_TEMP/scale2sheet-notary-api-key.p8"
+          if [[ -f "$keychain" ]]; then
+            security delete-keychain "$keychain"
+          fi
+          rm -f "$certificate" "$notary_key"

@@ -10,7 +10,7 @@ timestamp: "2026-07-04T18:00:00+09:00"
 
 # scale2sheet 計画書
 
-最終更新: 2026-08-13（Issue #6 の macOS 本番 artifact・LaunchAgent 運用を反映）
+最終更新: 2026-08-13（Issue #10 の macOS 公開配布署名・公証の実装を反映）
 
 参考: [scale_exporter/PLAN.md](https://github.com/kappaseijin/scale_exporter/blob/main/PLAN.md)（本書は scale_exporter の構成を踏襲する）
 
@@ -108,6 +108,14 @@ Issue #6 では macOS 13+ の app-bundle 前提の `SMAppService` へ移行せ�
 
 `doctor --prefix <dir>` は install と同じ prefix を解決し、manifest の prefix と binary path の整合性を検査する。README は build、dry-run、install、`launchctl print`、`launchctl kickstart -k`、`plutil -lint`、uninstall、残置ファイルまでを自己完結で説明する。pilot acceptance は ad hoc/local artifact を対象とし、Developer ID / Hardened Runtime / notarytool / stapler は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) へ分割した。
 
+### 現行 Go macOS 公開配布（Issue #10）
+
+Issue #10 は Issue #6 の unsigned universal Go binary を、Developer ID Application と Hardened Runtime で署名し、UDZO DMG の公証・staple・Gatekeeper 検査まで一つの公開配布経路へ固定する課題である。CLI の install/LaunchAgent 契約は変更せず、DMG 内の binary と README を既定の `~/.local/bin` へ配置してから既存の install 手順を使用する。
+
+実装計画は [Developer ID署名とnotarytool公証の採否についての検討書](./decisions/2026-08-13T154408_Developer%20ID署名とnotarytool公証の採否についての検討書.md) と [macOS公開配布署名と公証の実装計画](./superpowers/plans/2026-08-13-macos-distribution-signing.md) に保存した。ローカルの契約 acceptance と通常 CI は secrets 無しで実行し、公開配布 workflow だけが `macos-release` environment の一時 keychain/API key を利用する。
+
+現環境には Developer ID Application identity と GitHub secrets が無いため、Apple notary service の正常系 submit/staple/Gatekeeper 実機検査は未実施である。credentials が投入されるまで Issue #10 は open のままとし、Apple Development/ad hoc での代用成功は認めない。
+
 ---
 
 ## Git 管理ルール
@@ -171,6 +179,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.17 | Go 正本ツールチェーン整理（Issue #4） | `go.mod` / `go.sum` と Go CLI を唯一の build/test/依存管理経路にし、package.json/package-lock と現行 Node fallback を除去する | **完了（2026-08-13、PR #8）**。旧 TypeScript 資産の削除、Go toolchain version policy、CI、本番 macOS 配布は別 Issue |
 | Ph.18 | Go 開発品質ゲートと CI（Issue #5） | ローカルと macOS GitHub Actions が同じ標準 Go 品質ゲートを実行する | **完了（2026-08-13、PR #9）**。Staticcheck、race、coverage の必須化は別 Issue |
 | Ph.19 | macOS 本番 artifact と LaunchAgent 運用（Issue #6） | universal Go binary、custom prefix doctor、per-user LaunchAgent、plist lint、状態確認、uninstall、README runbook | **完了（PR #11、2026-08-13）**。macOS CI の Go quality gates と universal artifact 検査が PASS。公開配布の署名・公証は Issue #10 |
+| Ph.20 | macOS 公開配布署名と公証（Issue #10） | Developer ID Application、Hardened Runtime、署名済み UDZO DMG、notarytool submit/wait/log、staple、Gatekeeper 検査、CI secret 境界、README runbook | **実装中（credentials 未投入のため正常系は未実施）** |
 
 ---
 

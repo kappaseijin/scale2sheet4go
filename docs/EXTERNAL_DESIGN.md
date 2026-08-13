@@ -118,7 +118,25 @@ bash scripts/build-macos-release.sh
 
 このスクリプトは `GOOS=darwin`、`GOARCH=arm64|amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`-trimpath` を明示し、`file` と `lipo -info` で `arm64` + `x86_64` を検証します。実行体は per-user `~/Library/LaunchAgents` と `launchctl gui/<uid>` で管理します。状態確認は `launchctl print`、一回の手動再実行は `launchctl kickstart -k`、plist XML 検査は `plutil -lint` を使います。
 
-この pilot の artifact は ad hoc/local 用です。Developer ID、Hardened Runtime、notarytool、stapler、公開配布用 Gatekeeper 検証は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) で別目的として扱います。
+ローカル検証用の artifact は unsigned です。公開配布用 artifact は [Issue #10](https://github.com/kappaseijin/scale2sheet4go/issues/10) の `scripts/build-macos-distribution.sh` で Developer ID Application、Hardened Runtime、notarytool、stapler、公開配布用 Gatekeeper 検証を通します。
+
+### 公開配布 artifact
+
+現行製品は裸の Go CLI であり、既存の per-user install 契約を変更しないため、配布容器は UDZO DMG とする。DMG 内には universal `scale2sheet` binary と README を置く。Apple の直接配布手順に従い、binary を署名してから DMG を作成し、DMG も Developer ID Application で署名する。公証するのは最外側の DMG だけである。
+
+```mermaid
+flowchart LR
+  A["universal Go binary"] --> B["codesign + Hardened Runtime"]
+  B --> C["UDZO DMG"]
+  C --> D["codesign DMG"]
+  D --> E["notarytool submit --wait/log"]
+  E --> F["stapler staple/validate"]
+  F --> G["hdiutil verify + spctl + codesign"]
+```
+
+API key 方式（`.p8`、Key ID、Issuer ID）を CI の標準とし、Keychain profile 方式もローカル用に受理する。証明書、秘密鍵、temporary keychain はリポジトリへ保存せず、GitHub Actions では `macos-release` environment の secrets を実行時だけ `$RUNNER_TEMP` へ復号し、終了時に削除する。通常の PR quality workflow は secrets を読み込まない。
+
+Developer ID identity または notary credentials が不足する場合は、build や artifact 出力を行わず fail-closed とする。Apple Development、ad hoc、`codesign --deep`、`sudo` へのフォールバックはしない。README に、local build、CI secret、DMG からの install、契約 acceptance を自己完結で記載する。
 
 ## 関連設計
 
