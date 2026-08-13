@@ -833,3 +833,29 @@ codex 系の実装を manager が PR 化
 
 **2 件目の誤りは、本番の plist を `plutil -p` で引いて判明した。**
 **設計書の値ではなく、本番の値を見る。**
+
+## 2026-08-13T14:11:24+09:00 Issue #2 Go ポート最終検証前記録
+
+Issue #2 の目的がプロジェクト全体に対して妥当かを再確認した。pilot の正式な利用者経路を Go 単一バイナリへ移すことは、README の設定・利用手順、launchd、pipeline、Sheets 転記を一つの実装言語へ揃えるために必要であり、Issue #1 の運用方針とは別の一課題として扱える。
+
+外部の公式実装を調査し、独自 protocol を作らずに次を採用した。
+
+- Google Sheets は [Sheets API の Go package](https://pkg.go.dev/google.golang.org/api/sheets/v4) と公式 Values API の `Get` / `BatchUpdate` を使用する。
+- Google Fit は [Fitness API の Go package](https://pkg.go.dev/google.golang.org/api/fitness/v1) の data source / dataset API を使用する。
+- OAuth callback と PKCE は [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) の `AuthCodeURL`、`S256ChallengeOption`、`VerifierOption`、`Exchange` を使用する。
+
+実装・計画上の判断は次のとおり。
+
+- 現行派生席は `scale2sheet_owner_codex` の一席だけであり、対向 LLM reviewer は配置しない。検証は目的確認、差分確認、unit test、vet、acceptance、負の制御で自己完結させた。
+- macOS の cgo linker 問題は製品挙動ではなく実行環境の test binary 起動問題だったため、Go の検証コマンドを `CGO_ENABLED=0` に固定した。
+- 旧 TypeScript/Bun 資産は比較履歴として残し、既定の build/test/acceptance 経路からは参照しない。削除は別 cleanup 課題として Issue #2 の目的へ混ぜない。
+
+現行検証は [ACCEPTANCE_TEST_REPORT.md](./ACCEPTANCE_TEST_REPORT.md) の Issue #2 節へ保存した。Go unit、vet、5 本の `run-*-acceptance.sh`、互換名 smoke、README キー、文書参照、AC 台帳は PASS。実 Google API を使う手動試験だけは認証情報未提供のため未実施である。
+
+## 2026-08-13T14:28:06+09:00 Issue #2 PR 作成直前の自己検証
+
+Issue #2 の実装差分を `scale2sheet_owner_codex` として再読し、Go ファイルを `gofmt` に通した後、`git diff --check`、`go test -count=1 ./...`、`go vet ./...`、`npm test`、AC 台帳・文書参照・README 設定キー検査、全隔離 acceptance を実行した。全て PASS であり、対向 LLM reviewer は配置していない。
+
+`run-binary-source-drift-acceptance.sh` は fresh build と stale/empty source の負の制御を意図どおり判定し、実行時点では未コミット差分を含む `source_head=...-dirty` を記録した。PR 作成前に commit 後の clean head と PR head を別途確認する。
+
+今回のユーザー追加要求は Issue #4（Go Modules/package.json）、Issue #5（開発品質ゲート/CI）、Issue #6（macOS 本番環境）へ目的分離して起票した。Issue #2 の PR にこれらの変更を混ぜない。

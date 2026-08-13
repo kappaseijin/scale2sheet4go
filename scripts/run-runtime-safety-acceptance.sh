@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compiled-Bun acceptance for the Darwin O_EXLOCK kernel contract.
+# Compiled-Go acceptance for the Darwin O_EXLOCK kernel contract.
 # It never uses the real HOME, prefix, launchd, or network credentials.
 
 root=$(mktemp -d /private/tmp/scale2sheet-runtime-safety.XXXXXX)
@@ -37,19 +37,9 @@ dump_diagnostic_file() {
   fi
 }
 
-# #168: fail loudly with install guidance rather than skipping if bun is
-# missing -- a skip would mean "no lease contract was checked," not "the
-# contract held" (Issue #126). Matches #128's guard.
-if ! command -v bun >/dev/null 2>&1; then
-  echo 'bun is required to run acceptance:runtime-safety (part of `npm test`).' >&2
-  echo 'Install it with: curl -fsSL https://bun.sh/install | bash' >&2
-  echo 'Then restart your shell so `bun` is on PATH, and re-run `npm test`.' >&2
-  exit 1
-fi
-
 # Keep this freshly compiled acceptance binary isolated from checkout dist/.
 binary="$root/scale2sheet"
-bun build ./src/index.ts --compile --outfile "$binary" >/dev/null
+CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$binary" ./cmd/scale2sheet
 home="$root/home"
 scale_exporter_output_dir="$root/scale-exporter-output"
 mkdir -p "$home" "$scale_exporter_output_dir"
@@ -126,7 +116,7 @@ if [ -z "$conflict_status" ]; then
   exit 1
 fi
 conflict_pid=""
-if [ "$conflict_status" -eq 0 ] || ! grep -Eq 'EAGAIN|EWOULDBLOCK|RunLeaseConflictError' "$root/conflict.log"; then
+if [ "$conflict_status" -eq 0 ] || ! grep -Eq 'run lease is active|EAGAIN|EWOULDBLOCK|RunLeaseConflictError' "$root/conflict.log"; then
   echo 'second compiled process did not report lock conflict' >&2
   cat "$root/conflict.log" >&2
   exit 1
@@ -154,4 +144,4 @@ if ! grep -q 'Scheduler started' "$root/reacquired.log"; then
   exit 1
 fi
 
-echo 'PASS: compiled Bun two-process EAGAIN/EWOULDBLOCK conflict and SIGKILL release'
+echo 'PASS: compiled Go two-process EAGAIN/EWOULDBLOCK conflict and SIGKILL release'

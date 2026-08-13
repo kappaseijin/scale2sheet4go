@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Isolated-Bun acceptance for install/uninstall (design INSTALLATION_DESIGN.md
-# §隔離統合テスト 1, 2, 4, 5, 6 plus the "隔離 Bun 必須" checks for AC-17,
+# Isolated-Go acceptance for install/uninstall (design INSTALLATION_DESIGN.md
+# §隔離統合テスト 1, 2, 4, 5, 6 plus the compiled-binary checks for AC-17,
 # AC-18, AC-19). Never touches the real HOME, prefix, launchd, or network.
 # launchctl is a fake stub on PATH; Google network access is denied via
 # unroutable proxies. This compiled `install` check is AC-25's network-deny
@@ -42,19 +42,9 @@ dump_diagnostic_file() {
   fi
 }
 
-# #168: fail loudly with install guidance rather than skipping if bun is
-# missing -- a skip would mean "install/uninstall was not checked," not
-# "install/uninstall behaved correctly" (Issue #126). Matches #128's guard.
-if ! command -v bun >/dev/null 2>&1; then
-  echo 'bun is required to run acceptance:installer (part of `npm test`).' >&2
-  echo 'Install it with: curl -fsSL https://bun.sh/install | bash' >&2
-  echo 'Then restart your shell so `bun` is on PATH, and re-run `npm test`.' >&2
-  exit 1
-fi
-
 # Keep this freshly compiled acceptance binary isolated from checkout dist/.
 binary="$root/scale2sheet"
-bun build ./src/index.ts --compile --outfile "$binary" >/dev/null
+CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$binary" ./cmd/scale2sheet
 
 fake_bin="$root/fake-bin"
 mkdir -p "$fake_bin"
@@ -237,15 +227,15 @@ run_isolated "$home5" install --launchd >"$root/install-conflict.log" 2>&1 || co
 grep -Eq 'run lease is active|EAGAIN|EWOULDBLOCK' "$root/install-conflict.log" \
   || fail "install --launchd failure did not report a run-lease conflict"
 
-kill -TERM "$holder_pid"
-wait "$holder_pid" 2>/dev/null || true
-holder_pid=""
-
 after_ac18=$(tree_snapshot "$home5")
 [ "$before_ac18" = "$after_ac18" ] || fail "install --launchd mutated the tree before failing on an active run lease (AC-18)"
 if grep -Eq 'bootout|bootstrap' "$launchctl_log"; then
   fail "install --launchd invoked launchctl mutations despite the lease conflict"
 fi
+
+kill -TERM "$holder_pid"
+wait "$holder_pid" 2>/dev/null || true
+holder_pid=""
 
 # --- Check 6: default uninstall leaves settings and log content behind (design §隔離統合テスト 6, AC-09, B-1 review fix) ---
 # A real pipeline run would leave log content in the created log dir; a

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compiled-Bun acceptance for #280. It proves the production GoogleAuth
+# Compiled-Go acceptance for #280. It proves the production GoogleAuth
 # transport is reached through a TCP blackhole, the 30-second adapter deadline
 # aborts that request, and the pipeline's finally releases its run lease.
 
@@ -128,10 +128,6 @@ PY
 
 wrapper_started_at=$(monotonic_now)
 
-if ! command -v bun >/dev/null 2>&1; then
-  echo 'bun is required to run acceptance:google-sheets-deadline.' >&2
-  exit 1
-fi
 if ! command -v openssl >/dev/null 2>&1; then
   echo 'openssl is required to create an isolated fake service-account key.' >&2
   exit 1
@@ -139,7 +135,7 @@ fi
 
 binary="$root/scale2sheet"
 build_started_at=$(monotonic_now)
-bun build ./src/index.ts --compile --outfile "$binary" >/dev/null
+CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$binary" ./cmd/scale2sheet
 build_finished_at=$(monotonic_now)
 record_phase build "$(elapsed_since "$build_started_at" "$build_finished_at")"
 record_phase wrapper_to_build "$(elapsed_since "$wrapper_started_at" "$build_finished_at")"

@@ -76,6 +76,21 @@ innovator は役割として定義されているが、実測時点では agmsg 
 
 エージェント間の連絡は agmsg、起動・監視は herdr CLI を使う。詳細は「開発体制」を参照。
 
+### 現行 Go ポート（Issue #2）
+
+Issue #2 は既存 scale2sheet の外部契約を Go へ移植する一つの課題であり、一つの PR で完了させる。実装対象は `cmd/scale2sheet` と `internal/` の Go パッケージ、Go unit/integration test、Go バイナリを実行する acceptance harness、利用者向け README である。
+
+```mermaid
+flowchart LR
+  A["Go source"] --> B["CGO_ENABLED=0 go build"]
+  B --> C["single binary"]
+  C --> D["unit / vet / acceptance"]
+  D --> E["README + design docs"]
+  E --> F["Issue #2 single PR"]
+```
+
+現時点の既定検証は `CGO_ENABLED=0 go test ./...`、`go vet ./...`、`scripts/run-*-acceptance.sh` である。対向 LLM reviewer は配置せず、`scale2sheet_owner_codex` が目的妥当性、差分、テスト、静的検査、負のコントロールを自己確認する。macOS の cgo linker による `dyld: missing LC_UUID` が確認されたため、Go 検証は cgo 無効で再現可能にする。
+
 ---
 
 ## Git 管理ルール
@@ -100,7 +115,7 @@ pm は**検討書・設計書を起草しない**（`~/.agents/rules/agent-role.
 
 ## 概要
 
-朝・夜の身体測定値（体重・体温・血圧上/下・脈拍）を [scale_exporter](https://github.com/kappaseijin/scale_exporter) の出力 JSONL（デフォルト・推奨）、Google Fit REST API、または Apple Health XML エクスポートから取得し、Google Spreadsheet の当日行へ転記する TypeScript / Node.js サービス。
+朝・夜の身体測定値（体重・体温・血圧上/下・脈拍）を [scale_exporter](https://github.com/kappaseijin/scale_exporter) の出力 JSONL（デフォルト・推奨）、Google Fit REST API、または Apple Health XML エクスポートから取得し、Google Spreadsheet の当日行へ転記する Go サービス。
 
 ```text
 [scale_exporter] --JSONL出力--> <入力フォルダ> --読込--> [scale2sheet] --> Google スプレッドシート
@@ -135,6 +150,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | Ph.13 | Bunを優先実行環境にする・バイナリ名変更 | バイナリ名を`scale2sheet-bun`→`scale2sheet`へ変更、README/設計書をBun優先の書き方へ更新 | **計画中**（検討書: [decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md](./decisions/2026-07-05T152943_Bunを優先実行環境にしバイナリ名をscale2sheetにする検討書.md)） |
 | Ph.14 | エージェント体制の派生命名への移行 | 7役割（pm/innovator/architect/programmer/reviewer×2/worker）を `<プロジェクト名>_<役割>_<ベンダー>` で登録、専用クローンと人格差分 AGENT.md を整備、兼任・プロジェクト跨ぎを解消。reviewer をベンダー別2名に分割しレビュー経路を閉じた（reviewer は 2026-08-03 の決定により 1 席へ統合） | **完了**（2026-07-28） |
 | Ph.15 | インストーラ／アンインストーラの整備 | インストール後の実行体をソースチェックアウトから独立させる（Ph.12 の未完了分の回収）。導入・撤収・診断の手段を提供し、launchd plist と run-pipeline.sh の絶対パス依存を解消する。あわせて `build` → `build:node` へ改名 | **Slice 1 完了（2026-08-02）・Slice 2 着地（PR #73）・Slice 3 着地（PR #139）・Slice 4 着地（PR #193 / #200 / #202、2026-08-10）**。Slice 1 実装根拠: src/version.ts、src/scheduler/run-lease.ts、src/installation/settings-read.ts、test/scheduler/run-lease.test.ts、test/cli/serve-lease.test.ts、scripts/run-runtime-safety-acceptance.sh。Slice 2 根拠: PR #73（input snapshot / pipeline CLI）。Slice 3 根拠: PR #139（install / 既定 uninstall / Task 1-8 実装、AC 骨格）。[目標定義](./decisions/2026-07-29T084808_インストーラとアンインストーラの目標定義.md)、[INSTALLATION_DESIGN.md](./INSTALLATION_DESIGN.md)、[実装分割](./decisions/2026-07-29T173454_インストーラ実装分割と受け入れ確認の検討書.md) |
+| Ph.16 | Go ポート（Issue #2） | 既存の scale2sheet 契約を `cmd/scale2sheet` と `internal/` へ移植し、Go 単一バイナリ・unit test・vet・acceptance harness・README を正式経路にする | **実装・最終検証完了（2026-08-13、PR 作成前）**。`CGO_ENABLED=0 go test ./...`、`go vet ./...`、6 本の Go binary acceptance、README/文書/AC 台帳検査が PASS。旧 TypeScript 資産は比較履歴として保持し、既定経路からは参照しない |
 
 ---
 
@@ -157,9 +173,7 @@ Google Fit REST API は 2026 年末で終了するため非推奨。`scale-expor
 | 6 | distribution と切替準備 | 未着手 |
 | 7 | 観測後 cleanup | 未着手 |
 
-検証方針は検討書の「Slice ごとの完了ゲート」表が正本。共通ゲートは `npm run typecheck` / `npm test` / `npm run build:bun`。
-**通常 Vitest（Node）と隔離 Bun acceptance は一方が他方を代用しない**。とくに `O_EXLOCK` と atomic 置換は
-Bun compiled binary の2 process 試験でしか実証できない（AC-15、AC-17〜20、AC-23〜25 は個別ゲート表を優先）。
+検証方針は検討書の「Slice ごとの完了ゲート」表が正本。Issue #2 の共通ゲートは `CGO_ENABLED=0 go test ./...` / `go vet ./...` / Go binary acceptance である。旧 TypeScript/Vitest/Bun の試験記述は過去の実装を記録する履歴であり、現行製品の既定経路ではない。
 
 ### scale_exporter との責任境界（2026-08-02 合意）
 
@@ -193,9 +207,9 @@ Bun compiled binary の2 process 試験でしか実証できない（AC-15、AC-
 
 ---
 
-## Bun単一バイナリ化方針（Ph.11〜Ph.13、2026-07-05更新）
+## 旧 Bun 単一バイナリ化方針（Ph.11〜Ph.13、2026-07-05の履歴）
 
-目的: ソースコードはNode.js API互換のTypeScriptを維持しつつ、**このプロジェクトが配布・運用するアプリの正式な形態を`bun build --compile`による単体実行バイナリとする**（2026-07-05、ユーザー指示によりPh.11の「追加オプション」方針から拡張）。詳細な選択肢の検討・却下理由は [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md) と [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md) を参照。
+これは 2026-07-05 時点の TypeScript/Bun 実装方針を保存した履歴であり、Issue #2 の Go ポートで置き換えられた。現在の製品の正式経路は Go 単一バイナリである。詳細な旧方針は [decisions/2026-07-05T102021_Bun_CLI化についての検討書.md](./decisions/2026-07-05T102021_Bun_CLI化についての検討書.md) と [decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md](./decisions/2026-07-05T105321_単一バイナリ化_bun_buildを正式な配布形態にする検討書.md) を参照。
 
 ### 維持するもの
 

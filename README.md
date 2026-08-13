@@ -1,9 +1,9 @@
 ---
 type: Readme
-title: scale2sheet (cale2sheet)
-description: 朝・夜の身体測定値を Google スプレッドシートへ転記する TypeScript サービス
+title: scale2sheet
+description: 朝・夜の身体測定値を Google スプレッドシートへ転記する Go サービス
 tags:
-  - typescript
+  - go
   - google-sheets
   - health
 timestamp: "2026-07-02"
@@ -11,118 +11,30 @@ timestamp: "2026-07-02"
 
 # scale2sheet
 
-朝・夜の身体測定値を Google Spreadsheet の当日行へ転記する TypeScript サービスです。正式な配布・運用形態は `bun build --compile` で生成する単体バイナリ `scale2sheet` です。開発・型検査は Node.js（>= 22）ツールチェインを使います。**`npm test` はバイナリを実際にビルドして検証する acceptance 試験（コマンドセット乖離・pipeline shadow 経路・run lease・install/uninstall・CLI smoke、#128・#168）を含むため、[Bun](https://bun.sh/)（>= 1.0.0）のインストールも必要です。**
+`scale2sheet` は、scale_exporter の JSONL、Apple Health XML、または Google Fit から身体測定値を読み込み、当日の Google スプレッドシート行へ転記する macOS 向け Go CLI です。
 
-パッケージ名は `cale2sheet`、CLI コマンド名は `scale2sheet` です。
+## インストール
 
-## データフロー
-
-<!-- diagram: composition -->
-```mermaid
-%% verify: composition
-flowchart LR
-  subgraph exp_side["scale_exporter（別プロジェクト・自身のスケジュールで実行）"]
-    EXP["scale_exporter<br/>scale_exporter_*.jsonl"]
-  end
-
-  subgraph s2s["scale2sheet（launchd で日次実行）"]
-    LA["scale-pipeline.morning<br/>07:00 / 11:30"]
-    LB["scale-pipeline.evening<br/>21:00 / 23:30"]
-    BIN["~/.local/bin/scale2sheet<br/>pipeline --period P"]
-  end
-
-  subgraph cfg["~/.config/scale2sheet/"]
-    CFG["settings.json"]
-    SEC["google-sheets-service-account.json"]
-  end
-
-  OUT[("scale-exporter-output-dir<br/>分割 JSONL")]
-  LOG["~/Library/Logs/scale-pipeline/"]
-  GS["Google スプレッドシート<br/>当日行の 朝* / 夜* 列"]
-
-  EXP -->|JSONL 出力| OUT
-  LA -->|起動| BIN
-  LB -->|起動| BIN
-  OUT -->|読込| BIN
-  CFG --> BIN
-  SEC --> BIN
-  BIN -->|行を更新| GS
-  BIN -.->|標準出力・エラー| LOG
-```
-
-デフォルトのデータソースは `scale-exporter`（[scale_exporter](https://github.com/kappaseijin/scale_exporter) が出力した分割 JSONL ファイルの読み込み）です。Google Fit REST API 直接取得（`--source google-fit`）も残っていますが、同 API は 2026 年末で終了するため非推奨です。launchd による朝夕の自動実行（本実行＋拾い直し）に対応します（後述）。
-
-## 対応データ
-
-Spreadsheet は既存行を更新します。1行目の `月日` 列で当日行を検索し、`朝*` または `夜*` 列へ値を書き込みます。
-
-```text
-月日 | 朝体重 | 朝体温 | 朝血圧上 | 朝血圧下 | 朝脈拍 | 夜体重 | 夜体温 | 夜血圧上 | 夜血圧下 | 夜脈拍
-```
-
-取得対象は体重、体温、収縮期血圧、拡張期血圧、脈拍です。Google Fit で体温データ型が利用できない場合、体温は空欄になります。
-
-朝は `05:00` から `12:00`、夜は `20:00` から `23:30` の測定値だけを対象にします。対象時間帯の測定値がない場合、Spreadsheet は更新せず正常終了します。
-
-## セットアップ
-
-設定ファイルは `~/.config/scale2sheet/settings.json` です。環境変数（`.env` 含む） > `settings.json` の順で解決します。**組み込み既定値はありません。** `sheet-id` と `scale-exporter-output-dir` は必須で、未指定なら起動時に失敗します（Issue #47 / #51）。
-
-### 既存利用者向けの移行手順
-
-2026-08-07 以前の `settings.json` には `sheet-id` が含まれていない場合があります。次のいずれかの手順で追加してください。
-
-1. `~/.config/scale2sheet/settings.json` をエディタで開く
-2. `"sheet-id": "<転記先SpreadsheetのID>"` を追加する（SpreadsheetのURL `https://docs.google.com/spreadsheets/d/<ここがID>/edit` から取得）
-3. `source` が `scale-exporter`（既定）の場合は、`"scale-exporter-output-dir": "<scale_exporterのJSONL出力フォルダ>"` も確認する。無ければ追加する
-
-設定せずに起動すると、次のようなメッセージで失敗します。メッセージにはどのキーをどのファイルへ追加すればよいかが含まれます。
-
-```
-Google Sheets requires both sheet-id and sheets-credentials in ~/.config/scale2sheet/settings.json (or GOOGLE_SHEET_ID / GOOGLE_APPLICATION_CREDENTIALS).
-```
-
-設定ファイルの主なキーは次のとおりです。
-
-| キー | 用途 | 必須 |
-| --- | --- | --- |
-| `time-zone` | 日付・時間帯の解釈（既定 `Asia/Tokyo`） | - |
-| `source` | `scale-exporter` / `google-fit` / `apple-health`（既定 `scale-exporter`） | - |
-| `sheet-id` / `sheet-name` | 転記先Spreadsheetとシート名 | `sheet-id` は必須 |
-| `sheets-credentials` | Google Sheetsサービスアカウント鍵のパス | 必須 |
-| `scale-exporter-output-dir` | scale_exporter JSONL入力フォルダ | `source` が `scale-exporter` のとき必須 |
-| `apple-health-export-xml` | Apple Health XML入力パス | `source` が `apple-health` のとき必須 |
-| `google-fit-token-path` / `google-fit-lookback-days` | Google Fit OAuthトークンと検索期間 | - |
-| `google-fit-client-id` / `google-fit-client-secret` / `google-fit-redirect-uri` | Google Fit OAuthクライアント（環境変数 `GOOGLE_FIT_CLIENT_ID` / `GOOGLE_FIT_CLIENT_SECRET` / `GOOGLE_FIT_REDIRECT_URI` でも設定可） | `source` が `google-fit` のとき必須 |
-| `morning-cron` / `evening-cron` | `serve` の実行時刻 | - |
-
-`sheet-id` の実値はREADMEに掲載しません。共有されたREADMEから本番スプレッドシートを特定できる状態を避け、値の正本を各自の `settings.json` に置きます。
-
-認証情報は設定ファイルへ値を直接書かず、`~/.config/scale2sheet/google-sheets-service-account.json`（Sheets）または `google-fit-credentials.json`（Google Fit）へ配置します。詳細は [EXTERNAL_DESIGN.md](./docs/EXTERNAL_DESIGN.md#設定ファイル) を参照してください。
-
-### Bun バイナリの作成と実行
+Go 1.22 以上を用意し、リポジトリのルートで単一バイナリを作成します。
 
 ```sh
-npm install
-npm run build:bun
-./dist/scale2sheet run --period morning   # 初回実行で settings.json が自動生成される
+CGO_ENABLED=0 go build -o dist/scale2sheet ./cmd/scale2sheet
+./dist/scale2sheet --version
 ```
 
-### Node.js での開発・デバッグ
+`CGO_ENABLED=0` は、配布バイナリを外部の C ランタイムに依存させないための指定です。`npm run build:go` でも同じバイナリを作成できます。
 
-```sh
-npm install
-npm run build:node
-node dist/index.js run --period morning
-```
+## 設定
 
-`~/.config/scale2sheet/settings.json`（非シークレット・自動生成後に編集）:
+設定ファイルは `~/.config/scale2sheet/settings.json` です。初回起動時に存在しなければ、既定値を含むファイルを作成します。設定値の決定順序は、環境変数、`settings.json`、組み込み既定値の順です。
+
+最低限、Google Sheets の `sheet-id` と `sheets-credentials`、入力ソースに応じた入力先を設定します。
 
 ```json
 {
   "time-zone": "Asia/Tokyo",
   "source": "scale-exporter",
-  "sheet-id": "<スプレッドシートID>",
+  "sheet-id": "<Google スプレッドシート ID>",
   "sheet-name": "体温・血圧",
   "sheets-credentials": "~/.config/scale2sheet/google-sheets-service-account.json",
   "scale-exporter-output-dir": "/path/to/scale-exporter-output",
@@ -131,213 +43,159 @@ node dist/index.js run --period morning
 }
 ```
 
-`scale-exporter-output-dir` は利用環境の入力フォルダへ変更してください。`sheet-id` と（`source` が `scale-exporter` のとき）`scale-exporter-output-dir` は必須です。設定は環境変数、`settings.json` の順で解決されます（組み込み既定値はありません）。
+| キー | 内容 | 既定値・条件 |
+| --- | --- | --- |
+| `time-zone` | 日付と時間帯の解釈 | `Asia/Tokyo` |
+| `source` | `scale-exporter`、`google-fit`、`apple-health` | `scale-exporter` |
+| `sheet-id` | 転記先スプレッドシート ID | 必須 |
+| `sheet-name` | 対象シート名 | `体温・血圧` |
+| `sheets-credentials` | Sheets サービスアカウント鍵のパス | 必須 |
+| `scale-exporter-output-dir` | scale_exporter の JSONL フォルダ | `source` が `scale-exporter` のとき必須 |
+| `apple-health-export-xml` | Apple Health の XML パス | `source` が `apple-health` のとき必須 |
+| `google-fit-client-id` | Google Fit OAuth client ID | `source` が `google-fit` のとき必須 |
+| `google-fit-client-secret` | Google Fit OAuth client secret | `source` が `google-fit` のとき必須 |
+| `google-fit-redirect-uri` | OAuth callback URI | `http://localhost:3000/oauth2callback` |
+| `google-fit-token-path` | Google Fit token JSON の保存先 | `~/.config/scale2sheet/google-fit-token.json` |
+| `google-fit-lookback-days` | Google Fit を遡る日数 | `14` |
+| `morning-cron` / `evening-cron` | `serve` の cron 式 | `0 7 * * *` / `0 21 * * *` |
 
-認証ファイル（シークレット・手動配置）:
+環境変数を使う場合は `settings.json` より優先されます。
 
-- `~/.config/scale2sheet/google-sheets-service-account.json` — Google Sheets 用サービスアカウント鍵
-- `~/.config/scale2sheet/google-fit-credentials.json` — Google Fit 利用時のみ。`{"client_id": "...", "client_secret": "..."}`（scale_exporter と同形式）
+| 環境変数 | 対応する設定 |
+| --- | --- |
+| `TIME_ZONE` | `time-zone` |
+| `SCALE_EXPORTER_OUTPUT_DIR` | `scale-exporter-output-dir` |
+| `APPLE_HEALTH_EXPORT_XML` | `apple-health-export-xml` |
+| `GOOGLE_SHEET_ID` | `sheet-id` |
+| `GOOGLE_SHEET_NAME` | `sheet-name` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | `sheets-credentials` |
+| `GOOGLE_FIT_CLIENT_ID` / `GOOGLE_FIT_CLIENT_SECRET` | Google Fit client credentials |
+| `GOOGLE_FIT_REDIRECT_URI` | `google-fit-redirect-uri` |
+| `GOOGLE_FIT_TOKEN_PATH` | `google-fit-token-path` |
+| `GOOGLE_FIT_LOOKBACK_DAYS` | `google-fit-lookback-days` |
+| `MORNING_CRON` / `EVENING_CRON` | `morning-cron` / `evening-cron` |
 
-環境変数（`.env` 含む）は settings.json への**上書き**として引き続き使えます（変数名は `.env.example` 参照）。優先順位: 環境変数 > settings.json。
+認証ファイルは Git に追加しないでください。Sheets のサービスアカウントメールアドレスを対象スプレッドシートへ共有する必要があります。Google Fit は `google-fit-credentials.json` に `client_id`、`client_secret`、必要なら `redirect_uri` を置く方法も使えます。
 
-Google Sheets は service account を使います。対象Spreadsheetをservice accountのメールアドレスに共有してください。
+## 測定値と転記先
 
-Google Fit は個人health dataのためinstalled app OAuthを使います。Google Cloud ConsoleでOAuth clientを作成し、redirect URIに `http://localhost:3000/oauth2callback` を登録してください。
+対象シートの1行目には次の見出しを用意します。対象日の `月日` 行が存在しない場合、その行は自動作成せず転記を失敗として扱います。
+
+```text
+月日 | 朝体重 | 朝体温 | 朝血圧上 | 朝血圧下 | 朝脈拍 | 夜体重 | 夜体温 | 夜血圧上 | 夜血圧下 | 夜脈拍
+```
+
+朝は `05:00` 以上 `12:00` 以下、夜は `20:00` 以上 `23:30` 以下の測定値を対象にします。体重が対象時間帯にない場合はシートを更新せず `completed:no-data` として正常終了します。Google Fit の体温データ型が利用できない場合、体温だけ空欄になります。
+
+```mermaid
+flowchart LR
+  SRC["scale_exporter JSONL / Apple Health XML / Google Fit"] --> CLI["scale2sheet"]
+  CFG["settings.json + 認証ファイル"] --> CLI
+  CLI --> SHEET["Google スプレッドシートの当日行"]
+  CLI --> STATUS["pipeline-status.json"]
+```
 
 ## Google Fit 初回認証
 
+Google Cloud で Fitness API と OAuth クライアントを有効にし、redirect URI に `http://localhost:3000/oauth2callback` を登録します。client credentials を設定した後、次を実行します。
+
 ```sh
-npm run build:bun
 ./dist/scale2sheet auth
 ```
 
-Node.js で確認する場合は次でも実行できます。
-
-```sh
-npm run build:node
-node dist/index.js auth
-```
-
-表示されたURLをブラウザで開いて認可します。認可後、CLIがlocalhost callbackを受け取り、`GOOGLE_FIT_TOKEN_PATH` にtoken JSONを保存します。
-
-## Spreadsheet の前提
-
-対象シートには当日行が事前に存在している必要があります。`月日` 列の日付は `YYYY-MM-DD`、`YYYY/MM/DD`、`M/D`、`M月D日` 形式に対応します。行が見つからない場合、自動作成はせずログを出して終了します。
+CLI が認可 URL を表示し、macOS ではブラウザを開きます。認可後に localhost callback を受け、`google-fit-token-path` へ mode `0600` の token JSON を保存します。
 
 ## 手動実行
 
-既定のsourceは `scale-exporter`（scale_exporter の出力JSONLファイルを読み込み）です。朝の列を更新します。
-
 ```sh
+# scale_exporter の公開済み JSONL を読む
 ./dist/scale2sheet run --period morning
-```
 
-Google Fit REST APIから直接取得する場合（非推奨: 2026年末でAPI終了。[ARCHITECTURE_DESIGN.md](./docs/ARCHITECTURE_DESIGN.md#重要な外部制約) 参照）:
+# 対象日を指定する
+./dist/scale2sheet run --period evening --date 2026-08-13
 
-```sh
+# Apple Health XML を読む
+./dist/scale2sheet run --period morning --source apple-health
+
+# Google Fit を読む
 ./dist/scale2sheet run --period morning --source google-fit
 ```
 
-Apple Health XMLから夜の列を更新します。
-
-```sh
-./dist/scale2sheet run --period evening --source apple-health
-```
-
-### 終了コード
-
-`run` コマンドの終了コードです（`pipeline` / `serve` / `auth` / `doctor` やシグナル終了は対象外）。
-
-| exit code | 意味 |
-| --- | --- |
-| `2` | CLIの構文・引数エラー（未知のオプション、引数不足、不正な値など） |
-| `1` | 設定・環境・実行時のエラー（必須設定の欠落、入力の読み取り失敗、転記の失敗など） |
-| `0` | 正常終了（`--help` / `--version` を含む） |
+`run` は書き込んだ行を JSON で標準出力へ出し、対象値がなければ `No spreadsheet row updated.` と出力します。Google Sheets への各転記試行には 30 秒の期限があります。
 
 ## 常駐実行
-
-既定では `scale-exporter` をsourceにして、`MORNING_CRON` と `EVENING_CRON` で実行します。
 
 ```sh
 ./dist/scale2sheet serve
 ```
 
-別のsourceにする場合:
+`serve` は `morning-cron` と `evening-cron` に従って同じ処理を実行します。実行中は `active-run.json` と macOS の排他 lease で二重実行を防ぎます。`SIGTERM` / `SIGINT` で終了できます。
+
+## launchd への登録
+
+まず設定と認証ファイルを揃え、バイナリをインストールします。
 
 ```sh
-./dist/scale2sheet serve --source apple-health
+./dist/scale2sheet install
 ```
 
-## 開発コマンド
+既定では次の場所へ配置します。
+
+- バイナリ: `~/.local/bin/scale2sheet`
+- 設定・認証・状態: `~/.config/scale2sheet/`
+- launchd plist: `~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist`、`...evening.plist`
+- ログ: `~/Library/Logs/scale-pipeline/`
+
+設定と認証ファイルを確認してから launchd へ登録します。
 
 ```sh
-npm run typecheck
-npm test
-npm run build:node
-```
-
-`npm test` は `bun build --compile` で実際にバイナリをビルドして検証する acceptance 試験を6本含みます（コマンドセット乖離 #128、pipeline shadow 経路・run lease・install/uninstall・CLI smoke #168、Google Sheets 無応答時の期限とlease回復 #280）。そのぶん通常のユニットテストだけより時間がかかり、6本が並列で `bun build` を回すため**実行環境のCPU負荷によって所要時間が変動します**。#280のfocused acceptanceだけは180秒の明示的タイムアウトを持ちます。これは60秒startup、45秒のblackhole接続後deadline watchdog、30秒のpost-reacquire watchdogが、test runnerより先に原因別の診断を出すための上限です。製品のGoogle Sheets操作上限30秒とは別の検査上限です。ほかのacceptance試験の上限は変更していません。[Bun](https://bun.sh/) が PATH に無い場合、これらの検査はスキップではなく**失敗**します（インストール手順をエラーメッセージに表示します）。
-
-```sh
-curl -fsSL https://bun.sh/install | bash
-```
-
-## launchd による日次自動実行
-
-<!-- diagram: run-path -->
-```mermaid
-%% verify: run-path
-flowchart TD
-  S(["launchd が scale2sheet pipeline --period を起動"]) --> C{"設定を解決できるか"}
-  C -->|できない| CE(["exit 1<br/>status は書かれない"])
-  C -->|できた| P{"対象日の公開ファイルが在るか"}
-  P -->|無い| PM(["failed:input-missing<br/>exit 1"])
-  P -->|在るが読めない| PI(["failed:input-invalid-or-partial<br/>または failed:input-unstable<br/>exit 1"])
-  P -->|読めた| W{"window 内に体重の測定値が在るか"}
-  W -->|無い| ND(["completed:no-data<br/>exit 0"])
-  W -->|在る| T{"Spreadsheet へ転記"}
-  T -->|失敗・当日行が無い| TF(["failed:transfer<br/>exit 1"])
-  T -->|成功| OK(["completed:transferred<br/>exit 0"])
-  PM --> ST["pipeline-status.json を更新"]
-  PI --> ST
-  ND --> ST
-  TF --> ST
-  OK --> ST
-  ST --> NOTIF{"health が遷移したか"}
-  NOTIF -->|した| N(["macOS 通知を 1 回"])
-  NOTIF -->|しない| E(["通知は出ない"])
-```
-
-インストールした `scale2sheet pipeline --period` が転記を1回分実行し、結果を `pipeline-status.json` へ記録します。launchd が本実行と拾い直し実行の計 2 回/期を起動します（本体は冪等なので重複実行しても当日行を上書きするだけ）。**通知は health が遷移したときだけ 1 回出ます**（毎回は出ません）。
-
-`scale_exporter` の起動は `pipeline` の責任ではありません。`scale_exporter` 自身のスケジュールで `scale-exporter-output-dir` へ公開された JSONL を読み込むだけです。当日ぶんの公開ファイルが無い場合は **`failed:input-missing` で終了します**（exit 1）。`scale-exporter-output-dir` を解決できない場合は**設定エラーで終了し**（exit 1）、**このときは `pipeline-status.json` が作られません**（status を書く前に落ちるため）。status が書かれた場合は、health が遷移したときだけ通知が 1 回出ます。
-
-| 実行体 | 役割 |
-| --- | --- |
-| `~/.local/bin/scale2sheet pipeline --period <morning\|evening>` | パイプライン本体（公開済みJSONLの読込 → 転記 → 実行状態の記録） |
-| `~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.morning.plist` | 朝 07:00 本実行 + 11:30 拾い直し |
-| `~/Library/LaunchAgents/jp.seijin.kappa.scale-pipeline.evening.plist` | 夜 21:00 本実行 + 23:30 拾い直し |
-
-**plist は `scale2sheet install --launchd` が生成します。**手で置く必要はありません。
-**実行時刻は固定です**（変更する手段は現在ありません）。`morning-cron` / `evening-cron` は
-`serve` 用の設定であり、launchd の実行時刻を変えません。
-
-拾い直し実行は「測定が実行時刻より後になり本実行で取りこぼす」ケースを OS 側で自動的に補う（従来は手動再実行していた作業を launchd に移管）。
-
-### インストール
-
-**2 段階です。**設定が揃うまで launchd へ登録されません（Issue #184）。
-
-```sh
-npm install
-npm run build:bun
-./dist/scale2sheet install            # 1. binary を ~/.local/bin へ置き、settings.json を作る
-```
-
-`~/.config/scale2sheet/settings.json` に `sheet-id` と `scale-exporter-output-dir`、
-`sheets-credentials` を設定し、認証ファイルを配置してから登録します。
-
-```sh
-~/.local/bin/scale2sheet install --launchd   # 2. launchd へ登録する
-```
-
-**設定が足りないと登録は拒否されます。**表示される内容は、何が足りないかで変わります。
-
-| 足りないもの | 表示 |
-| --- | --- |
-| `settings.json` 自体が無い | `settings-missing: <path>` |
-| `sheet-id` / `sheets-credentials` の設定 | `sheets-config-missing: <detail>` |
-| `source` に応じた入力の設定 | `source-config-missing (<source>): <detail>` |
-| 認証ファイルの実体 | `auth-file-missing: <path>` と、集約行 `failed:missing-auth-files <path[, path...]>` |
-
-いずれの場合も先頭に `failed:launchd-not-ready` が出て、末尾に次が表示されます。
-
-```text
-run install without --launchd, complete settings and auth files, then re-run this command
-```
-
-**拒否された場合、plist も binary も変更されません。**設定を揃えて再実行してください。
-
-登録の前に、何が行われるかだけを確認できます。
-
-```sh
-~/.local/bin/scale2sheet install --launchd --dry-run
-```
-
-登録後の状態は `doctor` で確認できます。
-
-```sh
+~/.local/bin/scale2sheet install --launchd
 ~/.local/bin/scale2sheet doctor
 ```
 
-### アンインストール
+登録前の計画だけを確認するには `install --launchd --dry-run` を使います。`--prefix <path>` でバイナリ配置先を変更できます。設定不足、認証ファイル不足、または実行中の lease がある場合は、plist・バイナリ・設定を変更せず失敗します。
+
+## アンインストール
 
 ```sh
 ~/.local/bin/scale2sheet uninstall
 ```
 
-**launchd の登録解除・plist の削除・binary の削除**を行い、画面に列挙します。
+アンインストールは launchd 登録、plist、配置したバイナリ、インストール manifest を削除します。設定、認証ファイル、状態ファイル、ログは残ります。`uninstall --dry-run` で削除計画を確認できます。
 
-**設定・認証情報・ログは残ります。**残る場所も画面に表示されます。
-完全に削除する場合は、表示された path を手で削除してください。
+## 状態ファイルと終了コード
+
+`pipeline` は `~/.config/scale2sheet/pipeline-status.json` に、期間ごとの実行中状態、最終結果、入力件数、転記結果、連続失敗回数、health を保存します。書込みは一時ファイルからの atomic rename です。`active-run.json` は実行中 lease の診断用です。
 
 ```sh
-rm -rf ~/Library/Logs/scale-pipeline/   # 実行ログ
-rm -rf ~/.config/scale2sheet/           # settings.json・認証情報（scale_exporterの設定とは別ディレクトリ）
+./dist/scale2sheet pipeline --period morning --date 2026-08-13
 ```
 
-**Google API キーや Spreadsheet の共有設定は取り消されません。**各コンソールで別途取り消してください。
+| 終了コード | 意味 |
+| --- | --- |
+| `0` | 正常終了、no-data、`--help`、`--version` |
+| `1` | 設定、入力、認証、Google API、転記、lease の実行時エラー |
+| `2` | 未知のコマンド・オプション、必須引数不足、不正な period/source/date |
 
-### 実行状態と検知の限界
+## 開発・検証
 
-`pipeline` サブコマンドで実行したパイプラインの状態は `~/.config/scale2sheet/pipeline-status.json` に記録されます。現行のv1文書は `schemaVersion`、`definitionsVersion`、`definitionsLabel`、`updatedAt`、`periods`（`morning` / `evening`）を持ち、各期間の `lastTerminal` 以下に outcome・開始/完了時刻・対象日・入力件数・診断情報など、期間単位に連続失敗回数・連続no-data回数・healthを保持します。Spreadsheetの値そのものではなく、パイプラインがどこまで到達したかを確認するために使います。
+```sh
+gofmt -w cmd internal
+CGO_ENABLED=0 go test ./...
+go vet ./...
+bash scripts/run-pipeline-shadow-acceptance.sh
+bash scripts/run-google-sheets-deadline-acceptance.sh
+bash scripts/run-installer-acceptance.sh
+bash scripts/run-runtime-safety-acceptance.sh
+bash scripts/run-binary-source-drift-acceptance.sh
+bash scripts/run-bun-binary-smoke.sh
+```
 
-launchd が起動する `pipeline` は、実行のたびにこのファイルを更新します。ただし**パイプライン自体が起動しない期間は更新されない**ため、launchd の起動状態をこのファイルだけで監視することはできません。
+最後の smoke スクリプト名は互換性のため残っていますが、実際にビルド・実行するのは Go バイナリです。`npm test` は Go の unit test を実行し、Node/TypeScript のテストは `npm run test:legacy-ts` で比較用に実行できます。
 
-次の制約があります。
+## 既知の制約
 
-- パイプライン自体が起動しない期間は、`pipeline-status.json` を更新できないため検知できません。
-- macOS通知が表示・到達したことは記録できますが、利用者が通知を既読にしたことは証明できません。
-- シートの空欄だけでは転記失敗を検知できません。Issue #46 の実測では、2026-07-18〜27のパイプライン未到達期間でも、夜の値は07-20を除く9日分が人手で埋まっていました。
-- Google Sheets の認証、ヘッダ読取、日付列読取、書込みは、転記試行全体で共有する30秒の上限を超えると中断します。`pipeline` では `failed:transfer` と診断情報を状態ファイルへ残して終了し、`run` は終了コード `1` を返します。`serve` は同じ失敗をログに出して、次の予定実行を待ちます。
-- 書込み（batch update）の途中で上限に達した場合、Google 側で反映されたかは**結果未確認**です。直ちに自動再試行せず、先に対象行を確認してください。必要なら、確認後に通常の転記を改めて実行します。
+- `pipeline` は現在 `scale-exporter` の安定 snapshot を対象にします。Apple Health と Google Fit は `run` と `serve` の source adapter として利用します。
+- launchd 登録と Darwin 固有の `O_EXLOCK` lease は macOS 専用です。
+- Google API の認証・読み書きはネットワークと外部サービスの状態に依存します。期限超過時は Sheets 側の反映結果を自動再試行せず、対象行を確認してください。
+- 状態ファイルが更新されない場合、プロセス自体が起動していない可能性までは状態ファイルだけで検知できません。

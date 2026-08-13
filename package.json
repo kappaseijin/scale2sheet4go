@@ -5,25 +5,27 @@
   "type": "module",
   "private": true,
   "bin": {
-    "scale2sheet": "./dist/index.js"
+    "scale2sheet": "./dist/scale2sheet"
   },
   "scripts": {
-    "build:node": "tsc -p tsconfig.json",
-    "build:bun": "bun build ./src/index.ts --compile --outfile dist/scale2sheet",
+    "build": "npm run build:go",
+    "build:go": "CGO_ENABLED=0 GOTOOLCHAIN=local go build -o dist/scale2sheet ./cmd/scale2sheet",
+    "build:legacy-ts": "tsc -p tsconfig.json",
     "acceptance:pipeline-shadow": "bash scripts/run-pipeline-shadow-acceptance.sh",
     "acceptance:google-sheets-deadline": "bash scripts/run-google-sheets-deadline-acceptance.sh",
     "acceptance:binary-drift": "bash scripts/run-binary-source-drift-acceptance.sh",
     "acceptance:runtime-safety": "bash scripts/run-runtime-safety-acceptance.sh",
     "acceptance:installer": "bash scripts/run-installer-acceptance.sh",
+    "acceptance:binary-smoke": "bash scripts/run-bun-binary-smoke.sh",
     "acceptance:bun-binary-smoke": "bash scripts/run-bun-binary-smoke.sh",
-    "preflight:ac-ledger": "python3 scripts/check-ac-ledger.py && python3 scripts/check-doc-refs.py",
-    "dev": "tsx src/index.ts",
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "engines": {
-    "node": ">=22.0.0",
-    "bun": ">=1.0.0"
+    "preflight:readme": "node scripts/verify-readme-config-keys.mjs",
+    "preflight:ac-ledger": "python3 scripts/check-ac-ledger.py && python3 scripts/check-doc-refs.py && node scripts/verify-readme-config-keys.mjs",
+    "dev:legacy-ts": "tsx src/index.ts",
+    "test": "npm run test:go",
+    "test:go": "CGO_ENABLED=0 GOTOOLCHAIN=local go test ./...",
+    "typecheck": "GOTOOLCHAIN=local go vet ./...",
+    "test:legacy-ts": "vitest run",
+    "typecheck:legacy-ts": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "commander": "^15.0.0",
