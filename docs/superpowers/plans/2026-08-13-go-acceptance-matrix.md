@@ -81,4 +81,4 @@ Issue #13 完了後も、次の分類は自動的に解消しない。
 
 - AT-01〜AT-06: 専用 Google 検証環境と実時刻観測が必要。
 - AT-10a: Issue #14 の A-0/A-1 契約決定が必要。
-- 公開配布の署名・公証: Issue #10 の Apple credentials が必要。
+- 公開配布の署名・公証: Apple=3 により Developer ID / notarytool / Gatekeeper の正常系は対象外。Issue #10 の fail-closed 契約 acceptance は自動検査対象として維持する。

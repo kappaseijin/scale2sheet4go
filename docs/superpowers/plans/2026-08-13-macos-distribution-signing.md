@@ -1,30 +1,30 @@
 ---
 type: Plan
 title: macOS公開配布署名と公証の実装計画
-description: Issue #10 の Developer ID、DMG、公証、staple、Gatekeeper、CI secret 境界を実装する計画。
+description: Issue #10 の fail-closed 契約資産を維持し、Apple=3 の対象外判断を資料へ反映する計画。
 tags:
   - plan
   - macos
   - signing
   - notarization
   - ci
-timestamp: "2026-08-13T15:44:08+09:00"
+timestamp: "2026-08-13T21:19:19+09:00"
 status: active
 ---
 
 # macOS 公開配布署名と公証の実装計画
 
-**Goal:** Issue #6 の universal Go binary を Developer ID Application + Hardened Runtime で署名し、DMG を notarytool 公証・staple・Gatekeeper 検査済みの公開配布 artifact にする。
+**Goal:** Apple=3 のユーザー判断に従い、Developer ID 公開配布の正常系を対象外とし、unsigned/local artifact と fail-closed 契約 acceptance の現行境界を資料へ固定する。
 
-**Spec:** `docs/decisions/2026-08-13T154408_Developer ID署名とnotarytool公証の採否についての検討書.md`
+**Spec:** `docs/decisions/2026-08-13T211919_Apple3_macOS公開配布正常系を対象外とする判断.md`
 
 ## Constraints
 
-- 1 Issue = 1 課題 = 1 PR。PR は Issue #10 に紐づける。正常系の Apple acceptance が未実施の間は、PR merge で Issue #10 を自動 close しない。
+- 1 Issue = 1 課題 = 1 PR。資料同期は Issue #37 に紐づけ、Issue #10 の正常系を credentials 待ちとして残さない。
 - 署名順序は universal binary → binary codesign → DMG 作成 → DMG codesign → notarytool submit/wait/log → stapler staple/validate → hdiutil/spctl/codesign verification。
 - Developer ID identity 以外の identity、`codesign --deep`、`sudo`、リポジトリへの secret 保存は禁止する。
 - PR CI では notarization を実行しない。手動または `v*` tag の `macos-release` environment workflow だけが secret を読む。
-- credentials が無い環境では fail-closed とし、ad hoc/Apple Development で正常扱いにしない。
+- Apple=3 により Developer ID credentials の取得・投入・正常系 acceptance は行わない。契約資産は fail-closed のまま維持する。
 - 対向 LLM エージェントは配置せず、`scale2sheet_owner_codex` が acceptance と negative control を実施する。
 
 ## Tasks
@@ -45,7 +45,7 @@ status: active
 
 - [x] **Step 3: Run local contract acceptance**
 
-  Apple Development identity や ad hoc への誤使用、credentials 不足、既存 output への部分書込みを negative control で確認する。正常系は credentials 不在のため未実施として記録する。
+  Apple Development identity や ad hoc への誤使用、credentials 不足、既存 output への部分書込みを negative control で確認する。正常系は Apple=3 により対象外として記録する。
 
 ### Task 2: CI secret/keychain boundary
 
@@ -72,11 +72,11 @@ status: active
 
 - [x] **Step 1: Document public distribution setup**
 
-  Apple Developer ID certificate export、required GitHub environment secrets、manual/tag workflow、DMG output、notary log、Gatekeeper verification、secret retention boundary を README に自己完結で記載する。
+  Apple 正常系が対象外であること、local artifact と fail-closed contract acceptance が対象内であることを README に自己完結で記載する。
 
-- [x] **Step 2: Record external research and credential blocker**
+- [x] **Step 2: Record external research and Apple=3 scope decision**
 
-  Apple URLs、local identity/secret observation、credentials 無しの normal acceptance 未実施を RFC3339 JST で記録する。
+  Apple URLs と local identity/secret observation は履歴として保持し、Apple=3 により normal acceptance を対象外とし、秘密情報なしの contract acceptance を現行対象とする判断を RFC3339 JST で記録する。
 
 ### Task 4: Verification and one PR
 
@@ -84,10 +84,10 @@ status: active
 
   Existing Go gates and acceptance plus the new contract acceptance、workflow YAML/shell checks、README/doc/AC checksを実行する。全実行可能な検査は PASS。
 
-- [ ] **Step 2: Execute real Developer ID/notary acceptance when credentials are available**
+- [x] **Step 2: Apply the Apple=3 scope decision**
 
-  Signed binary、DMG、notarytool result/log、stapler validate、hdiutil verify、spctl open/execute の正常系を確認する。credentials が無い場合はその事実を blocker として Issue に記録し、success claim をしない。
+  Issue #10 のユーザー判断 Apple=3 により、signed binary、DMG、公証、staple、Gatekeeper の正常系は対象外とした。秘密情報なしの contract acceptance は対象内として維持する。
 
-- [ ] **Step 3: Commit, PR, CI, review, merge, main sync**
+- [ ] **Step 3: Synchronize documents and close the follow-up**
 
-  Issue #10 の単一 PR とし、全実行可能なチェックが PASS してからマージする。live credentials が未提供なら PR は fail-closed の実装までに留め、Issue #10 は open のままにするため、PR 本文には close キーワードを使用しない。
+  Issue #37 の docs-only PR で README、PLAN、受入報告、関連設計を更新する。全実行可能な検査を通過した後、Issue #37 を close し、Issue #10 を対象外理由付きで close する。
